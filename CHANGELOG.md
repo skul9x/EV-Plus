@@ -1,8 +1,33 @@
-# Changelog - TramsacEV (EVCS Favorites)
+# Changelog - EV+ (Trạm Sạc EV)
 
 All notable changes to this project will be documented in this file.
 
-## [2026-09-03] - Wattage Filter Persistence, Bottom Navigation Tab Reorder & Device Verification
+## [2026-09-03] - Rebranding to "EV+", Adaptive Launcher Icon, Project Cleanup & GitHub Publication
+
+### Added
+- **Android Adaptive Launcher Icon (API 26+)**:
+  - Designed modern vector background (`ic_launcher_background.xml`) featuring deep obsidian base (`#071312`) with ambient emerald and cyan energy glows.
+  - Designed high-contrast vector foreground (`ic_launcher_foreground.xml`) featuring high-voltage electric bolt in pure white, inner speed gradient, and glowing cyan `+` emblem.
+  - Implemented `mipmap-anydpi-v26/ic_launcher.xml` and `ic_launcher_round.xml` with full square, circle, and squircle mask adaptability across Android & OxygenOS launchers.
+  - Added fallback legacy layer-list drawables in `res/drawable/`.
+- **Project Structure Reorganization (`original_app_data/`)**:
+  - Moved all reverse-engineering artifacts, decompiled code (JADX sources/resources, apktool smali), original APK packages (`.xapk`), HTML web templates, JS scripts, auth dumps, and Python test scripts into `original_app_data/`.
+  - Created `original_app_data/README.md` documenting historical assets and reverse-engineering research.
+  - Cleaned up root project directory to strictly follow Modern Android Development (MAD) standards.
+- **Git & GitHub Publication**:
+  - Created comprehensive `.gitignore` filtering Gradle caches, Android build outputs, local properties, IDE configs, and heavy original app binary dumps.
+  - Initialized Git repository on `main` branch.
+  - Force-pushed clean initial release to GitHub repository: `https://github.com/skul9x/EV-Plus.git`.
+- **Documentation**:
+  - Wrote comprehensive, professional `README.md` for **EV+** with full feature highlights, architecture table, directory layout, Gradle build guides, and ADB installation steps.
+
+### Changed
+- **Concise App Name**:
+  - Renamed application display label from "EVCS Favorites" / "Trạm Sạc EV+" to concise **"EV+"** via `app/src/main/res/values/strings.xml`.
+  - Updated `AndroidManifest.xml` to reference `@string/app_name` and `@mipmap/ic_launcher`.
+  - Updated location permission rationale dialog in `MainActivity.kt` to reflect "EV+".
+- **Hardware Deployment**:
+  - Rebuilt `app-debug.apk` and installed to OnePlus 13R (`3B658D010BU00000`) with updated launcher icon and concise name.
 
 ### Added
 - **Wattage Filter Persistence (`NearbyFilterPreferences`)**:
