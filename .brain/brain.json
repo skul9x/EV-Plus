@@ -1,0 +1,180 @@
+{
+  "meta": {
+    "schema_version": "1.1.0",
+    "awf_version": "4.0.2",
+    "created_at": "2026-09-03T11:05:00+07:00",
+    "updated_at": "2026-09-03T19:46:00+07:00"
+  },
+  "project": {
+    "name": "EV+",
+    "type": "Android Application (Native Jetpack Compose)",
+    "status": "Production-Ready MVP + Nearby Charging Stations with Multi-Tier Routing, Wattage Filter Persistence & Left-Handed Tab Order"
+  },
+  "tech_stack": {
+    "language": "Kotlin 1.9.23",
+    "ui_framework": "Jetpack Compose (Material 3)",
+    "architecture": "MVVM + Clean Architecture / Repository Pattern",
+    "networking": "OkHttp 4.12.0 + Kotlinx Serialization JSON 1.6.3",
+    "security": "Jetpack Security Crypto (EncryptedSharedPreferences)",
+    "location": "Google Play Services Location (FusedLocationProviderClient)",
+    "routing_engines": "Google Routes API v2, OSRM Table Service, Haversine baseline",
+    "filter_persistence": "NearbyFilterPreferences via SessionStorage (EncryptedSharedPreferences)",
+    "build_tool": "Gradle 8.7 (Kotlin DSL)",
+    "min_sdk": 26,
+    "target_sdk": 34
+  },
+  "api_endpoints": [
+    {
+      "path": "POST /reward.html",
+      "method": "POST",
+      "headers": {
+        "X-Partial": "reward"
+      },
+      "purpose": "Trích xuất token CSRF ban đầu và PHPSESSID từ script window.EVCS_REWARD"
+    },
+    {
+      "path": "POST /reward.html (action: send_otp)",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "purpose": "Gửi OTP 6 chữ số qua email (không kèm header X-Partial để nhận JSON phản hồi)"
+    },
+    {
+      "path": "POST /reward.html (action: verify_otp)",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "purpose": "Xác thực OTP, server trả về cookie đăng nhập dài hạn evcs (1 năm)"
+    },
+    {
+      "path": "POST /favorite.html (fetch)",
+      "method": "POST",
+      "headers": {
+        "X-Partial": "fav",
+        "Cookie": "PHPSESSID=...; evcs=...; evcs_did=..."
+      },
+      "purpose": "Lấy danh sách trạm sạc yêu thích dạng JSON của người dùng"
+    },
+    {
+      "path": "POST /favorite.html (action: save)",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Cookie": "PHPSESSID=...; evcs=..."
+      },
+      "purpose": "Lưu và đồng bộ danh sách trạm yêu thích 2 chiều lên cloud EVCS"
+    },
+    {
+      "path": "POST /search?t=eepe5dp9zpipl102",
+      "method": "POST",
+      "security": "HMAC-SHA256 signature (Timestamp, Nonce, AppSecret)",
+      "purpose": "Tìm kiếm trạm sạc xung quanh tọa độ GPS và làm giàu trạng thái cổng sạc/trụ khả dụng theo thời gian thực"
+    },
+    {
+      "path": "POST https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix",
+      "method": "POST",
+      "headers": {
+        "X-Goog-Api-Key": "...",
+        "X-Goog-FieldMask": "originIndex,destinationIndex,status,condition,distanceMeters,duration,staticDuration"
+      },
+      "purpose": "Tính ma trận khoảng cách và thời gian lái xe thực tế kèm live traffic condition (Google Routes API v2)"
+    },
+    {
+      "path": "GET https://router.project-osrm.org/table/v1/driving/{coords}",
+      "method": "GET",
+      "purpose": "Tính toán ma trận khoảng cách đường bộ và thời gian di chuyển dự kiến miễn phí không cần API key"
+    }
+  ],
+  "features": [
+    {
+      "name": "Email OTP Authentication",
+      "status": "implemented",
+      "description": "Đăng nhập 2 bước không cần mật khẩu qua email OTP, tự động lưu và gia hạn session cookie 1 năm"
+    },
+    {
+      "name": "Real-time Favorites Management",
+      "status": "implemented",
+      "description": "Xem danh sách trạm sạc yêu thích kèm trạng thái cổng sạc, trụ sạc trống theo thời gian thực"
+    },
+    {
+      "name": "Nearby Charging Stations Discovery",
+      "status": "implemented",
+      "description": "Giao diện Hero quét trạm sạc VinFast quanh đây theo tọa độ GPS on-demand, lọc nghiêm ngặt các trạm bảo trì hoặc hết cổng"
+    },
+    {
+      "name": "Multi-Power Wattage Filter Chips & Persistence",
+      "status": "implemented",
+      "description": "Thanh filter chip ngang gồm 14 cấp công suất (3.5kW đến 360kW). Lưu và tự động khôi phục lựa chọn của người dùng qua các lần mở app bằng NearbyFilterPreferences"
+    },
+    {
+      "name": "Top 10 Multi-Tier Matrix Routing",
+      "status": "implemented",
+      "description": "Giới hạn tối đa Top 10 trạm sạc gần nhất tính toán ETA lộ trình lái xe thực tế (Tier 1: Google Routes v2, Tier 2: OSRM Table, Tier 3: Haversine)"
+    },
+    {
+      "name": "BYOK Google Routes & Routing Settings",
+      "status": "implemented",
+      "description": "Modal cấu hình Bring-Your-Own-Key Google Routes API, kiểm tra tính hợp lệ của key ngay lập tức và hỗ trợ fallback linh hoạt"
+    },
+    {
+      "name": "Bottom Navigation & Default Start Tab (Nearby Left, Favorites Right)",
+      "status": "implemented",
+      "description": "Thanh điều hướng Material 3 NavigationBar đặt tab Quanh đây bên trái (mặc định mở đầu cho cả khách và thành viên) và Yêu thích bên phải. Đồng bộ trạng thái yêu thích 2 chiều tức thì."
+    },
+    {
+      "name": "Station Name Distance Sanitization & Multiline Full-Text Display",
+      "status": "implemented",
+      "description": "Làm sạch tiền tố khoảng cách ước tính (5.4km », 9.1km », 500m ») từ API search trước khi hiển thị; bọc dòng linh hoạt tối đa 3 dòng kèm căn chỉnh top cho badge trạng thái"
+    },
+    {
+      "name": "1-Tap Maps Routing",
+      "status": "implemented",
+      "description": "Dẫn đường 1 chạm ưu tiên Google Maps Navigation Intent, fallback sang Geo URI và Web Browser"
+    },
+    {
+      "name": "Offline Caching",
+      "status": "implemented",
+      "description": "Tự động cache danh sách trạm sạc dạng JSON snapshot trong storage, xem được khi offline"
+    }
+  ],
+  "knowledge_items": {
+    "gotchas": [
+      {
+        "issue": "Tiền tố khoảng cách từ API tìm kiếm EVCS (5.4km » ...)",
+        "solution": "API Search trả về stationName có kèm khoảng cách và ký tự ». Cần xử lý qua StationNameSanitizer trước khi gán vào domain model và StationUrlBuilder để tránh tạo sai canonical URL slug và tránh đồng bộ ngược tiền tố này lên EVCS cloud."
+      },
+      {
+        "issue": "Độ trễ và fallback tính khoảng cách (Khoảng cách '6.9km • Đường thẳng')",
+        "solution": "Hệ thống 3 tầng: Google Routes (Tier 1) -> OSRM (Tier 2) -> Haversine (Tier 3). Khi chưa nhập API Key hoặc OSRM chưa phản hồi, app tự động kích hoạt Tier 3 hiển thị ngay lập tức khoảng cách đường thẳng offline trong 0ms giúp người dùng biết vị trí tương đối mà không phải đợi mạng."
+      },
+      {
+        "issue": "Lưu trữ bộ lọc công suất an toàn qua app restart",
+        "solution": "NearbyFilterPreferences mã hóa danh sách Enum WattageOption thành chuỗi CSV (ví dụ 'KW_250,KW_180'). Khi đọc lại, split và parse an toàn, bỏ qua các token bị lỗi hoặc không xác định để không gây crash app."
+      },
+      {
+        "issue": "Cloudflare WAF 403 Managed Challenge khi dùng VPN",
+        "solution": "EVCS chặn dải IP datacenter/VPN (như ProtonVPN Datacamp). Phải tắt VPN trên thiết bị hoặc dùng mạng Wi-Fi/4G thông thường để request không bị chặn."
+      },
+      {
+        "issue": "X-Partial header trên endpoint /reward.html",
+        "solution": "Endpoint /reward.html trả về HTML khi có X-Partial: reward (để lấy CSRF). Nhưng khi gửi action: send_otp hoặc verify_otp, KHÔNG được gửi X-Partial để backend trả về JSON."
+      },
+      {
+        "issue": "Strict Top 10 Destinations routing policy",
+        "solution": "Để tối ưu chi phí API Google Routes và độ trễ mạng OSRM, chỉ trích xuất đúng 10 trạm gần nhất theo khoảng cách Haversine gửi vào coordinator tính ma trận lộ trình."
+      },
+      {
+        "issue": "Hai chiều đồng bộ favorites giữa FavoritesScreen và NearbyScreen",
+        "solution": "Dùng chung singleton EvcsRepository: favoritesState (StateFlow<List<Station>>) và favoriteIdsState (StateFlow<Set<String>>) để khi thêm/xóa trạm ở một màn hình, màn hình kia phản ứng tức thì."
+      }
+    ],
+    "hardware_and_tools": {
+      "mcp_server": "@landicefu/android-adb-mcp-server",
+      "tested_device": "OnePlus 13R (CPH2691)",
+      "adb_device_id": "3B658D010BU00000",
+      "apk_path": "app/build/outputs/apk/debug/app-debug.apk"
+    }
+  }
+}

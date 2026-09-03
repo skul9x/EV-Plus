@@ -1,0 +1,117 @@
+{
+  "updated_at": "2026-09-03T19:54:00+07:00",
+  "working_on": {
+    "feature": "Adaptive Launcher Icon & Concise App Name (EV+)",
+    "task": "Tạo adaptive launcher icon chuẩn Android (vector foreground + background), đổi tên hiển thị thành 'EV+', cài đặt lên OnePlus 13R",
+    "status": "completed",
+    "files": [
+      "app/src/main/res/drawable/ic_launcher_background.xml",
+      "app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "app/src/main/res/values/strings.xml",
+      "app/src/main/res/values/colors.xml",
+      "app/src/main/AndroidManifest.xml",
+      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+      "README.md"
+    ],
+    "blockers": [],
+    "notes": "Adaptive icon gồm tia sét năng lượng cao, vòng tròn công nghệ và biểu tượng '+' phong cách EV Emerald / Cyan. Tên hiển thị app trên màn hình chính đã được rút gọn thành 'EV+'."
+  },
+  "phases_status": {
+    "phase_01_station_name_sanitization_and_multiline_display": "Completed",
+    "phase_02_wattage_filter_persistence": "Completed",
+    "phase_03_bottom_navigation_tab_reordering": "Completed",
+    "project_cleanup_and_branding": "Completed"
+  },
+  "pending_tasks": [],
+  "recent_changes": [
+    {
+      "timestamp": "2026-09-03T19:54:00+07:00",
+      "type": "refactor_branding",
+      "description": "Đổi tên app thành 'Trạm Sạc EV+', chuyển toàn bộ dữ liệu app gốc vào original_app_data/, tạo .gitignore và cập nhật README.md, cài đặt APK mới lên OnePlus 13R",
+      "files": [
+        "app/src/main/res/values/strings.xml",
+        "app/src/main/AndroidManifest.xml",
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "original_app_data/",
+        ".gitignore",
+        "README.md"
+      ]
+    },
+    {
+      "timestamp": "2026-09-03T19:43:00+07:00",
+      "type": "test_verification",
+      "description": "Chụp ảnh màn hình điện thoại OnePlus 13R qua ADB MCP tool, giải thích cơ chế 3-tier routing và khoảng cách 6.9km đường thẳng (Haversine)",
+      "files": ["screenshot.png"]
+    },
+    {
+      "timestamp": "2026-09-03T19:40:00+07:00",
+      "type": "deploy",
+      "description": "Build APK app-debug.apk hoàn chỉnh (18MB) và stream-install qua ADB MCP vào OnePlus 13R (3B658D010BU00000)",
+      "files": ["app/build/outputs/apk/debug/app-debug.apk"]
+    },
+    {
+      "timestamp": "2026-09-03T19:34:00+07:00",
+      "type": "feature",
+      "description": "Hoàn thành Phase 03: Đổi thứ tự AppTab (NEARBY vị trí 0/trái, FAVORITES vị trí 1/phải), đổi default start tab trong MainActivity thành AppTab.NEARBY, hỗ trợ guest landing và chuyển tiếp đăng nhập, pass BottomNavigationTabReorderTest",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/navigation/AppTab.kt",
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/test/java/com/evcs/favorites/BottomNavigationTabReorderTest.kt",
+        "plans/260903-station-display-filter-persistence-and-tab-reorder/phase-03-bottom-navigation-tab-reordering.md",
+        "plans/260903-station-display-filter-persistence-and-tab-reorder/plan.md"
+      ]
+    },
+    {
+      "timestamp": "2026-09-03T19:30:00+07:00",
+      "type": "feature",
+      "description": "Hoàn thành Phase 02: Tạo NearbyFilterPreferences lưu trạng thái bộ lọc công suất vào SessionStorage, tích hợp vào NearbyViewModel (khởi tạo, toggle, clear, scan pipeline), cung cấp factory trong MainActivity, pass NearbyFilterPersistenceTest",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/data/preferences/NearbyFilterPreferences.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/test/java/com/evcs/favorites/NearbyFilterPersistenceTest.kt",
+        "plans/260903-station-display-filter-persistence-and-tab-reorder/phase-02-wattage-filter-persistence.md"
+      ]
+    },
+    {
+      "timestamp": "2026-09-03T19:17:00+07:00",
+      "type": "feature",
+      "description": "Hoàn thành Phase 01: Tạo StationNameSanitizer, tích hợp vào EvcsRepository và StationUrlBuilder, cho phép bọc dòng tên trạm maxLines=3 ở StationCard & StationDetailModal, pass StationNameDisplayAndSanitizationTest",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/util/StationNameSanitizer.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
+        "app/src/main/java/com/evcs/favorites/util/StationUrlBuilder.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/StationCard.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/StationDetailModal.kt",
+        "app/src/test/java/com/evcs/favorites/StationNameDisplayAndSanitizationTest.kt"
+      ]
+    }
+  ],
+  "errors_encountered": [
+    {
+      "error": "getFavorites in EvcsRepository was final and could not be overridden in tests",
+      "solution": "Added open modifier to getFavorites in EvcsRepository",
+      "resolved": true
+    }
+  ],
+  "decisions_made": [
+    {
+      "decision": "Reorder AppTab enum to place NEARBY first and FAVORITES second",
+      "reason": "Material 3 NavigationBar iterates over AppTab.entries, naturally rendering Quanh đây on the left and Yêu thích on the right without ad-hoc indexing."
+    },
+    {
+      "decision": "Initialize currentTab to AppTab.NEARBY in FavoritesApp",
+      "reason": "Allows drivers to immediately discover nearby charging stations without forced login gatekeeping."
+    },
+    {
+      "decision": "NearbyFilterPreferences backed by SessionStorage interface",
+      "reason": "Reuses existing EncryptedSharedPrefsStorage architecture on Android device and enables fast 100% JVM unit tests with InMemorySessionStorage."
+    },
+    {
+      "decision": "Clean estimated distance prefix at Repository & URL Builder layers",
+      "reason": "Ensures domain stations are sanitized everywhere, avoids syncing dirty prefix back to cloud, and generates clean canonical URLs."
+    }
+  ]
+}
