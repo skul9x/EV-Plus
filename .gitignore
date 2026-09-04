@@ -1,11 +1,14 @@
 # Built-in Gradle / Android Studio
 .gradle/
 /build/
+build/
 app/build/
 !**/src/**/build/
 *.iml
 .idea/
 local.properties
+.navigation/
+captures/
 
 # Android Build Outputs & Packages
 *.apk
@@ -29,6 +32,7 @@ google-services.json
 lint/
 reports/
 *.png
+!app/src/main/res/**/*.png
 *.zip
 
 # Original app heavy binary assets & decompiled dumps
@@ -38,6 +42,12 @@ original_app_data/extracted_xapk/
 original_app_data/apktool_out/
 original_app_data/src_code/
 original_app_data/auth_state.json
+
+# Temporary network captures, packet dumps & logs
+curl_capture_*/
+lan*/
+get.md
+*.log
 
 # Operating System files
 .DS_Store
@@ -53,7 +63,3 @@ Thumbs.db
 *.swp
 *.swo
 *~
-
-# Temporary captures & dumps
-curl_capture_*/
-get.md

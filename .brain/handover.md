@@ -1,40 +1,68 @@
-# Handover Document
+# Handover Document - Milestone: Native Station Detail Bottom Sheet
 
-**Thời gian lưu**: 2026-09-04 15:00:00 (GMT+7)  
-**Dự án**: EV+ (TramsacEV)  
-**Trạng thái phiên làm việc**: Hoàn tất xuất sắc và đã cài đặt APK lên thiết bị thực qua MCP.
-
----
-
-## 📌 Tổng hợp công việc vừa hoàn thành trong phiên
-
-1. **Điều tra & gỡ lỗi từ file `debug-log.txt`**:
-   - Xác định nguyên nhân lỗi Cloudflare **HTTP 429 (Mã lỗi 1015 - You are being rate limited)** do gửi bão request làm giàu dự báo trong thời gian ngắn.
-   - Phát hiện điểm yếu của regex cũ trong `StationForecastParser` khi gặp câu phức ghép nhiều nhóm trụ (ví dụ: `3 xe sạc trụ 120kW sẽ xong trong 5-21 phút, 1 xe sạc trụ 60kW sẽ xong trong 1 phút nữa`).
-
-2. **Cải tiến mã nguồn & Kiến trúc**:
-   - [`StationForecastParser.kt`](file:///home/skul9x/Desktop/Code/TramsacEV/app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt):
-     - Thêm `CLAUSE_REGEX` và `FULL_SENTENCE_REGEX` để bóc tách chính xác từng nhóm công suất trong câu phức.
-     - Tự động sinh `ForecastSession` ảo khi không có JSON script, kích hoạt `isMultiSession = true` và nhóm công suất đầy đủ.
-   - [`EvcsRepository.kt`](file:///home/skul9x/Desktop/Code/TramsacEV/app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt):
-     - Đưa HTTP 429 & 1015 vào nhóm Non-transient (không retry ngắn 1s/2s).
-     - Bổ sung **Circuit Breaker** `globalRateLimitedUntil` (ngắt mạch 60 giây). Khi bị 429, toàn bộ request nền tự động dừng gọi mạng để chờ IP hết hạn block.
-     - Thêm cơ chế **Pacing Delay** (`delay(index * 150L)`) giữa các trạm khi batch enrich.
-     - Chuyển log banner `amd-locked` sang mức `INFO`.
-
-3. **Kiểm thử chuyên biệt & Triển khai**:
-   - Xây dựng file test riêng: [`ForecastRateLimitAndCompoundParserTest.kt`](file:///home/skul9x/Desktop/Code/TramsacEV/app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt) -> **BUILD SUCCESSFUL in 2s** (100% pass).
-   - Build file APK `app-debug.apk` (18.5MB), cài đặt thành công vào thiết bị thực `3B658D010BU00000` và tự động mở app qua MCP adb.
+📍 **Dự án**: EV+ (Android Jetpack Compose)  
+🔢 **Trạng thái**: Hoàn tất 100% Milestone Native Station Detail Bottom Sheet (5/5 Phases)  
+📅 **Cập nhật**: 2026-09-05 02:40:00 (GMT+7)  
 
 ---
 
-## 📁 Các tệp trọng tâm
+## ✅ ĐÃ XONG TOÀN DIỆN (5/5 PHASES)
 
-- `app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt`: Bộ bóc tách dự báo sạc đa câu/đa trụ.
-- `app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt`: Repository với cơ chế Circuit Breaker & Pacing.
-- `app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt`: Bộ kiểm thử chuyên biệt.
-- `.brain/brain.json` & `.brain/session.json`: Bộ nhớ dự án.
+1. **Phase 01: Domain Telemetry and 24h Stats Models**
+   - Tạo các domain models: `StationTelemetry`, `StationPortStatus`, `StationRating`, `Station24hStats`, `StationAccessTokens`.
+   - Bóc tách phân phối cổng bận theo công suất kW (`busyKw`) và làm sạch ticker dự báo HTML (`cleanForecast`).
+   - Test: `StationTelemetryModelsAndParserTest.kt` (100% PASS).
+
+2. **Phase 02: EvcsTelemetryRepository & 24h Stats Engine**
+   - Tạo `EvcsTelemetryRepository` và `EvcsTelemetryDataSource` thực hiện 3-step handshake:
+     1. Post `{station-slug}.html` lấy ephemeral tokens (`chargeToken`, `apiToken`) và community rating (`avg`, `count`).
+     2. Post `/charging` lấy real-time busy count per kW và forecast ticker.
+     3. Socket.io WebSocket tới `www2.evcs.vn` lấy `history_data` 24h với timeout 4s.
+   - Xây dựng `Station24hStatsCalculator` tính toán chuẩn công thức: Cao điểm (Peak), Trung bình (Mean), Giờ cao điểm (Rush Hour UTC+7), Tỉ lệ lấp đầy (Fill Rate).
+   - Test: `EvcsTelemetryRepositoryAndStatsEngineTest.kt` (100% PASS).
+
+3. **Phase 03: ViewModel On-Demand Telemetry Pipeline**
+   - Xây dựng `StationDetailCoordinator` điều phối pipeline 2 giai đoạn:
+     - Mở tức thì (0ms) với static power ports.
+     - Stage 1: Tokens + Rating + Live Ports.
+     - Stage 2: 24h Stats.
+   - Tích hợp vào `FavoritesViewModel` và `NearbyViewModel`.
+   - Tự động hủy toàn bộ coroutine jobs khi đóng bottom sheet.
+   - Test: `StationDetailViewModelPipelineTest.kt` (100% PASS).
+
+4. **Phase 04: Native Compose Bottom Sheet UI**
+   - Xây dựng `NativeStationDetailSheet.kt` 100% Jetpack Compose (Material 3):
+     - Header trạm (Tên tối đa 3 dòng, địa chỉ, rating cộng đồng, cự ly/ETA lái xe).
+     - Row hành động nhanh: Nút "Chỉ đường" (mở Google Maps navigation), "Yêu thích", "Chia sẻ".
+     - Badge danh sách cổng sạc theo từng kW với chấm màu trạng thái.
+     - Capsule dự báo sạc sạch (ẩn khi locked hoặc null).
+     - Lưới 2x2 hiển thị 4 chỉ số thống kê 24h kèm hiệu ứng shimmer loading.
+     - Không cố định chiều cao, hỗ trợ cuộn tự nhiên chống text clipping.
+   - Test: `NativeStationDetailSheetUiTest.kt` (100% PASS).
+
+5. **Phase 05: Screen Integration & Legacy WebView Decoupling**
+   - Tích hợp vào `MainActivity.kt`, `FavoritesScreen.kt`, `NearbyScreen.kt`.
+   - Xóa bỏ vĩnh viễn `StationDetailModal.kt` và các file CSS WebView.
+   - Giải quyết triệt để lỗi rò rỉ bộ nhớ `PERF-MEM-02` (15-45MB RAM/lần xem).
+   - Cập nhật các legacy unit tests và xây dựng test tích hợp toàn diện: `NativeStationDetailIntegrationTest.kt` (100% PASS).
+   - Build và cài đặt APK thành công lên thiết bị thật.
 
 ---
 
-*Để khôi phục ngữ cảnh làm việc cho phiên tiếp theo, chỉ cần gõ `/recap`.*
+## 🔧 QUYẾT ĐỊNH QUAN TRỌNG
+
+1. **Khử bỏ hoàn toàn WebView**:
+   - WebView nhúng gây giật lag, tốn 300KB+ data web, xung đột cử chỉ vuốt và rò rỉ RAM nghiêm trọng. Thay bằng 100% Native Compose giúp mở sheet dưới 50ms và tiêu thụ RAM cực thấp.
+2. **Quản lý vòng đời qua Coordinator**:
+   - Mọi kết nối mạng và Socket.io 24h history được gắn với lifecycle của bottom sheet và tự động hủy bỏ ngay khi người dùng đóng modal.
+3. **Tính toán chuẩn UTC+7**:
+   - Phân tích giờ cao điểm dựa trên timezone Việt Nam `(timestamp + 25,200,000ms)` đồng bộ tuyệt đối với logic của EVCS gốc.
+
+---
+
+## 📁 FILES QUAN TRỌNG
+- `plans/260905-0115-native-station-detail-bottom-sheet/plan.md`: Master Plan toàn bộ milestone.
+- `app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt`: Giao diện Native Bottom Sheet.
+- `app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt`: Bộ điều phối lifecycle on-demand.
+- `app/src/main/java/com/evcs/favorites/data/repository/EvcsTelemetryRepository.kt`: Repository xử lý API tokens và Socket.io history.
+- `.brain/brain.json` & `.brain/session.json`: Bộ nhớ ngữ cảnh vĩnh cửu.

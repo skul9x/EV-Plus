@@ -25,7 +25,7 @@ import com.evcs.favorites.ui.theme.EmeraldPrimary
 /**
  * Horizontally scrollable row displaying power rating filter chips.
  *
- * - Renders all 14+ wattage tiers in descending order (360kW down to 3.5kW).
+ * - Renders all 13 wattage tiers in descending order (360kW down to 11kW).
  * - Shows an action chip "Xóa bộ lọc" when any filter is active.
  * - Highlights selected chips with EV Emerald green (#10B981) and white checkmark icon.
  */

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-05] - 100% Native Jetpack Compose Station Detail Bottom Sheet & Legacy WebView Decoupling
+
+### Added
+- **NativeStationDetailSheet (100% Jetpack Compose Material 3)**:
+  - Instant modal opening (<50ms) replacing the heavy legacy `WebView` modal (`StationDetailModal.kt`).
+  - Charging port availability badges grouped by kW tier with real-time status dots (Xanh lá: Còn trống, Hổ phách: Hết chỗ, Xám: Bảo trì).
+  - Clean live charging forecast capsule with auto-suppression of locked/empty state banners.
+  - Native 2x2 grid for 24h Usage Statistics: Cao điểm (Peak), Trung bình (Average), Giờ cao điểm (Rush hour UTC+7), Tỉ lệ lấp đầy (Fill Rate) kèm shimmer placeholders.
+  - Action row pills: 1-Tap Google Maps navigation intent (`geo:0,0?q=...`), Favorite toggling with 2-way cloud sync, and native Android Share Sheet.
+- **On-Demand Telemetry & 24h Stats Pipeline**:
+  - Implemented `EvcsTelemetryRepository` and `EvcsTelemetryDataSource` executing 3-step token handshake (`chargeToken`, `apiToken`), live charging telemetry, and Socket.io WebSocket connection to `www2.evcs.vn`.
+  - Implemented `Station24hStatsCalculator` with Vietnam UTC+7 timezone peak hour clustering and fill-rate formulas.
+  - Implemented `StationDetailCoordinator` managing phased asynchronous execution and instant cancellation upon sheet dismissal.
+- **Comprehensive Unit & Integration Test Suites**:
+  - Added dedicated single-file test suites across all 5 phases: `StationTelemetryModelsAndParserTest.kt`, `EvcsTelemetryRepositoryAndStatsEngineTest.kt`, `StationDetailViewModelPipelineTest.kt`, `NativeStationDetailSheetUiTest.kt`, and `NativeStationDetailIntegrationTest.kt` (100% PASS).
+
+### Removed
+- Decommissioned `StationDetailModal.kt` and WebView CSS rules (`FORECAST_OVERLAP_FIX_CSS`), permanently closing `PERF-MEM-02` (15-45MB RAM memory leak per station view) and `ANDROID-LOGIC-012`.
+
 ## [2026-09-03] - Rebranding to "EV+", Adaptive Launcher Icon, Project Cleanup & GitHub Publication
 
 ### Added

@@ -67,13 +67,13 @@ class NearbyStationSmartFilterTest {
 
     @Test
     fun testAcAndDcClassification() {
-        // Standard AC power ratings
-        assertTrue(createPort(3_500L, label = "3.5kW").isAc())
-        assertTrue(createPort(7_000L, label = "7kW").isAc())
-        assertTrue(createPort(7_400L, label = "7.4kW").isAc())
+        // Motorbike / home AC (3.5kW, 7kW, 7.4kW) and unrated are excluded from car AC
+        assertFalse(createPort(3_500L, label = "3.5kW").isAc())
+        assertFalse(createPort(7_000L, label = "7kW").isAc())
+        assertFalse(createPort(7_400L, label = "7.4kW").isAc())
         assertTrue(createPort(11_000L, label = "11kW").isAc())
         assertTrue(createPort(22_000L, label = "22kW").isAc())
-        assertTrue(createPort(0L, label = "AC Type 2").isAc())
+        assertFalse(createPort(0L, label = "AC Type 2").isAc())
 
         // 22kW AC must NOT be classified as DC
         assertFalse(createPort(22_000L, label = "22kW").isDc())
@@ -252,7 +252,7 @@ class NearbyStationSmartFilterTest {
             CustomFilterConfig(mode = CustomFilterMode.QUICK_CHIP, quickChip = QuickChipOption.ALL).toDisplaySummary()
         )
         assertEquals(
-            "Cổng AC từ 3.5kW - 22kW",
+            "Cổng AC (11kW, 22kW)",
             CustomFilterConfig(mode = CustomFilterMode.QUICK_CHIP, quickChip = QuickChipOption.AC).toDisplaySummary()
         )
         assertEquals(

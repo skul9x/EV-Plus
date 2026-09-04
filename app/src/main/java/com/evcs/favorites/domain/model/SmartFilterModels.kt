@@ -88,7 +88,7 @@ data class CustomFilterConfig(
         return when (mode) {
             CustomFilterMode.QUICK_CHIP -> when (quickChip) {
                 QuickChipOption.ALL -> "Tất cả các trạm có cổng trống"
-                QuickChipOption.AC -> "Cổng AC từ 3.5kW - 22kW"
+                QuickChipOption.AC -> "Cổng AC (11kW, 22kW)"
                 QuickChipOption.DC_LE_30KW -> "Cổng DC công suất ≤ 30kW"
                 QuickChipOption.DC_BETWEEN_30_60KW -> "Cổng DC từ 30kW - 60kW"
                 QuickChipOption.DC_GE_60KW -> "Cổng DC công suất ≥ 60kW"
@@ -109,13 +109,14 @@ data class CustomFilterConfig(
     }
 }
 
-private val AC_STANDARD_WATTS = setOf(3_500L, 7_000L, 7_400L, 11_000L, 22_000L)
+private val AC_STANDARD_WATTS = setOf(11_000L, 22_000L)
 
 /**
- * Ports with [typeWatts] in [3_500L, 7_000L, 7_400L, 11_000L, 22_000L] or labels indicating AC are classified as AC.
+ * Ports with [typeWatts] in [11_000L, 22_000L] (strictly car-compatible AC tiers) are classified as AC.
+ * Excludes 3.5kW, 7kW/7.4kW, unrated (typeWatts <= 0L), and ports explicitly labeled DC.
  */
 fun PowerPort.isAc(): Boolean {
-    if (label.contains("AC", ignoreCase = true)) return true
+    if (typeWatts <= 0L) return false
     if (label.contains("DC", ignoreCase = true)) return false
     return typeWatts in AC_STANDARD_WATTS
 }

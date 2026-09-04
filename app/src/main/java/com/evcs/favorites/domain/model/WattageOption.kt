@@ -25,18 +25,12 @@ enum class WattageOption(
 
     // AC Slow / Destination
     KW_22(22_000L, "22kW"),
-    KW_11(11_000L, "11kW"),
-    KW_7(7_000L, "7kW"),
-    KW_3_5(3_500L, "3.5kW");
+    KW_11(11_000L, "11kW");
 
     /**
      * Checks whether the given raw EVSE wattage matches this power tier.
-     * Includes support for 7kW / 7.4kW variations.
      */
     fun matchesWattage(typeWatts: Long): Boolean {
-        if (this == KW_7 && (typeWatts == 7_000L || typeWatts == 7_400L)) {
-            return true
-        }
         return this.watts == typeWatts
     }
 

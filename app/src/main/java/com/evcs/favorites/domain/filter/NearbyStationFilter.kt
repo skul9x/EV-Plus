@@ -1,6 +1,7 @@
 package com.evcs.favorites.domain.filter
 
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.domain.model.CustomFilterConfig
 import com.evcs.favorites.domain.model.CustomFilterMode
@@ -14,6 +15,24 @@ import com.evcs.favorites.domain.model.matchesCustomRange
 import com.evcs.favorites.domain.model.matchesQuickChip
 
 /**
+ * Extension function on [Station] to check if it has any car-compatible charging ports
+ * (DC ports, or AC ports with rating >= 11kW).
+ *
+ * Rules:
+ * - Returns true if any port satisfies `it.isDc()`, `it.isAc()`, or `it.typeWatts >= 11_000L`.
+ * - If `powers` is empty, falls back to connector string parsing via [EvcsRepository.parseConnectorsToPowers].
+ * - Returns false if the station only contains low-power motorbike ports (3.5kW, 7kW, 7.4kW) and no DC or AC >= 11kW ports.
+ */
+fun Station.hasCarCompatiblePorts(): Boolean {
+    val portList = if (powers.isNotEmpty()) {
+        powers
+    } else {
+        EvcsRepository.parseConnectorsToPowers(connectors)
+    }
+    return portList.any { it.isDc() || it.isAc() || it.typeWatts >= 11_000L }
+}
+
+/**
  * Pure business logic engine for filtering charging stations by wattage tiers,
  * active port availability, depot service status, and selecting Top N nearest stations.
  */
@@ -24,8 +43,9 @@ object NearbyStationFilter {
      *
      * Rules:
      * 1. Depot status must not be "Maintaining" or "OutOfService" (case-insensitive).
-     * 2. If [selectedWattages] is empty: station must have at least one available plug (totalAvailablePlugs > 0).
-     * 3. If [selectedWattages] is not empty: station must have at least one connector matching any selected
+     * 2. Pure motorbike/low-power stations (!station.hasCarCompatiblePorts()) are excluded.
+     * 3. If [selectedWattages] is empty: station must have at least one available plug (totalAvailablePlugs > 0).
+     * 4. If [selectedWattages] is not empty: station must have at least one connector matching any selected
      *    wattage tier with availablePlugs > 0.
      */
     fun filterStations(
@@ -37,6 +57,10 @@ object NearbyStationFilter {
             val isOutOfService = station.depotStatus.equals("Maintaining", ignoreCase = true) ||
                     station.depotStatus.equals("OutOfService", ignoreCase = true)
             if (isOutOfService) {
+                return@filter false
+            }
+
+            if (!station.hasCarCompatiblePorts()) {
                 return@filter false
             }
 
@@ -53,11 +77,15 @@ object NearbyStationFilter {
 
     /**
      * Filters stations by smart filter mode:
-     * - [SmartFilterMode.NONE]: Station must have available plugs (totalAvailablePlugs > 0).
-     * - [SmartFilterMode.AC]: Station must have at least one AC connector with availablePlugs > 0.
+     * - [SmartFilterMode.NONE]: Station must have available plugs (totalAvailablePlugs > 0) and car-compatible ports.
+     * - [SmartFilterMode.AC]: Station must have at least one car-compatible AC connector (11kW, 22kW) with availablePlugs > 0.
      * - [SmartFilterMode.DC]: Station must have at least one DC connector matching the active [dcTier] with availablePlugs > 0.
-     *   If [dcTier] is null, station must have available plugs (unfiltered until tier is selected).
-     * - [SmartFilterMode.CUSTOM]: Evaluates either matching quick chip or manual minKw..maxKw range with availablePlugs > 0.
+     *   If [dcTier] is null, station must have available plugs (unfiltered until tier is selected) and car-compatible ports.
+     * - [SmartFilterMode.CUSTOM]: Evaluates either matching quick chip (excluding motorbike stations) or manual minKw..maxKw range with availablePlugs > 0.
+     *
+     * Motorbike Station Exclusion Rule:
+     * Stations lacking car-compatible ports (!station.hasCarCompatiblePorts()) are excluded across NONE, AC, DC,
+     * and QUICK_CHIP modes. In CUSTOM_RANGE mode, stations are matched directly against user's numeric bounds.
      *
      * Mixed Station Exclusion Rule:
      * If a station has both AC and DC, availability is evaluated strictly on the connectors matching the filter.
@@ -76,6 +104,15 @@ object NearbyStationFilter {
             val isOutOfService = station.depotStatus.equals("Maintaining", ignoreCase = true) ||
                     station.depotStatus.equals("OutOfService", ignoreCase = true)
             if (isOutOfService) {
+                return@filter false
+            }
+
+            val isCustomRange = mode == SmartFilterMode.CUSTOM &&
+                    customConfig != null &&
+                    customConfig.isValid() &&
+                    customConfig.mode == CustomFilterMode.CUSTOM_RANGE
+
+            if (!isCustomRange && !station.hasCarCompatiblePorts()) {
                 return@filter false
             }
 

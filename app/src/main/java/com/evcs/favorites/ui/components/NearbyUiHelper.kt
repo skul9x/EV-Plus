@@ -41,7 +41,7 @@ object NearbyUiHelper {
 
     /**
      * All supported [WattageOption]s in descending order of power rating.
-     * 360kW, 300kW, 250kW, 180kW, 150kW, 120kW, 80kW, 60kW, 40kW, 30kW, 22kW, 20kW, 11kW, 7kW, 3.5kW.
+     * 360kW, 300kW, 250kW, 180kW, 150kW, 120kW, 80kW, 60kW, 40kW, 30kW, 22kW, 20kW, 11kW.
      */
     val SORTED_WATTAGE_OPTIONS: List<WattageOption> =
         WattageOption.entries.sortedByDescending { it.watts }

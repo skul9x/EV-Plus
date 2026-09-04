@@ -1,7 +1,7 @@
 # Plan: Native Jetpack Compose Station Detail Bottom Sheet
 
 Created: 2026-09-05 01:15:00 (GMT+7)  
-Status: 🟡 In Progress  
+Status: 🟢 Completed  
 Target: Replace legacy WebView station detail modal with a 100% native Jetpack Compose Bottom Sheet delivering instant rendering (<50ms), zero gesture lag, real-time port telemetry, and 24h usage statistics with zero text clipping.
 
 ---
@@ -39,7 +39,7 @@ Analysis of `curl_capture_20260905_005601` and `curl_capture_20260905_005946` re
    - Listens to `history_data`: Returns array of `[timestamp, vehicleCount]` data points.
    - Disconnects immediately after receiving data (4s timeout safeguard).
    - Reuses shared `OkHttpClient` pool for WebSocket/HTTP (`PERF-NET-01`).
-4. **Step 4 (Optional) - Telemetry Sync Ping**:
+4. **Step 4 (Optional) - Telemetry Ping Sync**:
    - `POST https://www2.evcs.vn/update` with `x-t: apiToken` and body `{"a": stationId, "b": totalBusyCars}`. Returns 204 No Content.
 
 ### Production Calculation Formulas (Verified from detail.26082102.js)
@@ -58,7 +58,7 @@ Analysis of `curl_capture_20260905_005601` and `curl_capture_20260905_005946` re
 | [Phase 02](file:///home/skul9x/Desktop/Code/EV-Plus-main/plans/260905-0115-native-station-detail-bottom-sheet/phase-02-evcs-telemetry-repository-and-stats-calculator.md) | Telemetry Repository & 24h Stats Engine | 🟢 Completed | `EvcsTelemetryRepositoryAndStatsEngineTest.kt` |
 | [Phase 03](file:///home/skul9x/Desktop/Code/EV-Plus-main/plans/260905-0115-native-station-detail-bottom-sheet/phase-03-viewmodel-on-demand-telemetry-pipeline.md) | ViewModel On-Demand Telemetry Pipeline | 🟢 Completed | `StationDetailViewModelPipelineTest.kt` |
 | [Phase 04](file:///home/skul9x/Desktop/Code/EV-Plus-main/plans/260905-0115-native-station-detail-bottom-sheet/phase-04-native-compose-bottom-sheet-ui.md) | Native Compose Bottom Sheet UI | 🟢 Completed | `NativeStationDetailSheetUiTest.kt` |
-| [Phase 05](file:///home/skul9x/Desktop/Code/EV-Plus-main/plans/260905-0115-native-station-detail-bottom-sheet/phase-05-screen-integration-and-webview-decoupling.md) | Screen Integration & Legacy Cleanup | ⬜ Pending | `NativeStationDetailIntegrationTest.kt` |
+| [Phase 05](file:///home/skul9x/Desktop/Code/EV-Plus-main/plans/260905-0115-native-station-detail-bottom-sheet/phase-05-screen-integration-and-webview-decoupling.md) | Screen Integration & Legacy Cleanup | 🟢 Completed | `NativeStationDetailIntegrationTest.kt` |
 
 ---
 

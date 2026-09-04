@@ -3,23 +3,23 @@
     "schema_version": "1.1.0",
     "awf_version": "4.0.2",
     "created_at": "2026-09-03T11:05:00+07:00",
-    "updated_at": "2026-09-04T15:00:00+07:00"
+    "updated_at": "2026-09-05T02:40:00+07:00"
   },
   "project": {
     "name": "EV+",
     "type": "Android Application (Native Jetpack Compose)",
-    "status": "Production-Ready MVP + Smart Filter (AC/DC/Custom), Multi-Tier Routing (Google/OSRM/Haversine), Real-time Forecast Badges with Multi-session Parser & Circuit Breaker, Debug Log Subsystem"
+    "status": "Production-Ready MVP + Native Compose Station Detail Bottom Sheet (100% Decommissioned WebView), Multi-Tier Routing (Google/OSRM/Haversine), Smart Filter (AC/DC/Custom), On-Demand Realtime Telemetry & 24h Usage Statistics Engine"
   },
   "tech_stack": {
     "language": "Kotlin 1.9.23",
     "ui_framework": "Jetpack Compose (Material 3)",
     "architecture": "MVVM + Clean Architecture / Repository Pattern",
-    "networking": "OkHttp 4.12.0 + Kotlinx Serialization JSON 1.6.3",
+    "networking": "OkHttp 4.12.0 + Kotlinx Serialization JSON 1.6.3 + Socket.io Engine for 24h History Stats",
     "security": "Jetpack Security Crypto (EncryptedSharedPreferences)",
     "location": "Google Play Services Location (FusedLocationProviderClient)",
     "routing_engines": "Google Routes API v2, OSRM Table Service, Haversine baseline",
     "filter_persistence": "NearbyFilterPreferences & SmartFilterPreferences via SessionStorage",
-    "resilience_patterns": "Cloudflare HTTP 429 Circuit Breaker (60s cooldown), Exponential Backoff Retry, Request Pacing Delay",
+    "resilience_patterns": "Zero-Leak Native Bottom Sheet Lifecycle, SingleFlight Concurrency, Timeout Safeguards (4s), Cloudflare HTTP 429 Protection",
     "build_tool": "Gradle 8.7 (Kotlin DSL)",
     "min_sdk": 26,
     "target_sdk": 34
@@ -88,29 +88,49 @@
       "purpose": "Tính toán ma trận khoảng cách đường bộ và thời gian di chuyển dự kiến miễn phí không cần API key"
     },
     {
-      "path": "GET /tram-sac-...html",
-      "method": "GET",
-      "purpose": "Tải trang chi tiết trạm sạc dạng HTML tĩnh (SSR) chứa khối #stationTicker dự báo xe sắp sạc xong"
+      "path": "POST /{station-slug}.html",
+      "method": "POST",
+      "headers": {
+        "X-Partial": "user"
+      },
+      "purpose": "Bắt tay lấy chargeToken, apiToken, rating cộng đồng (avg, count) cho Native Station Detail Bottom Sheet"
     },
     {
       "path": "POST /charging",
       "method": "POST",
       "headers": {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-t": "chargeToken"
       },
-      "purpose": "Lấy trạng thái số cổng đang sạc thực tế (busyKw) và mã HTML ticker cập nhật từ EVCS"
+      "purpose": "Lấy live telemetry số xe đang sạc phân bổ theo từng nhóm công suất (busyKw) và HTML forecast ticker"
+    },
+    {
+      "path": "WSS https://www2.evcs.vn/ (Socket.io)",
+      "method": "SOCKET_IO",
+      "auth": {
+        "t": "apiToken"
+      },
+      "purpose": "Lấy lịch sử sạc 24h (history_data) để tính toán 4 chỉ số: Cao điểm, Trung bình, Giờ cao điểm và Tỉ lệ lấp đầy"
+    },
+    {
+      "path": "POST https://www2.evcs.vn/update",
+      "method": "POST",
+      "headers": {
+        "x-t": "apiToken"
+      },
+      "purpose": "Gửi telemetry ping cập nhật tổng số xe bận (fire-and-forget)"
     }
   ],
   "features": [
     {
-      "name": "Authentication & 2-Way Favorite Sync",
+      "name": "100% Native Jetpack Compose Station Detail Bottom Sheet",
       "status": "Implemented",
-      "description": "Đăng nhập OTP qua email, mã hóa cookie session, tải và đồng bộ danh sách trạm yêu thích 2 chiều với EVCS."
+      "description": "Mở tức thì <50ms, bóc tách hoàn toàn và xóa bỏ WebView (StationDetailModal.kt), giải quyết vĩnh viễn rò rỉ RAM (PERF-MEM-02). Hiển thị Badge công suất trụ trực quan, rating cộng đồng, dự báo sạc sạch và lưới 2x2 thống kê 24h."
     },
     {
-      "name": "Nearby Stations & Cluster Search",
+      "name": "On-Demand Telemetry & 24h Statistics Pipeline",
       "status": "Implemented",
-      "description": "Quét GPS, tìm trạm lân cận trong bán kính, phân cụm tọa độ để gọi API ký HMAC."
+      "description": "Điều phối đa tầng qua StationDetailCoordinator: Stage 1 (Token + Live Ports + Clean Forecast) và Stage 2 (Socket.io 24h History với 4s timeout), hủy bỏ tức thì khi đóng modal."
     },
     {
       "name": "Smart Filter (All, AC, DC Fast, DC Super, Custom kW)",
@@ -123,28 +143,23 @@
       "description": "Tính toán cự ly/thời gian lái xe thực tế, tự động chuyển đổi OSRM -> Google -> Haversine khi có sự cố, cấu hình trong Settings."
     },
     {
-      "name": "Live Station Forecast Badges & Multi-Clause Parser",
+      "name": "Authentication & 2-Way Favorite Sync",
       "status": "Implemented",
-      "description": "Badge Amber ⏱️ Sắp trống, bóc tách câu đơn/câu phức đa nhóm công suất, cache 3 phút, circuit breaker 60s khi bị Cloudflare 429."
-    },
-    {
-      "name": "In-App Debug Log Subsystem & Viewer",
-      "status": "Implemented",
-      "description": "Ghi nhận vòng tròn 500 mục log mạng, bóc tách và phân loại mức độ, giao diện tra cứu trực tiếp trong tab Cài đặt."
+      "description": "Đăng nhập OTP qua email, mã hóa cookie session, tải và đồng bộ danh sách trạm yêu thích 2 chiều với EVCS."
     }
   ],
   "knowledge_items": {
     "patterns": [
-      "Repository Pattern với In-Memory Cache (ForecastCache) và EncryptedSharedPreferences (SessionStorage)",
-      "Multi-Tier Routing Coordinator với cơ chế Fallback tầng",
-      "Circuit Breaker Pattern cho Cloudflare HTTP 429 Rate Limiting",
-      "Progressive UI State Updates qua Kotlin StateFlow và Coroutines Staggered Pacing",
-      "Dedicated Unit Test Suite per Feature Domain"
+      "Zero-Leak Native Jetpack Compose Modal Bottom Sheet thay thế WebView engine",
+      "On-Demand Phased Pipeline với StationDetailCoordinator",
+      "Socket.io History Data Stream với Strict 4s Timeout Safeguard",
+      "Production Calculation Formulas chuẩn từ EVCS JS engine (Peak, Mean, Mode Hour UTC+7, Fill Rate)",
+      "Single Comprehensive Test Per Milestone Architecture"
     ],
     "gotchas": [
-      "Cloudflare Rate Limiting (Mã lỗi 1015 / HTTP 429) sẽ phạt nặng hơn nếu retry nhanh (1s/2s). Phải dừng retry lập tức và ngắt mạch 60s.",
-      "Ticker HTML của EVCS có câu phức ghép nhiều nhóm trụ qua dấu phẩy (ví dụ: '3 xe sạc trụ 120kW sẽ xong trong 5-21 phút, 1 xe sạc trụ 60kW sẽ xong trong 1 phút nữa'). Cần dùng CLAUSE_REGEX tách từng vế thay vì regex đơn.",
-      "Các trạm có banner amd-locked (chưa có phiên sạc hoặc cần tài khoản EVCS Go) cần log INFO thay vì WARN để tránh làm bẩn debug log."
+      "WebView trong ModalBottomSheet gây rò rỉ 15-45MB RAM do Chromium engine không tự giải phóng native memory khi composable unmount. Thay bằng 100% Native Compose giải quyết triệt để.",
+      "Giờ cao điểm phải được quy đổi chuẩn theo múi giờ Việt Nam UTC+7 (timestamp + 25,200,000ms) trước khi gom nhóm 24h.",
+      "Ticker dự báo có chứa banner quảng cáo amd-locked nếu không có phiên sạc thực tế; cần lọc sạch và trả về cleanForecast = null."
     ]
   }
 }

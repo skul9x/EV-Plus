@@ -121,7 +121,7 @@ class CustomFilterSettingsValidationTest {
         assertEquals("👉 Đang lọc: Tất cả các trạm có cổng trống", state.livePreview)
 
         state.selectQuickChip(QuickChipOption.AC)
-        assertEquals("👉 Đang lọc: Cổng AC từ 3.5kW - 22kW còn trống", state.livePreview)
+        assertEquals("👉 Đang lọc: Cổng AC (11kW, 22kW) còn trống", state.livePreview)
 
         state.selectQuickChip(QuickChipOption.DC_LE_30KW)
         assertEquals("👉 Đang lọc: Cổng DC ≤ 30kW còn trống", state.livePreview)
@@ -158,7 +158,7 @@ class CustomFilterSettingsValidationTest {
         state.onMaxKwChanged("60")
 
         assertFalse(state.isValid)
-        assertEquals("Công suất tối thiểu không được lớn hơn công suất tối đa", state.errorMessage)
+        assertEquals("Min không được lớn hơn Max", state.errorMessage)
         assertNull(state.buildConfig())
     }
 
@@ -217,13 +217,13 @@ class CustomFilterSettingsValidationTest {
         // min = 0
         state.onMinKwChanged("0")
         assertFalse(state.isValid)
-        assertEquals("Công suất tối thiểu phải từ 1 đến 500 kW", state.errorMessage)
+        assertEquals("Min phải từ 1 đến 500 kW", state.errorMessage)
         assertNull(state.buildConfig())
 
         // min = 501
         state.onMinKwChanged("501")
         assertFalse(state.isValid)
-        assertEquals("Công suất tối thiểu phải từ 1 đến 500 kW", state.errorMessage)
+        assertEquals("Min phải từ 1 đến 500 kW", state.errorMessage)
         assertNull(state.buildConfig())
 
         // valid min = 500
@@ -235,13 +235,13 @@ class CustomFilterSettingsValidationTest {
         state.clearMinKw()
         state.onMaxKwChanged("0")
         assertFalse(state.isValid)
-        assertEquals("Công suất tối đa phải từ 1 đến 500 kW", state.errorMessage)
+        assertEquals("Max phải từ 1 đến 500 kW", state.errorMessage)
         assertNull(state.buildConfig())
 
         // max = 501
         state.onMaxKwChanged("501")
         assertFalse(state.isValid)
-        assertEquals("Công suất tối đa phải từ 1 đến 500 kW", state.errorMessage)
+        assertEquals("Max phải từ 1 đến 500 kW", state.errorMessage)
         assertNull(state.buildConfig())
 
         // min and max boundary valid: 1 and 500
@@ -255,7 +255,7 @@ class CustomFilterSettingsValidationTest {
         state.clearMinKw()
         state.clearMaxKw()
         assertFalse(state.isValid)
-        assertEquals("Vui lòng nhập công suất tối thiểu hoặc tối đa", state.errorMessage)
+        assertEquals("Vui lòng nhập Min hoặc Max", state.errorMessage)
         assertNull(state.buildConfig())
 
         // Direct CustomFilterConfig domain model validation

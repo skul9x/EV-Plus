@@ -80,9 +80,9 @@ class NearbyFilteringAndFavoriteSyncTest {
 
     @Test
     fun testWattageOptionTiersAndMatching() {
-        // Verify total tiers count (15 tiers modeled)
+        // Verify total tiers count (13 tiers modeled)
         val allTiers = WattageOption.entries
-        assertTrue(allTiers.size >= 14)
+        assertEquals(13, allTiers.size)
 
         // Verify Ultra-fast DC
         assertEquals(360_000L, WattageOption.KW_360.watts)
@@ -98,15 +98,20 @@ class NearbyFilteringAndFavoriteSyncTest {
         assertEquals(60_000L, WattageOption.KW_60.watts)
         assertEquals(30_000L, WattageOption.KW_30.watts)
 
-        // Verify AC Destination & 7kW / 7.4kW variation
-        assertEquals(7_000L, WattageOption.KW_7.watts)
-        assertTrue("KW_7 should match 7000W", WattageOption.KW_7.matchesWattage(7_000L))
-        assertTrue("KW_7 should match 7400W variation", WattageOption.KW_7.matchesWattage(7_400L))
-        assertFalse(WattageOption.KW_7.matchesWattage(11_000L))
+        // Verify AC Destination (22kW and 11kW)
+        assertEquals(22_000L, WattageOption.KW_22.watts)
+        assertEquals("22kW", WattageOption.KW_22.label)
+        assertTrue("KW_22 should match 22000W", WattageOption.KW_22.matchesWattage(22_000L))
+        assertFalse(WattageOption.KW_22.matchesWattage(11_000L))
+
+        assertEquals(11_000L, WattageOption.KW_11.watts)
+        assertEquals("11kW", WattageOption.KW_11.label)
+        assertTrue("KW_11 should match 11000W", WattageOption.KW_11.matchesWattage(11_000L))
 
         // Verify companion fromWatts
         assertEquals(WattageOption.KW_250, WattageOption.fromWatts(250_000L))
-        assertEquals(WattageOption.KW_7, WattageOption.fromWatts(7_400L))
+        assertEquals(WattageOption.KW_22, WattageOption.fromWatts(22_000L))
+        assertEquals(WattageOption.KW_11, WattageOption.fromWatts(11_000L))
         assertEquals(null, WattageOption.fromWatts(999_999L))
     }
 

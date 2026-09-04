@@ -1,77 +1,75 @@
-# 💡 BRIEF: EVCS Favorites - Ứng dụng Trạm Sạc EV Yêu Thích
+# 💡 BRIEF: Loại Trụ 3.5kW & 7kW Ra Khỏi Bộ Lọc AC & Chuẩn Hóa Trạm Sạc Ô Tô
 
-**Ngày tạo:** 03/09/2026  
+**Ngày tạo:** 05/09/2026  
 **Brainstorm cùng:** skul9x  
 
 ---
 
 ## 1. VẤN ĐỀ CẦN GIẢI QUYẾT
-- Ứng dụng **Trạm Sạc EV** chính thức (`com.evcs.vn`) hiện tại là dạng **Hybrid WebView** bọc một trang web.
-- Trải nghiệm người dùng bị chậm, giật lag, giao diện rườm rà (nhiều banner, trang tin tức, giới thiệu, tải chậm do Cloudflare và mã web nặng).
-- Người dùng chỉ có một nhu cầu cốt lõi, thường xuyên nhất: **Mở app lên là thấy ngay danh sách các trạm sạc mình đã lưu yêu thích trước đó trên tài khoản EVCS**, kèm khoảng cách, trạng thái và nút chỉ đường nhanh đến trạm.
+- Ứng dụng **EV+** phục vụ tài xế lái xe ô tô điện (VinFast, BYD, Porsche, Hyundai...).
+- Hiện tại, bộ lọc `AC` (`QuickChipOption.AC` và `SmartFilterMode.AC`) đang gom cả các cổng có công suất `3.5kW`, `7kW`, `7.4kW` vào danh mục sạc AC.
+- **Thực tế bất cập:**
+  - **Cổng 3.5kW:** Thực chất là ổ cắm dân dụng / sạc di động cầm tay (Portable EVSE), trạm công cộng không có súng sạc gắn sẵn.
+  - **Cổng 7kW / 7.4kW:** Đa số là trạm sạc xe máy điện (e-scooter) hoặc bộ sạc wallbox gia đình.
+  - Khi tài xế ô tô bấm lọc cổng AC, app gợi ý các trạm có cổng 3.5kW hoặc 7kW dẫn đến việc tài xế chạy đến nơi nhưng **không sạc được** cho xe ô tô.
+  - Các trạm thuần xe máy điện (chỉ có cụm cổng 7kW hoặc 3.5kW) làm loãng danh sách trạm sạc khả dụng của tài xế ô tô.
 
 ---
 
 ## 2. GIẢI PHÁP ĐỀ XUẤT
-Xây dựng một ứng dụng Android **100% Native bằng Kotlin & Jetpack Compose** siêu nhẹ, khởi động tức thì:
-- Xác thực tài khoản EVCS bằng **Email + OTP**.
-- Lưu phiên đăng nhập an toàn, mở app là vào thẳng danh sách trạm sạc yêu thích.
-- Hiển thị thông tin trực quan: Khoảng cách theo vị trí GPS thực tế, công suất sạc (Sạc nhanh DC / Sạc thường AC), tình trạng đỗ xe, giờ mở cửa.
-- Nút bấm 1-chạm để kích hoạt chỉ đường (Google Maps / Apple Maps).
+1. **Chuẩn hóa bộ lọc AC (Soft Filter):**
+   - Chỉ công nhận cổng **11kW** (11_000W) và **22kW** (22_000W) là sạc AC hợp lệ cho ô tô (`AC_STANDARD_WATTS = setOf(11_000L, 22_000L)`).
+   - Loại bỏ `3.5kW`, `7kW`, `7.4kW` ra khỏi bộ lọc AC.
+   - Cổng trả về `type = 0L` dù có nhãn "AC" hoặc "Type 2" (không có công suất cụ thể) sẽ không được tính vào bộ lọc AC.
+2. **Ẩn các trạm thuần xe máy điện:**
+   - Nếu một trạm sạc chỉ có toàn cổng sạc công suất thấp (3.5kW, 7kW, 7.4kW) mà không có bất kỳ cổng sạc ô tô nào (không có DC và không có AC ≥ 11kW), trạm này sẽ **bị ẩn hoàn toàn** khỏi danh sách Nearby và Tìm kiếm.
+   - Các trạm hỗn hợp (vừa có DC / AC 11kW, vừa có cổng 7kW) vẫn được hiển thị bình thường.
+3. **Giữ nguyên dữ liệu thô cho bộ lọc Custom Range:**
+   - Dữ liệu `typeWatts` (3500L, 7000L,...) vẫn được lưu trong `PowerPort`.
+   - Nếu người dùng chủ động vào Cài đặt và nhập dải công suất thủ công (ví dụ `Min = 3kW, Max = 7kW`), hệ thống vẫn tìm và hiển thị các trạm chứa các cổng này theo đúng yêu cầu.
+4. **Chuẩn hóa danh mục công suất (WattageOption):**
+   - Xóa bỏ 2 enum `KW_3_5` (3.5kW) và `KW_7` (7kW) khỏi `WattageOption`.
+   - Dải công suất chuẩn cho ô tô chỉ còn từ **11kW đến 360kW**.
+5. **Cập nhật UI/UX:**
+   - Đổi nhãn Quick Chip & Info Pill từ `"Cổng AC từ 3.5kW - 22kW"` thành **`"Cổng AC (11kW, 22kW)"`**.
 
 ---
 
 ## 3. ĐỐI TƯỢNG SỬ DỤNG
-- **Chính:** Chủ xe ô tô điện (EV) tại Việt Nam (VinFast, BYD, Porsche, Hyundai...) thường xuyên sử dụng hệ sinh thái trạm sạc EVCS và đã có danh sách trạm quen thuộc.
-- **Mục tiêu:** Tiết kiệm thời gian thao tác khi đang lái xe hoặc sắp hết pin, cần tìm ngay trạm quen gần nhất.
+- **Chính:** Chủ sở hữu và tài xế xe ô tô điện cần tìm trạm sạc AC tương thích chuẩn súng Type 2 (11kW / 22kW) một cách chính xác, tránh đi nhầm vào ổ cắm dân dụng hoặc trạm sạc xe máy điện.
 
 ---
 
-## 4. PHÂN TÍCH KỸ THUẬT & ĐIỂM KHÁC BIỆT
+## 4. CHI TIẾT KỸ THUẬT & QUY TẮC PHÂN LOẠI
 
-| Tiêu chí | App Gốc (`com.evcs.vn`) | App Mới (Kotlin Jetpack Compose) |
+| Thành phần | Trước khi sửa | Sau khi sửa |
 |---|---|---|
-| **Công nghệ** | WebView bọc web HTML/JS | 100% Kotlin Native + Jetpack Compose Material 3 |
-| **Tốc độ mở** | Chậm (load webview, bypass cloudflare, tải scripts) | Tức thì (< 0.5s), mượt mà 120Hz |
-| **Thao tác xem trạm** | Phức tạp (mở app -> load web -> vào menu -> bấm trạm yêu thích) | 0 thao tác: Mở app là thấy ngay danh sách |
-| **Định vị & Khoảng cách** | Gọi qua Javascript Bridge | FusedLocationProviderClient Native, tính toán khoảng cách tức thời |
-| **Dung lượng & RAM** | Chiếm nhiều RAM do chạy Web engine | Cực kỳ nhẹ, tiết kiệm pin |
+| `AC_STANDARD_WATTS` | `setOf(3_500L, 7_000L, 7_400L, 11_000L, 22_000L)` | `setOf(11_000L, 22_000L)` |
+| `PowerPort.isAc()` | Nhận cả 3.5kW, 7kW, 7.4kW và fallback label "AC" | Chỉ `true` nếu `typeWatts in {11_000L, 22_000L}` |
+| Trạm thuần 3.5kW / 7kW | Hiển thị trong Nearby / Search | Bị ẩn hoàn toàn (không có cổng ô tô khả dụng) |
+| Trạm hỗn hợp (DC + 7kW) | Hiển thị | Vẫn hiển thị bình thường, cổng 7kW vẫn hiển thị trên thẻ |
+| `WattageOption` | 15 bậc (360kW xuống 3.5kW) | 13 bậc (360kW xuống 11kW, bỏ `KW_7` và `KW_3_5`) |
+| Label QuickChip AC | `"Cổng AC từ 3.5kW - 22kW"` | `"Cổng AC (11kW, 22kW)"` |
+| Settings Custom Range | `matchesCustomRange(minKw, maxKw)` | Giữ nguyên: Cho phép match 3.5kW/7kW nếu user tự nhập dải `3-7kW` |
 
 ---
 
-## 5. TÍNH NĂNG CHI TIẾT
-
-### 🚀 MVP (Bắt buộc có trong phiên bản đầu tiên):
-- [ ] **Xác thực Email OTP:**
-  - Nhập email đăng ký EVCS $\rightarrow$ Nhận mã OTP qua email $\rightarrow$ Xác thực thành công.
-  - Lưu trữ Token / Session an toàn bằng `EncryptedSharedPreferences` / Jetpack `DataStore`.
-- [ ] **Lấy & Hiển thị Danh sách Trạm Sạc Yêu Thích:**
-  - Đồng bộ danh sách trạm mà tài khoản đã lưu trên server EVCS.
-  - Tự động lấy vị trí GPS hiện tại của điện thoại và tính khoảng cách (km) đến từng trạm.
-  - Sắp xếp trạm gần người dùng nhất lên đầu tiên.
-- [ ] **Thẻ thông tin trạm sạc chi tiết:**
-  - Tên trạm & Địa chỉ.
-  - Huy hiệu loại sạc: Sạc nhanh DC (60kW, 120kW, 180kW, 250kW), Sạc chậm AC (7kW, 11kW).
-  - Giờ hoạt động (VD: 24/7) và trạng thái đỗ xe (Miễn phí / Có phí).
-- [ ] **Chỉ đường 1-Chạm:**
-  - Nút "Dẫn đường" tự động mở ứng dụng bản đồ mặc định của máy (Google Maps) với tọa độ chính xác của trạm.
-
-### 🎁 Phase 2 (Nâng cấp tiếp theo):
-- [ ] **Home Screen Widget:** Tiện ích nhỏ ngoài màn hình chính Android, nhìn là thấy ngay trạm yêu thích gần nhất và dung lượng cổng sạc còn trống mà không cần mở app.
-- [ ] **Hỗ trợ thêm/bỏ trạm yêu thích:** Tìm trạm mới quanh đây và đánh dấu sao để đồng bộ ngược lên tài khoản.
-- [ ] **Android Auto:** Tích hợp POI đơn giản lên màn hình xe ô tô.
+## 5. CÁC TẬP TIN SẼ BỊ ẢNH HƯỞNG (CODEBASE IMPACT)
+- `app/src/main/java/com/evcs/favorites/domain/model/SmartFilterModels.kt`
+- `app/src/main/java/com/evcs/favorites/domain/model/WattageOption.kt`
+- `app/src/main/java/com/evcs/favorites/domain/filter/NearbyStationFilter.kt`
+- `app/src/main/java/com/evcs/favorites/ui/components/CustomFilterSettingsCard.kt`
+- `app/src/main/java/com/evcs/favorites/ui/components/NearbyUiHelper.kt`
+- `app/src/main/java/com/evcs/favorites/ui/components/WattageFilterChipsRow.kt`
+- Các bộ Unit Test liên quan (`NearbyStationSmartFilterTest`, `CustomFilterSettingsValidationTest`, `NearbyFilteringAndFavoriteSyncTest`, `NearbyUiComponentsTest`...)
 
 ---
 
-## 6. PHÂN TÍCH RỦI RO & GIẢI PHÁP KỸ THUẬT
-
-1. **Rào cản Cloudflare trên `evcs.vn`:**
-   - Server `evcs.vn` bật Cloudflare bot protection đối với các request cURL/HTTP thông thường.
-   - **Giải pháp tối ưu:** Thiết kế luồng đăng nhập Email OTP qua một **Embedded Authentication Component** (chỉ mở một WebSheet/WebView nhẹ trong lần đăng nhập đầu tiên để giải quyết Cloudflare và nhập OTP). Sau khi xác thực thành công, app lưu session cookie/token và **đóng vĩnh viễn** webview. Mọi thao tác sau đó chạy hoàn toàn bằng Native API client.
-2. **Cơ chế ký số `X-App-Signature`:**
-   - Đã dịch ngược thành công thuật toán HMAC-SHA256 với Secret Key tại lớp `y/a.java`, sẵn sàng dùng trong Retrofit/OkHttp Interceptor để gọi trực tiếp các API tìm kiếm & dữ liệu trạm.
+## 6. ƯỚC TÍNH SƠ BỘ & RỦI RO
+- **Độ phức tạp:** 🟢 Thấp - Trung bình (Refactor Domain Model, Filter Logic & Test Cases).
+- **Rủi ro:** Một số Unit Test cũ đang assert cố định danh sách 15 enum `WattageOption` hoặc kiểm tra `3.5kW`/`7kW` là AC $\rightarrow$ Cần cập nhật đồng bộ toàn bộ test suite để đảm bảo `./gradlew test` pass 100%.
 
 ---
 
 ## 7. BƯỚC TIẾP THEO
-→ Xác nhận Brief và chuyển sang giai đoạn `/plan` để thiết kế kiến trúc chi tiết (Gradle dependencies, ViewModel, State, UI Component).
+→ Xác nhận Brief và chuyển sang workflow `/plan` để lập kế hoạch triển khai chi tiết từng phase.

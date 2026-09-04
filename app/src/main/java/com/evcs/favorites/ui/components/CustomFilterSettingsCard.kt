@@ -150,7 +150,7 @@ class CustomFilterFormState(
                 CustomFilterMode.QUICK_CHIP -> {
                     when (selectedChip ?: QuickChipOption.ALL) {
                         QuickChipOption.ALL -> "👉 Đang lọc: Tất cả các trạm có cổng trống"
-                        QuickChipOption.AC -> "👉 Đang lọc: Cổng AC từ 3.5kW - 22kW còn trống"
+                        QuickChipOption.AC -> "👉 Đang lọc: Cổng AC (11kW, 22kW) còn trống"
                         QuickChipOption.DC_LE_30KW -> "👉 Đang lọc: Cổng DC ≤ 30kW còn trống"
                         QuickChipOption.DC_BETWEEN_30_60KW -> "👉 Đang lọc: Cổng DC từ 30kW - 60kW còn trống"
                         QuickChipOption.DC_GE_60KW -> "👉 Đang lọc: Cổng DC ≥ 60kW còn trống"

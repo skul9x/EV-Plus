@@ -39,7 +39,7 @@ class NearbyUiComponentsTest {
     fun testWattageOptionsOrderAndLabelFormatting() {
         val sortedOptions = NearbyUiHelper.getSortedWattageOptions()
 
-        assertEquals("Expected exactly 15 supported wattage options", 15, sortedOptions.size)
+        assertEquals("Expected exactly 13 supported wattage options", 13, sortedOptions.size)
 
         // Verify strictly descending watts
         for (i in 0 until sortedOptions.size - 1) {
@@ -65,9 +65,7 @@ class NearbyUiComponentsTest {
             WattageOption.KW_30 to "30kW",
             WattageOption.KW_22 to "22kW",
             WattageOption.KW_20 to "20kW",
-            WattageOption.KW_11 to "11kW",
-            WattageOption.KW_7 to "7kW",
-            WattageOption.KW_3_5 to "3.5kW"
+            WattageOption.KW_11 to "11kW"
         )
 
         for (i in expectedSequence.indices) {
@@ -80,9 +78,9 @@ class NearbyUiComponentsTest {
 
         // Verify top-end and bottom-end specifically
         assertEquals("Highest wattage must be 360kW", WattageOption.KW_360, sortedOptions.first())
-        assertEquals("Lowest wattage must be 3.5kW", WattageOption.KW_3_5, sortedOptions.last())
+        assertEquals("Lowest wattage must be 11kW", WattageOption.KW_11, sortedOptions.last())
         assertEquals("360kW", NearbyUiHelper.formatWattageChipLabel(sortedOptions.first()))
-        assertEquals("3.5kW", NearbyUiHelper.formatWattageChipLabel(sortedOptions.last()))
+        assertEquals("11kW", NearbyUiHelper.formatWattageChipLabel(sortedOptions.last()))
     }
 
     // =========================================================================
@@ -104,21 +102,21 @@ class NearbyUiComponentsTest {
         activeFilters = NearbyUiHelper.toggleWattageSelection(activeFilters, WattageOption.KW_250)
         assertEquals(setOf(WattageOption.KW_360, WattageOption.KW_250), activeFilters)
 
-        // 4. Add KW_3_5
-        activeFilters = NearbyUiHelper.toggleWattageSelection(activeFilters, WattageOption.KW_3_5)
-        assertEquals(setOf(WattageOption.KW_360, WattageOption.KW_250, WattageOption.KW_3_5), activeFilters)
+        // 4. Add KW_11
+        activeFilters = NearbyUiHelper.toggleWattageSelection(activeFilters, WattageOption.KW_11)
+        assertEquals(setOf(WattageOption.KW_360, WattageOption.KW_250, WattageOption.KW_11), activeFilters)
 
         // 5. Toggle KW_250 off (deselection)
         activeFilters = NearbyUiHelper.toggleWattageSelection(activeFilters, WattageOption.KW_250)
-        assertEquals(setOf(WattageOption.KW_360, WattageOption.KW_3_5), activeFilters)
+        assertEquals(setOf(WattageOption.KW_360, WattageOption.KW_11), activeFilters)
         assertFalse(activeFilters.contains(WattageOption.KW_250))
 
         // 6. Toggle KW_360 off
         activeFilters = NearbyUiHelper.toggleWattageSelection(activeFilters, WattageOption.KW_360)
-        assertEquals(setOf(WattageOption.KW_3_5), activeFilters)
+        assertEquals(setOf(WattageOption.KW_11), activeFilters)
 
-        // 7. Toggle KW_3_5 off -> back to empty
-        activeFilters = NearbyUiHelper.toggleWattageSelection(activeFilters, WattageOption.KW_3_5)
+        // 7. Toggle KW_11 off -> back to empty
+        activeFilters = NearbyUiHelper.toggleWattageSelection(activeFilters, WattageOption.KW_11)
         assertTrue("Filters should be empty after removing all", activeFilters.isEmpty())
 
         // 8. Toggling on and immediately off returns to identical set

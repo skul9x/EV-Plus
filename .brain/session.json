@@ -1,67 +1,104 @@
 {
-  "updated_at": "2026-09-04T15:00:00+07:00",
+  "updated_at": "2026-09-05T02:40:00+07:00",
   "working_on": {
-    "feature": "Smart Filter, Debug Log Viewer, Multi-Clause Forecast Parser & Cloudflare Rate Limiting Circuit Breaker",
-    "task": "Hoàn tất điều tra debug-log.txt, xử lý lỗi parser cho câu ticker phức đa cổng công suất, chống lỗi Cloudflare 429 rate limit bằng circuit breaker 60s và cài đặt APK lên thiết bị.",
+    "feature": "Native Station Detail Bottom Sheet (100% Native Compose & WebView Decoupling)",
+    "task": "Hoàn tất toàn bộ 5 Phase của Milestone Native Station Detail Bottom Sheet, xoá bỏ hoàn toàn WebView modal (StationDetailModal.kt), tích hợp telemetry pipeline & 24h usage stats, build và cài đặt APK lên điện thoại.",
     "status": "completed",
     "files": [
-      "app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt",
-      "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
-      "app/src/test/java/com/evcs/favorites/data/parser/StationForecastParserTest.kt",
-      "app/src/test/java/com/evcs/favorites/data/repository/ChargingForecastRepositoryPipelineTest.kt",
-      "app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt"
+      "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+      "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
+      "app/src/main/java/com/evcs/favorites/data/repository/EvcsTelemetryRepository.kt",
+      "app/src/main/java/com/evcs/favorites/data/telemetry/EvcsTelemetryDataSource.kt",
+      "app/src/main/java/com/evcs/favorites/domain/StationTelemetryModels.kt",
+      "app/src/main/java/com/evcs/favorites/domain/StationTelemetryParser.kt",
+      "app/src/main/java/com/evcs/favorites/domain/Station24hStatsCalculator.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/FavoritesScreen.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+      "app/src/test/java/com/evcs/favorites/ui/NativeStationDetailIntegrationTest.kt"
     ],
     "blockers": [],
-    "notes": "Đã sửa hoàn chỉnh regex câu phức trong StationForecastParser, thêm rate-limit circuit breaker 60s cho EvcsRepository, xây dựng file test chuyên biệt chạy trong 2s và build/install APK trực tiếp qua MCP."
+    "notes": "Đã hoàn thành xuất sắc 5/5 phases, test suite chạy 100% PASS, build APK thành công và cài đặt lên điện thoại OnePlus 13R."
   },
   "pending_tasks": [
     {
-      "task": "Theo dõi hiệu năng thực tế và nhật ký debug log trên thiết bị Android trong quá trình di chuyển",
-      "priority": "medium",
-      "notes": "Kiểm tra màn hình Debug Log Viewer trong Settings khi chạy thực địa."
+      "task": "Trải nghiệm thực tế Native Station Detail Bottom Sheet khi sạc xe",
+      "priority": "low",
+      "notes": "Kiểm tra tốc độ mở sheet tức thì (<50ms), badge trạng thái từng cổng công suất và thống kê 24h trên thiết bị."
     }
   ],
   "recent_changes": [
     {
-      "timestamp": "2026-09-04T14:58:00+07:00",
+      "timestamp": "2026-09-05T02:38:00+07:00",
       "type": "deployment",
-      "description": "Build file APK app-debug.apk (18.5MB), cài đặt thành công vào điện thoại (3B658D010BU00000) và khởi chạy ứng dụng tự động qua MCP adb.",
+      "description": "Build APK app-debug.apk và cài đặt trực tiếp vào điện thoại (3B658D010BU00000), tự động khởi chạy app.",
       "files": ["app/build/outputs/apk/debug/app-debug.apk"]
     },
     {
-      "timestamp": "2026-09-04T14:56:00+07:00",
-      "type": "testing",
-      "description": "Tạo file test riêng biệt ForecastRateLimitAndCompoundParserTest.kt kiểm thử toàn diện các case câu phức đa công suất, locked teaser banner và circuit breaker HTTP 429, chạy thành công 100% trong 2 giây.",
-      "files": ["app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt"]
-    },
-    {
-      "timestamp": "2026-09-04T14:40:00+07:00",
-      "type": "bugfix_and_enhancement",
-      "description": "Nâng cấp StationForecastParser hỗ trợ câu phức đa trụ (120kW, 60kW...), thêm circuit breaker 60s chống Cloudflare 429 rate limit và cơ chế pacing delay giữa các request trong EvcsRepository.",
+      "timestamp": "2026-09-05T01:49:00+07:00",
+      "type": "feature",
+      "description": "Hoàn tất Phase 05: Tích hợp NativeStationDetailSheet vào MainActivity, FavoritesScreen, NearbyScreen; decommission hoàn toàn StationDetailModal.kt và các rules CSS WebView; tạo test tích hợp toàn diện NativeStationDetailIntegrationTest.kt.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt",
-        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt"
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/FavoritesScreen.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+        "app/src/test/java/com/evcs/favorites/ui/NativeStationDetailIntegrationTest.kt"
       ]
     },
     {
-      "timestamp": "2026-09-04T14:30:00+07:00",
-      "type": "debugging",
-      "description": "Phân tích toàn diện 57 log entry trong debug-log.txt, phát hiện lỗi Cloudflare HTTP 429 rate limit (mã lỗi 1015) và lỗi regex parser câu phức ở trạm đa trụ.",
-      "files": ["debug-log.txt"]
+      "timestamp": "2026-09-05T01:40:00+07:00",
+      "type": "ui",
+      "description": "Hoàn tất Phase 04: Xây dựng giao diện NativeStationDetailSheet.kt chuẩn Material 3, badge trạng thái cổng theo công suất, lưới thống kê 24h 2x2, nút chỉ đường, yêu thích và chia sẻ.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+        "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailSheetUiTest.kt"
+      ]
+    },
+    {
+      "timestamp": "2026-09-05T01:34:00+07:00",
+      "type": "viewmodel",
+      "description": "Hoàn tất Phase 03: Xây dựng StationDetailCoordinator điều phối on-demand pipeline 2 giai đoạn (telemetry + 24h stats) tích hợp vào FavoritesViewModel và NearbyViewModel.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/FavoritesViewModel.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
+        "app/src/test/java/com/evcs/favorites/ui/viewmodel/StationDetailViewModelPipelineTest.kt"
+      ]
+    },
+    {
+      "timestamp": "2026-09-05T01:28:00+07:00",
+      "type": "repository",
+      "description": "Hoàn tất Phase 02: Xây dựng EvcsTelemetryRepository, EvcsTelemetryDataSource và Station24hStatsCalculator kết nối Socket.io với timeout 4s.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsTelemetryRepository.kt",
+        "app/src/main/java/com/evcs/favorites/data/telemetry/EvcsTelemetryDataSource.kt",
+        "app/src/main/java/com/evcs/favorites/domain/Station24hStatsCalculator.kt",
+        "app/src/test/java/com/evcs/favorites/data/repository/EvcsTelemetryRepositoryAndStatsEngineTest.kt"
+      ]
+    },
+    {
+      "timestamp": "2026-09-05T01:24:00+07:00",
+      "type": "domain",
+      "description": "Hoàn tất Phase 01: Xây dựng Domain Telemetry Models, StationTelemetryParser và StationRating.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/domain/StationTelemetryModels.kt",
+        "app/src/main/java/com/evcs/favorites/domain/StationTelemetryParser.kt",
+        "app/src/test/java/com/evcs/favorites/domain/StationTelemetryModelsAndParserTest.kt"
+      ]
     }
   ],
   "decisions_made": [
     {
-      "decision": "Xếp HTTP 429 và Cloudflare error 1015 vào non-transient error, không retry 1s/2s",
-      "reason": "Retry ngay lập tức khi đang bị Cloudflare rate-limit sẽ khiến server kéo dài thời gian phạt block IP."
+      "decision": "Loại bỏ hoàn toàn WebView (StationDetailModal.kt) thay bằng NativeStationDetailSheet",
+      "reason": "Giải quyết triệt để lỗi rò rỉ 15-45MB RAM/lần mở (PERF-MEM-02), mang lại trải nghiệm mở tức thì <50ms, không xung đột cử chỉ vuốt và không bị clipping chữ."
     },
     {
-      "decision": "Kích hoạt Circuit Breaker 60 giây khi gặp lỗi 429",
-      "reason": "Ngăn các request dự báo nền tiếp theo bắn vào máy chủ, cho phép block IP tự hết hạn mà không gây lỗi ra UI."
+      "decision": "Sử dụng StationDetailCoordinator quản lý lifecycle tập trung",
+      "reason": "Tách biệt logic telemetry/socket khỏi ViewModels chính, đảm bảo tự động cancel mọi job nền khi đóng modal."
     },
     {
-      "decision": "Bóc tách câu ticker dự báo phức bằng CLAUSE_REGEX và tổng hợp ForecastSession ảo khi không có script JSON",
-      "reason": "Hỗ trợ trạm có nhiều nhóm trụ (ví dụ 120kW và 60kW) hiển thị đầy đủ trên StationCard và modal chi tiết."
+      "decision": "Đặt timeout 4s cho Socket.io 24h history",
+      "reason": "Đảm bảo UI không bị treo hoặc loading vô tận nếu máy chủ WebSocket phản hồi chậm hoặc lỗi mạng."
     }
   ]
 }
