@@ -44,6 +44,7 @@ import com.evcs.favorites.data.auth.AuthEngine
 import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.preferences.NearbyFilterPreferences
+import com.evcs.favorites.data.preferences.SmartFilterPreferences
 import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
 import com.evcs.favorites.domain.location.LocationService
@@ -78,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private val locationService by lazy { LocationService(applicationContext) }
     private val routingPreferencesManager by lazy { RoutingPreferencesManager.create(applicationContext) }
     private val nearbyFilterPreferences by lazy { NearbyFilterPreferences.create(applicationContext) }
+    private val smartFilterPreferences by lazy { SmartFilterPreferences.create(applicationContext) }
 
     private val favoritesViewModel by viewModels<FavoritesViewModel> {
         FavoritesViewModel.provideFactory(
@@ -94,7 +96,8 @@ class MainActivity : ComponentActivity() {
             sessionManager = sessionManager,
             locationService = locationService,
             routingPreferencesManager = routingPreferencesManager,
-            filterPreferences = nearbyFilterPreferences
+            filterPreferences = nearbyFilterPreferences,
+            smartFilterPreferences = smartFilterPreferences
         )
     }
 

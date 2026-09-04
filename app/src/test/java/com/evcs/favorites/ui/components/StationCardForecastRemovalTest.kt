@@ -97,20 +97,21 @@ class StationCardForecastRemovalTest {
     }
 
     // =========================================================================
-    // 3. StationDetailModal CSS hides web forecast banner (.amd-ticker, .amd-more)
+    // 3. StationCard remains decoupled from forecast badges (modal CSS migrated to Phase 01 test)
     // =========================================================================
     @Test
     fun stationDetailModalWebViewCssHidesForecastTickerAndMoreButton() {
-        assertTrue(
-            "FORECAST_OVERLAP_FIX_CSS must target .amd-ticker",
-            FORECAST_OVERLAP_FIX_CSS.contains(".amd-ticker")
+        // Modal CSS assertions migrated to StationDetailModalOnDemandForecastTest.
+        // Verify StationCard remains decoupled from forecast badges:
+        val badge = resolveStatusBadge(
+            depotStatus = "Normal",
+            totalAvailablePlugs = 0,
+            totalPlugs = 2
         )
-        assertTrue(
-            "FORECAST_OVERLAP_FIX_CSS must target .amd-more",
-            FORECAST_OVERLAP_FIX_CSS.contains(".amd-more")
-        )
-        assertTrue(
-            "FORECAST_OVERLAP_FIX_CSS must hide elements with display: none !important",
+        assertEquals("Hết cổng", badge.label)
+        assertFalse(badge.label.contains("Sắp trống"))
+        assertFalse(
+            "Modal CSS must no longer suppress forecast tickers with display: none",
             FORECAST_OVERLAP_FIX_CSS.contains("display: none !important")
         )
         assertTrue(

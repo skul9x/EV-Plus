@@ -70,17 +70,37 @@ class NearbyViewModel(
     private val smartFilterPrefs: SmartFilterPreferences =
         smartFilterPreferences ?: SmartFilterPreferences(storage = InMemorySessionStorage())
 
-    private val initialSmartMode: SmartFilterMode = smartFilterPrefs.getActiveFilterMode()
+    private val rawInitialSmartMode: SmartFilterMode = smartFilterPrefs.getActiveFilterMode()
     private val initialDcTier: DcWattageTier? = smartFilterPrefs.getSelectedDcTier()
     private val initialCustomConfig: CustomFilterConfig? = smartFilterPrefs.getCustomConfig()
+
+    private val initialSmartMode: SmartFilterMode = when {
+        rawInitialSmartMode == SmartFilterMode.DC && initialDcTier == null -> {
+            smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)
+            smartFilterPrefs.saveSelectedDcTier(null)
+            SmartFilterMode.NONE
+        }
+        rawInitialSmartMode == SmartFilterMode.CUSTOM && (initialCustomConfig == null || !initialCustomConfig.isValid()) -> {
+            smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)
+            SmartFilterMode.NONE
+        }
+        else -> rawInitialSmartMode
+    }
     private val initialDcVisible: Boolean = initialSmartMode == SmartFilterMode.DC && initialDcTier != null
+
+    private val initialSelectedWattages: Set<WattageOption> = if (initialSmartMode != SmartFilterMode.NONE) {
+        filterPrefs.clear()
+        emptySet()
+    } else {
+        filterPrefs.getSelectedWattages()
+    }
 
     private val _uiState = MutableStateFlow(
         NearbyUiState(
             favoriteStationIds = repository.favoriteIdsState.value,
-            selectedWattages = filterPrefs.getSelectedWattages(),
+            selectedWattages = initialSelectedWattages,
             activeFilterMode = initialSmartMode,
-            selectedDcTier = initialDcTier,
+            selectedDcTier = if (initialSmartMode == SmartFilterMode.DC) initialDcTier else null,
             isDcSubFilterVisible = initialDcVisible,
             savedCustomConfig = initialCustomConfig
         )
@@ -276,11 +296,13 @@ class NearbyViewModel(
     fun toggleAcFilter(): Job? {
         val isAcActive = _uiState.value.activeFilterMode == SmartFilterMode.AC
         val newMode = if (isAcActive) SmartFilterMode.NONE else SmartFilterMode.AC
+        filterPrefs.clear()
         _uiState.update {
             it.copy(
                 activeFilterMode = newMode,
                 isDcSubFilterVisible = false,
-                selectedDcTier = null
+                selectedDcTier = null,
+                selectedWattages = emptySet()
             )
         }
         smartFilterPrefs.saveActiveFilterMode(newMode)
@@ -293,11 +315,13 @@ class NearbyViewModel(
      * without filtering until a tier is selected.
      */
     fun enterDcMode() {
+        filterPrefs.clear()
         _uiState.update {
             it.copy(
                 isDcSubFilterVisible = true,
                 activeFilterMode = SmartFilterMode.DC,
-                selectedDcTier = null
+                selectedDcTier = null,
+                selectedWattages = emptySet()
             )
         }
         if (_uiState.value.rawStations.isNotEmpty()) {
@@ -310,11 +334,13 @@ class NearbyViewModel(
      * sets activeFilterMode = NONE, and triggers pipeline with unfiltered stations.
      */
     fun exitDcMode(): Job? {
+        filterPrefs.clear()
         _uiState.update {
             it.copy(
                 isDcSubFilterVisible = false,
                 selectedDcTier = null,
-                activeFilterMode = SmartFilterMode.NONE
+                activeFilterMode = SmartFilterMode.NONE,
+                selectedWattages = emptySet()
             )
         }
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)
@@ -326,11 +352,13 @@ class NearbyViewModel(
      * Selects DC wattage tier, updates preferences, and triggers filter pipeline.
      */
     fun selectDcTier(tier: DcWattageTier): Job? {
+        filterPrefs.clear()
         _uiState.update {
             it.copy(
                 selectedDcTier = tier,
                 activeFilterMode = SmartFilterMode.DC,
-                isDcSubFilterVisible = true
+                isDcSubFilterVisible = true,
+                selectedWattages = emptySet()
             )
         }
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.DC)
@@ -344,13 +372,15 @@ class NearbyViewModel(
     fun applyCustomFilter(): Job? {
         if (smartFilterPrefs.hasCustomConfig()) {
             val config = smartFilterPrefs.getCustomConfig()
+            filterPrefs.clear()
             _uiState.update {
                 it.copy(
                     activeFilterMode = SmartFilterMode.CUSTOM,
                     isDcSubFilterVisible = false,
                     selectedDcTier = null,
                     savedCustomConfig = config,
-                    showCustomConfigPrompt = false
+                    showCustomConfigPrompt = false,
+                    selectedWattages = emptySet()
                 )
             }
             smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.CUSTOM)
@@ -368,6 +398,7 @@ class NearbyViewModel(
      * Persists new custom configuration and directly applies CUSTOM mode.
      */
     fun saveAndApplyCustomFilter(config: CustomFilterConfig): Job? {
+        filterPrefs.clear()
         smartFilterPrefs.saveCustomConfig(config)
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.CUSTOM)
         smartFilterPrefs.saveSelectedDcTier(null)
@@ -377,7 +408,8 @@ class NearbyViewModel(
                 activeFilterMode = SmartFilterMode.CUSTOM,
                 isDcSubFilterVisible = false,
                 selectedDcTier = null,
-                showCustomConfigPrompt = false
+                showCustomConfigPrompt = false,
+                selectedWattages = emptySet()
             )
         }
         return triggerFilterPipeline()
@@ -394,11 +426,13 @@ class NearbyViewModel(
      * Resets smart filter to NONE and refreshes pipeline.
      */
     fun clearSmartFilter(): Job? {
+        filterPrefs.clear()
         _uiState.update {
             it.copy(
                 activeFilterMode = SmartFilterMode.NONE,
                 selectedDcTier = null,
-                isDcSubFilterVisible = false
+                isDcSubFilterVisible = false,
+                selectedWattages = emptySet()
             )
         }
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)

@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EvStation
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,9 +58,9 @@ import com.evcs.favorites.util.StationUrlBuilder
 import kotlinx.coroutines.launch
 
 /**
- * Targeted CSS rule to suppress web forecast ticker banner and more button on station detail WebView.
+ * Targeted CSS rule to adjust layout and prevent forecast overlap on station detail WebView.
  */
-const val FORECAST_OVERLAP_FIX_CSS = ".amd-ticker, .amd-more { display: none !important; }"
+const val FORECAST_OVERLAP_FIX_CSS = ".amd-hasmore .amd-item { padding-right: 115px !important; }"
 
 /**
  * JavaScript snippet injected on [WebViewClient.onPageFinished] to apply [FORECAST_OVERLAP_FIX_CSS].
@@ -82,7 +83,7 @@ fun isEvcsDomain(url: String?): Boolean {
         val host = java.net.URI(url).host?.lowercase()
         host == "evcs.vn" || host?.endsWith(".evcs.vn") == true
     } catch (_: Exception) {
-        url.contains("evcs.vn")
+        false
     }
 }
 
@@ -168,6 +169,19 @@ fun StationDetailModal(
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(
+                    onClick = {
+                        webViewInstance?.reload()
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Tải lại chi tiết trạm",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 IconButton(
                     onClick = {
