@@ -1,11 +1,13 @@
 package com.evcs.favorites.data.routing
 
+import com.evcs.favorites.data.logging.DebugLoggingInterceptor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 
 /**
@@ -13,13 +15,21 @@ import kotlin.math.roundToLong
  * Provides free road-network driving durations and distances without API keys.
  */
 class OsrmRoutingClient(
-    private val okHttpClient: OkHttpClient = OkHttpClient(),
+    private val okHttpClient: OkHttpClient = defaultClient(),
     private val defaultBaseUrl: String = DEFAULT_BASE_URL
 ) {
     companion object {
         const val DEFAULT_BASE_URL = "https://router.project-osrm.org/"
         const val HEADER_USER_AGENT = "User-Agent"
         const val USER_AGENT_VALUE = "EVCSFavorites-Android/1.0"
+
+        private fun defaultClient(): OkHttpClient {
+            return OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .addInterceptor(DebugLoggingInterceptor())
+                .build()
+        }
     }
 
     private val json = Json {
@@ -46,12 +56,17 @@ class OsrmRoutingClient(
             return@withContext Result.success(emptyMap())
         }
 
+        // Group destination stations by coordinate pair (lon, lat)
+        val groupedByCoord: Map<Pair<Double, Double>, List<RoutingDestination>> =
+            destinations.groupBy { Pair(it.longitude, it.latitude) }
+        val uniqueCoords = groupedByCoord.keys.toList()
+
         // Coordinate format: {lon},{lat} semicolon-delimited
         val coordinatesBuilder = StringBuilder()
         coordinatesBuilder.append("$originLng,$originLat")
 
-        for (dest in destinations) {
-            coordinatesBuilder.append(";${dest.longitude},${dest.latitude}")
+        for (coord in uniqueCoords) {
+            coordinatesBuilder.append(";${coord.first},${coord.second}")
         }
 
         val baseUrl = if (!customBaseUrl.isNullOrBlank()) customBaseUrl else defaultBaseUrl
@@ -92,8 +107,8 @@ class OsrmRoutingClient(
 
                 val resultMap = mutableMapOf<String, DrivingMetrics>()
 
-                // Destination station i corresponds to matrix column i + 1 (column 0 is origin -> origin)
-                for ((index, dest) in destinations.withIndex()) {
+                // Destination coordinate at index i corresponds to matrix column i + 1 (column 0 is origin -> origin)
+                for ((index, coord) in uniqueCoords.withIndex()) {
                     val columnIndex = index + 1
 
                     val durationSec = durationsRow?.getOrNull(columnIndex)
@@ -113,13 +128,17 @@ class OsrmRoutingClient(
                         distanceMeters = distanceLong
                     )
 
-                    resultMap[dest.id] = DrivingMetrics(
+                    val metrics = DrivingMetrics(
                         distanceMeters = distanceLong,
                         durationSeconds = durationLong,
                         staticDurationSeconds = null,
                         trafficCondition = trafficCondition,
                         engineUsed = RoutingEngineType.OSRM
                     )
+
+                    for (dest in groupedByCoord[coord].orEmpty()) {
+                        resultMap[dest.id] = metrics
+                    }
                 }
 
                 Result.success(resultMap)

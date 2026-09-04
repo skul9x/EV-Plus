@@ -499,4 +499,53 @@ class ChargingForecastRepositoryPipelineTest {
         assertNull("Cache should not store null forecasts", cache.get(station.id))
         assertFalse("Null ticker is not a failure, should not trigger cooldown", cache.isInCooldown(station.id))
     }
+
+    // -------------------------------------------------------------------------
+    // 10. HTTP 429 activates global rate limit circuit breaker without retry
+    // -------------------------------------------------------------------------
+    @Test
+    fun testHttp429ActivatesGlobalRateLimitCircuitBreakerWithoutRetry() = runTest {
+        val station1 = createStation("C.TEST01", "Station 1")
+        val station2 = createStation("C.TEST02", "Station 2")
+        var apiCalls = 0
+
+        val fakeClient = object : EvcsApiClient(sessionManager) {
+            override suspend fun fetchChargingForecast(
+                stationName: String,
+                locationId: String,
+                isVinFast: Boolean
+            ): Result<ChargingForecastResponse> {
+                apiCalls++
+                return Result.failure(IOException("Charging forecast request failed with HTTP 429 (error code: 1015)"))
+            }
+        }
+
+        val cache = ForecastCache(timeProvider = { simulatedTimeMs })
+        val repo = EvcsRepository(
+            apiClient = fakeClient,
+            forecastCache = cache,
+            delayProvider = { recordedDelays.add(it) },
+            ioDispatcher = Dispatchers.Unconfined
+        )
+
+        // 1st station hits 429: must not retry, must trigger circuit breaker
+        val res1 = repo.fetchStationForecast(station1)
+        assertTrue(res1.isSuccess)
+        assertNull(res1.getOrNull())
+        assertEquals("HTTP 429 should fail immediately on first attempt without retry", 1, apiCalls)
+        assertTrue("No backoff retry delays should be scheduled for HTTP 429", recordedDelays.isEmpty())
+        assertTrue("Global rate limit circuit breaker should be active", repo.isGlobalRateLimited())
+
+        // 2nd station called while circuit breaker is active: immediately bypassed
+        val res2 = repo.fetchStationForecast(station2)
+        assertTrue(res2.isSuccess)
+        assertNull(res2.getOrNull())
+        assertEquals("Subsequent requests must bypass network calls while rate limited", 1, apiCalls)
+
+        // Reset circuit breaker allows network call again
+        repo.resetRateLimitCooldown()
+        assertFalse(repo.isGlobalRateLimited())
+        repo.fetchStationForecast(station2)
+        assertEquals("Network call attempted again after resetting rate limit", 2, apiCalls)
+    }
 }

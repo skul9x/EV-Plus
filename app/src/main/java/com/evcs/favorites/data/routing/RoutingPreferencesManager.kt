@@ -65,13 +65,14 @@ class RoutingPreferencesManager(
     fun loadSettings(): RoutingSettings {
         val apiKey = storage.getString(KEY_GOOGLE_API_KEY).orEmpty()
         val engineStr = storage.getString(KEY_PREFERRED_ENGINE)
-        val engine = engineStr?.let {
-            try {
-                RoutingEngineMode.valueOf(it)
+        val engine = when {
+            engineStr.isNullOrBlank() || engineStr == "AUTO" -> RoutingEngineMode.OSRM_ONLY
+            else -> try {
+                RoutingEngineMode.valueOf(engineStr)
             } catch (e: Exception) {
-                RoutingEngineMode.AUTO
+                RoutingEngineMode.OSRM_ONLY
             }
-        } ?: RoutingEngineMode.AUTO
+        }
 
         val fallbackStr = storage.getString(KEY_AUTO_FALLBACK)
         val fallback = fallbackStr?.toBooleanStrictOrNull() ?: true

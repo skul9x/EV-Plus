@@ -245,4 +245,50 @@ class StationForecastParserTest {
         // Must execute well under 5ms per document
         assertTrue("Parser too slow: ${avgMillis}ms per document", avgMillis < 5.0)
     }
+
+    @Test
+    fun `verify multi-clause compound ticker parsing from real evcs live response`() {
+        // Real HTML captured in debug-log.txt item #21
+        val liveCompoundHtml = """
+            <div class="amd-ticker amd-hasmore" role="status" aria-label="Trụ sắp sạc xong"> <span class="amd-item">Dự kiến <b>3</b> xe sạc trụ <b>120kW</b> sẽ xong trong <b>5-21</b> phút, <b>1</b> xe sạc trụ <b>60kW</b> sẽ xong trong <b>1</b> phút nữa</span> </div> <button type="button" class="amd-more amd-locked" data-lock="go" aria-label="Xem thêm dự báo - quà tặng EVCS Go">Xem thêm <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"> <path d="M5 19L19 5M19 19V5H5"></path> </svg></button>
+        """.trimIndent()
+
+        val forecast = StationForecastParser.parseForecastFromHtml(liveCompoundHtml)
+        assertNotNull("Compound multi-clause forecast should be parsed successfully", forecast)
+        assertEquals(3, forecast!!.vehicleCount)
+        assertEquals(120.0, forecast.wattageKw, 0.001)
+        assertEquals(5, forecast.minMinutes)
+        assertEquals(21, forecast.maxMinutes)
+        assertTrue(forecast.isTeaser)
+        assertTrue("Should detect multiSession due to multiple distinct wattage clauses", forecast.isMultiSession)
+
+        assertEquals(
+            "Dự kiến 3 xe sạc trụ 120kW sẽ xong trong 5-21 phút, 1 xe sạc trụ 60kW sẽ xong trong 1 phút nữa",
+            forecast.rawText
+        )
+
+        val groups = forecast.getGroupedPowerForecasts(descending = true)
+        assertEquals(2, groups.size)
+
+        // Group 1: 120kW, 3 vehicles, 5-21 min
+        val g120 = groups[0]
+        assertEquals(120.0, g120.kw, 0.001)
+        assertEquals(3, g120.vehicleCount)
+        assertEquals(5, g120.minMinutes)
+        assertEquals(21, g120.maxMinutes)
+        assertEquals("• 120kW: ~5-21 phút (3 xe)", g120.formatBulletLine())
+
+        // Group 2: 60kW, 1 vehicle, 1 min
+        val g60 = groups[1]
+        assertEquals(60.0, g60.kw, 0.001)
+        assertEquals(1, g60.vehicleCount)
+        assertEquals(1, g60.minMinutes)
+        assertEquals(1, g60.maxMinutes)
+        assertEquals("• 60kW:  ~1 phút (1 xe)", g60.formatBulletLine())
+
+        assertEquals(
+            "⏱️ Dự kiến 3 xe sạc trụ 120kW sẽ xong trong 5-21 phút nữa",
+            forecast.formatSingleSummary()
+        )
+    }
 }

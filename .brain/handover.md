@@ -1,50 +1,40 @@
-# Handover Document - EV+ (Trạm Sạc EV)
+# Handover Document
 
-**Ngày cập nhật:** 2026-09-04 08:32:00 (GMT+7)  
-**Thiết bị kiểm thử:** OnePlus 13R (CPH2691 - ADB ID: `3B658D010BU00000`)  
-**Mã nguồn GitHub:** `https://github.com/skul9x/EV-Plus.git` (Branch: `main`)  
-**Trạng thái kế hoạch:** Đã tạo toàn bộ plan chi tiết gồm 4 phase tại `plans/260904-0830-live-station-forecast-cards/` cho tính năng đưa dự báo xe sạc sắp xong ra card trạm ngoài màn hình chính.
-
----
-
-## 📍 Đang làm:
-- **Chuẩn bị triển khai Phase 01**: Domain Models & Parser Implementation.
-  - File đặc tả: [phase-01-domain-models-and-parser-implementation.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md)
-  - Unit test mục tiêu: `StationForecastParserTest.kt`
+**Thời gian lưu**: 2026-09-04 15:00:00 (GMT+7)  
+**Dự án**: EV+ (TramsacEV)  
+**Trạng thái phiên làm việc**: Hoàn tất xuất sắc và đã cài đặt APK lên thiết bị thực qua MCP.
 
 ---
 
-## ✅ ĐÃ XONG:
-1. **Brainstorming & Quyết định UX/Kỹ thuật**:
-   - Chỉ quét dự báo cho **Top 5 trạm kín gần nhất (`available_ports == 0`)** trên cả 2 tab Quanh đây và Yêu thích.
-   - Hiển thị badge Amber `⏱️ Sắp trống` kết hợp Capsule hiển thị đầy đủ chi tiết các xe/trụ sắp xong.
-   - Cache In-Memory với TTL 3 phút (xóa ngay khi pull-to-refresh).
-   - Retry ngầm Exponential Backoff tối đa 2 lần, fail an toàn không làm phiền người dùng.
-2. **Kế hoạch chi tiết theo chuẩn AWF (4 Phase files bằng tiếng Anh)**:
-   - [plan.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/plan.md) (Tổng quan)
-   - [phase-01-domain-models-and-parser-implementation.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md) (Domain Models & HTML Parser)
-   - [phase-02-repository-cache-and-network-retry.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-02-repository-cache-and-network-retry.md) (Cache & Exponential Backoff Retry)
-   - [phase-03-viewmodel-pipeline.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-03-viewmodel-pipeline.md) (Nearby & Favorites ViewModel Orchestration)
-   - [phase-04-ui-stationcard-forecast-capsule.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-04-ui-stationcard-forecast-capsule.md) (StationCard Amber UI & Capsule)
-3. **Quy tắc kiểm thử nghiêm ngặt**:
-   - Mỗi phase chỉ có đúng 1 file test toàn diện.
-   - Sau khi hoàn thành mỗi phase, chỉ chạy đúng 1 test đó để verify rồi dừng chờ review.
+## 📌 Tổng hợp công việc vừa hoàn thành trong phiên
+
+1. **Điều tra & gỡ lỗi từ file `debug-log.txt`**:
+   - Xác định nguyên nhân lỗi Cloudflare **HTTP 429 (Mã lỗi 1015 - You are being rate limited)** do gửi bão request làm giàu dự báo trong thời gian ngắn.
+   - Phát hiện điểm yếu của regex cũ trong `StationForecastParser` khi gặp câu phức ghép nhiều nhóm trụ (ví dụ: `3 xe sạc trụ 120kW sẽ xong trong 5-21 phút, 1 xe sạc trụ 60kW sẽ xong trong 1 phút nữa`).
+
+2. **Cải tiến mã nguồn & Kiến trúc**:
+   - [`StationForecastParser.kt`](file:///home/skul9x/Desktop/Code/TramsacEV/app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt):
+     - Thêm `CLAUSE_REGEX` và `FULL_SENTENCE_REGEX` để bóc tách chính xác từng nhóm công suất trong câu phức.
+     - Tự động sinh `ForecastSession` ảo khi không có JSON script, kích hoạt `isMultiSession = true` và nhóm công suất đầy đủ.
+   - [`EvcsRepository.kt`](file:///home/skul9x/Desktop/Code/TramsacEV/app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt):
+     - Đưa HTTP 429 & 1015 vào nhóm Non-transient (không retry ngắn 1s/2s).
+     - Bổ sung **Circuit Breaker** `globalRateLimitedUntil` (ngắt mạch 60 giây). Khi bị 429, toàn bộ request nền tự động dừng gọi mạng để chờ IP hết hạn block.
+     - Thêm cơ chế **Pacing Delay** (`delay(index * 150L)`) giữa các trạm khi batch enrich.
+     - Chuyển log banner `amd-locked` sang mức `INFO`.
+
+3. **Kiểm thử chuyên biệt & Triển khai**:
+   - Xây dựng file test riêng: [`ForecastRateLimitAndCompoundParserTest.kt`](file:///home/skul9x/Desktop/Code/TramsacEV/app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt) -> **BUILD SUCCESSFUL in 2s** (100% pass).
+   - Build file APK `app-debug.apk` (18.5MB), cài đặt thành công vào thiết bị thực `3B658D010BU00000` và tự động mở app qua MCP adb.
 
 ---
 
-## ⏳ CÒN LẠI / GỢI Ý BƯỚC TIẾP THEO:
-- [ ] Thực hiện Phase 01: Tạo model `StationForecast`, parser `StationForecastParser`, chạy test `StationForecastParserTest.kt`.
-- [ ] Sau khi anh review Phase 01 -> tiếp tục Phase 02, 03, 04.
+## 📁 Các tệp trọng tâm
+
+- `app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt`: Bộ bóc tách dự báo sạc đa câu/đa trụ.
+- `app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt`: Repository với cơ chế Circuit Breaker & Pacing.
+- `app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt`: Bộ kiểm thử chuyên biệt.
+- `.brain/brain.json` & `.brain/session.json`: Bộ nhớ dự án.
 
 ---
 
-## 📁 FILES QUAN TRỌNG:
-- [plans/260904-0830-live-station-forecast-cards/plan.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/plan.md)
-- [plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md)
-- [get.md](file:///home/skul9x/Desktop/Code/TramsacEV/get.md) (Đặc tả giải thuật SSR Regex & Data model)
-- [.brain/session.json](file:///home/skul9x/Desktop/Code/TramsacEV/.brain/session.json) (Trạng thái phiên)
-- [.brain/handover.md](file:///home/skul9x/Desktop/Code/TramsacEV/.brain/handover.md) (Bản giao ban ngữ cảnh)
-
----
-
-## 📍 Để tiếp tục: Gõ `/recap` hoặc `/code phase-01`
+*Để khôi phục ngữ cảnh làm việc cho phiên tiếp theo, chỉ cần gõ `/recap`.*

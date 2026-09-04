@@ -12,7 +12,15 @@ import com.evcs.favorites.data.model.SearchResponse
 import com.evcs.favorites.data.model.SearchStationRaw
 import com.evcs.favorites.data.model.UserPartialResponse
 import com.evcs.favorites.util.StationUrlBuilder
+import com.evcs.favorites.data.logging.AppDebugLogger
+import com.evcs.favorites.data.logging.DebugLogEntry
+import com.evcs.favorites.data.logging.DebugLogLevel
+import com.evcs.favorites.data.logging.DebugLogTag
+import com.evcs.favorites.data.logging.DebugLoggingInterceptor
+import com.evcs.favorites.util.RetryAfterParser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -23,6 +31,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * OkHttp Client managing requests to the EVCS backend endpoints:
@@ -52,6 +61,7 @@ open class EvcsApiClient(
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
                 .followRedirects(true)
+                .addInterceptor(DebugLoggingInterceptor())
                 .build()
         }
 
@@ -161,6 +171,37 @@ open class EvcsApiClient(
         }
     }
 
+    val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
+
+    @Volatile
+    var cachedChargeToken: String? = null
+        internal set
+
+    @Volatile
+    var cachedChargeTokenExpiryMs: Long = 0L
+        internal set
+
+    private val tokenMutex = Mutex()
+
+    fun isGlobalRateLimited(): Boolean {
+        val blockedUntil = globalRateLimitedUntil.get()
+        return blockedUntil > 0L && System.currentTimeMillis() < blockedUntil
+    }
+
+    fun resetRateLimitCooldown() {
+        globalRateLimitedUntil.set(0L)
+    }
+
+    fun clearTokenCache() {
+        cachedChargeToken = null
+        cachedChargeTokenExpiryMs = 0L
+    }
+
+    fun calculateTokenExpiry(token: String, currentTimeMs: Long = System.currentTimeMillis()): Long {
+        val epochSeconds = token.substringBefore('.').toLongOrNull()
+        return (epochSeconds?.times(1000L) ?: (currentTimeMs + 300_000L)) - 30_000L
+    }
+
     /**
      * Step 1: Fetches user's saved favorite stations from `POST /favorite.html`.
      */
@@ -184,6 +225,17 @@ open class EvcsApiClient(
             }
 
             client.newCall(requestBuilder.build()).execute().use { response ->
+                if (response.code == 429) {
+                    val responseBody = response.body?.string().orEmpty()
+                    val retryAfter = RetryAfterParser.parseRetryAfter(response.header("Retry-After"), responseBody)
+                    val cooldownUntil = System.currentTimeMillis() + (retryAfter * 1000L)
+                    globalRateLimitedUntil.set(cooldownUntil)
+                    throw RateLimitException(
+                        retryAfterSeconds = retryAfter,
+                        message = "Favorites rate limited: HTTP 429 (Retry-After: ${retryAfter}s)"
+                    )
+                }
+
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(
                         IOException("Failed to fetch favorites: HTTP ${response.code}")
@@ -289,6 +341,17 @@ open class EvcsApiClient(
             }
 
             client.newCall(requestBuilder.build()).execute().use { response ->
+                if (response.code == 429) {
+                    val responseBody = response.body?.string().orEmpty()
+                    val retryAfter = RetryAfterParser.parseRetryAfter(response.header("Retry-After"), responseBody)
+                    val cooldownUntil = System.currentTimeMillis() + (retryAfter * 1000L)
+                    globalRateLimitedUntil.set(cooldownUntil)
+                    throw RateLimitException(
+                        retryAfterSeconds = retryAfter,
+                        message = "Search API rate limited: HTTP 429 (Retry-After: ${retryAfter}s)"
+                    )
+                }
+
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(
                         IOException("Search API request failed with HTTP ${response.code}")
@@ -339,6 +402,17 @@ open class EvcsApiClient(
             }
 
             client.newCall(requestBuilder.build()).execute().use { response ->
+                if (response.code == 429) {
+                    val responseBody = response.body?.string().orEmpty()
+                    val retryAfter = RetryAfterParser.parseRetryAfter(response.header("Retry-After"), responseBody)
+                    val cooldownUntil = System.currentTimeMillis() + (retryAfter * 1000L)
+                    globalRateLimitedUntil.set(cooldownUntil)
+                    throw RateLimitException(
+                        retryAfterSeconds = retryAfter,
+                        message = "Station detail HTML rate limited: HTTP 429 (Retry-After: ${retryAfter}s)"
+                    )
+                }
+
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(
                         IOException("Failed to fetch station detail HTML: HTTP ${response.code}")
@@ -397,80 +471,251 @@ open class EvcsApiClient(
      * @param isVinFast True if VinFast station (t: "vinfast"), false otherwise (t: "other").
      * @return Result containing [ChargingForecastResponse] or failure exception.
      */
+    private suspend fun fetchChargeTokenStep1(
+        stationName: String,
+        locationId: String,
+        cookieHeader: String
+    ): String {
+        val detailUrl = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
+        val step1Start = System.currentTimeMillis()
+        val step1RequestBuilder = Request.Builder()
+            .url(detailUrl)
+            .post("".toRequestBody())
+            .addHeader("User-Agent", USER_AGENT_BROWSER)
+            .addHeader("X-Partial", "user")
+            .addHeader("Referer", "$baseUrl/")
+            .addHeader("Origin", baseUrl)
+
+        if (cookieHeader.isNotBlank()) {
+            step1RequestBuilder.addHeader("Cookie", cookieHeader)
+        }
+
+        return client.newCall(step1RequestBuilder.build()).execute().use { response ->
+            val step1Latency = System.currentTimeMillis() - step1Start
+            val responseBody = response.body?.string().orEmpty()
+
+            if (response.code == 429) {
+                val retryAfter = RetryAfterParser.parseRetryAfter(response.header("Retry-After"), responseBody)
+                val cooldownUntil = System.currentTimeMillis() + (retryAfter * 1000L)
+                globalRateLimitedUntil.set(cooldownUntil)
+                throw RateLimitException(
+                    retryAfterSeconds = retryAfter,
+                    message = "Step 1 rate limited: HTTP 429 (Retry-After: ${retryAfter}s)"
+                )
+            }
+
+            if (!response.isSuccessful) {
+                AppDebugLogger.log(
+                    DebugLogEntry(
+                        tag = DebugLogTag.FORECAST,
+                        level = DebugLogLevel.ERROR,
+                        message = "Step 1: Lấy chargeToken thất bại: HTTP ${response.code}",
+                        endpointUrl = detailUrl,
+                        method = "POST",
+                        statusCode = response.code,
+                        latencyMs = step1Latency,
+                        errorDetails = "HTTP ${response.code}"
+                    )
+                )
+                throw IOException("Failed to fetch user partial token: HTTP ${response.code}")
+            }
+
+            // Persist any updated session cookies from Set-Cookie headers
+            for (cookie in response.headers("Set-Cookie")) {
+                sessionManager.saveFromSetCookieHeader(cookie)
+            }
+
+            val userPartial = json.decodeFromString<UserPartialResponse>(responseBody)
+            val token = userPartial.chargeToken
+            if (token.isNullOrBlank()) {
+                AppDebugLogger.log(
+                    DebugLogEntry(
+                        tag = DebugLogTag.FORECAST,
+                        level = DebugLogLevel.ERROR,
+                        message = "Step 1: Không tìm thấy chargeToken trong phản hồi user partial",
+                        endpointUrl = detailUrl,
+                        method = "POST",
+                        statusCode = response.code,
+                        latencyMs = step1Latency,
+                        responseSnippet = responseBody,
+                        errorDetails = "chargeToken is null or blank"
+                    )
+                )
+                throw IOException("Failed to retrieve chargeToken from user partial response")
+            }
+
+            AppDebugLogger.log(
+                DebugLogEntry(
+                    tag = DebugLogTag.FORECAST,
+                    level = DebugLogLevel.INFO,
+                    message = "Step 1: Lấy chargeToken thành công",
+                    endpointUrl = detailUrl,
+                    method = "POST",
+                    statusCode = response.code,
+                    latencyMs = step1Latency,
+                    responseSnippet = "chargeToken: $token"
+                )
+            )
+            token
+        }
+    }
+
+    private suspend fun executeStep2(
+        locationId: String,
+        isVinFast: Boolean,
+        token: String,
+        cookieHeader: String
+    ): okhttp3.Response {
+        val chargingUrl = "$baseUrl/charging"
+        val typeParam = if (isVinFast) "vinfast" else "other"
+        val payload = ChargingForecastRequest(
+            id = locationId,
+            t = typeParam
+        )
+        val jsonString = json.encodeToString(payload)
+
+        val step2RequestBuilder = Request.Builder()
+            .url(chargingUrl)
+            .post(jsonString.toRequestBody(JSON_MEDIA_TYPE))
+            .addHeader("User-Agent", USER_AGENT_BROWSER)
+            .addHeader("x-t", token)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Referer", "$baseUrl/")
+            .addHeader("Origin", baseUrl)
+
+        if (cookieHeader.isNotBlank()) {
+            step2RequestBuilder.addHeader("Cookie", cookieHeader)
+        }
+
+        return client.newCall(step2RequestBuilder.build()).execute()
+    }
+
+    /**
+     * Fetches dynamic charging forecast for a station via 2-step handshake matching web_charging.js.
+     * Step 1: POST canonical station detail URL with `X-Partial: user` to acquire chargeToken (cached across stations).
+     * Step 2: POST `${baseUrl}/charging` with `x-t: <chargeToken>` and `{"id": locationId, "t": ...}`.
+     *
+     * @param stationName Name of the charging station used for canonical slug.
+     * @param locationId Unique station identifier.
+     * @param isVinFast True if VinFast station (t: "vinfast"), false otherwise (t: "other").
+     * @return Result containing [ChargingForecastResponse] or failure exception.
+     */
     open suspend fun fetchChargingForecast(
         stationName: String,
         locationId: String,
         isVinFast: Boolean = true
     ): Result<ChargingForecastResponse> = withContext(Dispatchers.IO) {
         try {
-            // Step 1: Send HTTP POST to canonical station detail URL with X-Partial: user
-            val detailUrl = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
-            val step1RequestBuilder = Request.Builder()
-                .url(detailUrl)
-                .post("".toRequestBody())
-                .addHeader("User-Agent", USER_AGENT_BROWSER)
-                .addHeader("X-Partial", "user")
-                .addHeader("Referer", "$baseUrl/")
-                .addHeader("Origin", baseUrl)
-
-            val cookieHeader = sessionManager.getCookieHeader()
-            if (cookieHeader.isNotBlank()) {
-                step1RequestBuilder.addHeader("Cookie", cookieHeader)
-            }
-
-            val chargeToken = client.newCall(step1RequestBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(
-                        IOException("Failed to fetch user partial token: HTTP ${response.code}")
-                    )
-                }
-
-                // Persist any updated session cookies from Set-Cookie headers
-                for (cookie in response.headers("Set-Cookie")) {
-                    sessionManager.saveFromSetCookieHeader(cookie)
-                }
-
-                val responseBody = response.body?.string().orEmpty()
-                val userPartial = json.decodeFromString<UserPartialResponse>(responseBody)
-                userPartial.chargeToken
-            }
-
-            // Step 2: Extract chargeToken from response body JSON. If token is absent, return failure.
-            if (chargeToken.isNullOrBlank()) {
+            if (isGlobalRateLimited()) {
+                val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
                 return@withContext Result.failure(
-                    IOException("Failed to retrieve chargeToken from user partial response")
+                    RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
                 )
             }
 
-            // Step 3: Send HTTP POST to ${baseUrl}/charging with headers x-t: <chargeToken>, content-type: application/json, and body {"id":"<locationId>","t":"vinfast"} (or "other")
-            val chargingUrl = "$baseUrl/charging"
-            val typeParam = if (isVinFast) "vinfast" else "other"
-            val payload = ChargingForecastRequest(
-                id = locationId,
-                t = typeParam
-            )
-            val jsonString = json.encodeToString(payload)
+            val cookieHeader = sessionManager.getCookieHeader()
 
-            val step2RequestBuilder = Request.Builder()
-                .url(chargingUrl)
-                .post(jsonString.toRequestBody(JSON_MEDIA_TYPE))
-                .addHeader("User-Agent", USER_AGENT_BROWSER)
-                .addHeader("x-t", chargeToken)
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Referer", "$baseUrl/")
-                .addHeader("Origin", baseUrl)
+            // Check if valid cached chargeToken exists
+            var token: String
+            var wasCached = false
+            val existingToken = cachedChargeToken
+            val existingExpiry = cachedChargeTokenExpiryMs
 
-            if (cookieHeader.isNotBlank()) {
-                step2RequestBuilder.addHeader("Cookie", cookieHeader)
+            if (!existingToken.isNullOrBlank() && System.currentTimeMillis() < existingExpiry) {
+                token = existingToken
+                wasCached = true
+            } else {
+                token = tokenMutex.withLock {
+                    val recheckToken = cachedChargeToken
+                    val recheckExpiry = cachedChargeTokenExpiryMs
+                    if (!recheckToken.isNullOrBlank() && System.currentTimeMillis() < recheckExpiry) {
+                        wasCached = true
+                        recheckToken
+                    } else {
+                        if (isGlobalRateLimited()) {
+                            val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
+                            throw RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
+                        }
+                        fetchChargeTokenStep1(stationName, locationId, cookieHeader)
+                    }
+                }
             }
 
-            // Step 4: Parse response JSON into ChargingForecastResponse
-            client.newCall(step2RequestBuilder.build()).execute().use { response ->
+            if (isGlobalRateLimited()) {
+                val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
+                return@withContext Result.failure(
+                    RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
+                )
+            }
+
+            var step2Response = executeStep2(locationId, isVinFast, token, cookieHeader)
+
+            // Step 2 retry on 401/403 when using cached token
+            if (step2Response.code in listOf(401, 403) && wasCached) {
+                step2Response.close()
+                AppDebugLogger.log(
+                    DebugLogEntry(
+                        tag = DebugLogTag.FORECAST,
+                        level = DebugLogLevel.WARN,
+                        message = "Step 2 nhận mã HTTP ${step2Response.code} với token cache, xóa cache và làm mới chargeToken"
+                    )
+                )
+                token = tokenMutex.withLock {
+                    clearTokenCache()
+                    if (isGlobalRateLimited()) {
+                        val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
+                        throw RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
+                    }
+                    val fresh = fetchChargeTokenStep1(stationName, locationId, cookieHeader)
+                    cachedChargeToken = fresh
+                    cachedChargeTokenExpiryMs = calculateTokenExpiry(fresh)
+                    fresh
+                }
+
+                if (isGlobalRateLimited()) {
+                    val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
+                    return@withContext Result.failure(
+                        RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
+                    )
+                }
+
+                step2Response = executeStep2(locationId, isVinFast, token, cookieHeader)
+            }
+
+            step2Response.use { response ->
+                val chargingUrl = "$baseUrl/charging"
+                if (response.code == 429) {
+                    val responseBody = response.body?.string().orEmpty()
+                    val retryAfter = RetryAfterParser.parseRetryAfter(response.header("Retry-After"), responseBody)
+                    val cooldownUntil = System.currentTimeMillis() + (retryAfter * 1000L)
+                    globalRateLimitedUntil.set(cooldownUntil)
+                    throw RateLimitException(
+                        retryAfterSeconds = retryAfter,
+                        message = "Step 2 rate limited: HTTP 429 (Retry-After: ${retryAfter}s)"
+                    )
+                }
+
                 if (!response.isSuccessful) {
+                    clearTokenCache()
+                    AppDebugLogger.log(
+                        DebugLogEntry(
+                            tag = DebugLogTag.FORECAST,
+                            level = DebugLogLevel.ERROR,
+                            message = "Step 2: Yêu cầu /charging thất bại: HTTP ${response.code}",
+                            endpointUrl = chargingUrl,
+                            method = "POST",
+                            statusCode = response.code,
+                            errorDetails = "HTTP ${response.code}"
+                        )
+                    )
                     return@withContext Result.failure(
                         IOException("Charging forecast request failed with HTTP ${response.code}")
                     )
                 }
+
+                // Step 2 succeeded: update cache
+                cachedChargeToken = token
+                cachedChargeTokenExpiryMs = calculateTokenExpiry(token)
 
                 for (cookie in response.headers("Set-Cookie")) {
                     sessionManager.saveFromSetCookieHeader(cookie)
@@ -478,9 +723,33 @@ open class EvcsApiClient(
 
                 val responseBody = response.body?.string().orEmpty()
                 val forecast = json.decodeFromString<ChargingForecastResponse>(responseBody)
+
+                val tickerSnippet = forecast.ticker.orEmpty().ifBlank { "(trống)" }
+                AppDebugLogger.log(
+                    DebugLogEntry(
+                        tag = DebugLogTag.FORECAST,
+                        level = DebugLogLevel.INFO,
+                        message = "Step 2: Nhận dữ liệu ticker thành công",
+                        endpointUrl = chargingUrl,
+                        method = "POST",
+                        statusCode = response.code,
+                        responseSnippet = tickerSnippet
+                    )
+                )
+
                 Result.success(forecast)
             }
         } catch (e: Exception) {
+            if (e !is RateLimitException) {
+                AppDebugLogger.log(
+                    DebugLogEntry(
+                        tag = DebugLogTag.FORECAST,
+                        level = DebugLogLevel.ERROR,
+                        message = "Lỗi kết nối dự báo sạc: ${e.message}",
+                        errorDetails = e.message ?: e.toString()
+                    )
+                )
+            }
             Result.failure(e)
         }
     }

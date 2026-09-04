@@ -2,7 +2,16 @@ package com.evcs.favorites.domain.filter
 
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.location.DistanceCalculator
+import com.evcs.favorites.domain.model.CustomFilterConfig
+import com.evcs.favorites.domain.model.CustomFilterMode
+import com.evcs.favorites.domain.model.DcWattageTier
+import com.evcs.favorites.domain.model.QuickChipOption
+import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.domain.model.WattageOption
+import com.evcs.favorites.domain.model.isAc
+import com.evcs.favorites.domain.model.isDc
+import com.evcs.favorites.domain.model.matchesCustomRange
+import com.evcs.favorites.domain.model.matchesQuickChip
 
 /**
  * Pure business logic engine for filtering charging stations by wattage tiers,
@@ -43,6 +52,90 @@ object NearbyStationFilter {
     }
 
     /**
+     * Filters stations by smart filter mode:
+     * - [SmartFilterMode.NONE]: Station must have available plugs (totalAvailablePlugs > 0).
+     * - [SmartFilterMode.AC]: Station must have at least one AC connector with availablePlugs > 0.
+     * - [SmartFilterMode.DC]: Station must have at least one DC connector matching the active [dcTier] with availablePlugs > 0.
+     *   If [dcTier] is null, station must have available plugs (unfiltered until tier is selected).
+     * - [SmartFilterMode.CUSTOM]: Evaluates either matching quick chip or manual minKw..maxKw range with availablePlugs > 0.
+     *
+     * Mixed Station Exclusion Rule:
+     * If a station has both AC and DC, availability is evaluated strictly on the connectors matching the filter.
+     * If matching connectors have 0 vacant plugs, the station is filtered out even if non-matching connectors are free.
+     *
+     * Maintains depot maintenance exclusion (depotStatus != "Maintaining" / "OutOfService").
+     */
+    fun filterSmartStations(
+        stations: List<Station>,
+        mode: SmartFilterMode,
+        dcTier: DcWattageTier? = null,
+        customConfig: CustomFilterConfig? = null,
+        includeFullStations: Boolean = false
+    ): List<Station> {
+        return stations.filter { station ->
+            val isOutOfService = station.depotStatus.equals("Maintaining", ignoreCase = true) ||
+                    station.depotStatus.equals("OutOfService", ignoreCase = true)
+            if (isOutOfService) {
+                return@filter false
+            }
+
+            when (mode) {
+                SmartFilterMode.NONE -> {
+                    station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
+                }
+                SmartFilterMode.AC -> {
+                    station.powers.any { power ->
+                        power.isAc() && (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0))
+                    }
+                }
+                SmartFilterMode.DC -> {
+                    if (dcTier == null) {
+                        station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
+                    } else {
+                        station.powers.any { power ->
+                            power.isDc() && dcTier.matchesWatts(power.typeWatts) &&
+                                    (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0))
+                        }
+                    }
+                }
+                SmartFilterMode.CUSTOM -> {
+                    if (customConfig == null || !customConfig.isValid()) {
+                        station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
+                    } else when (customConfig.mode) {
+                        CustomFilterMode.QUICK_CHIP -> {
+                            if (customConfig.quickChip == QuickChipOption.ALL) {
+                                station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
+                            } else {
+                                station.powers.any { power ->
+                                    power.matchesQuickChip(customConfig.quickChip) &&
+                                            (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0))
+                                }
+                            }
+                        }
+                        CustomFilterMode.CUSTOM_RANGE -> {
+                            station.powers.any { power ->
+                                power.matchesCustomRange(customConfig.minKw, customConfig.maxKw) &&
+                                        (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Overloaded helper delegating to [filterSmartStations].
+     */
+    fun filterStations(
+        stations: List<Station>,
+        mode: SmartFilterMode,
+        dcTier: DcWattageTier? = null,
+        customConfig: CustomFilterConfig? = null,
+        includeFullStations: Boolean = false
+    ): List<Station> = filterSmartStations(stations, mode, dcTier, customConfig, includeFullStations)
+
+    /**
      * Computes great-circle Haversine distance from user's coordinates to each station,
      * sorts stations nearest-first, and extracts strictly the top [limit] elements.
      *
@@ -59,6 +152,7 @@ object NearbyStationFilter {
         limit: Int = 10
     ): List<Station> {
         return stations
+            .distinctBy { it.id }
             .map { station ->
                 val distance = DistanceCalculator.calculateDistanceKm(
                     lat1 = userLat,

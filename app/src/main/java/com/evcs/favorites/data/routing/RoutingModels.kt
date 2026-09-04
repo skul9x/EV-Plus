@@ -19,7 +19,7 @@ enum class RoutingEngineMode {
 @Serializable
 data class RoutingSettings(
     val googleApiKey: String = "",
-    val preferredEngine: RoutingEngineMode = RoutingEngineMode.AUTO,
+    val preferredEngine: RoutingEngineMode = RoutingEngineMode.OSRM_ONLY,
     val autoFallbackEnabled: Boolean = true,
     val customOsrmServerUrl: String? = null
 )

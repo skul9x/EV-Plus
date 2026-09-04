@@ -8,12 +8,16 @@ import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.data.preferences.NearbyFilterPreferences
+import com.evcs.favorites.data.preferences.SmartFilterPreferences
 import com.evcs.favorites.data.routing.MultiTierRoutingCoordinator
 import com.evcs.favorites.data.routing.RoutingDestination
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
 import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.domain.filter.NearbyStationFilter
 import com.evcs.favorites.domain.location.LocationService
+import com.evcs.favorites.domain.model.CustomFilterConfig
+import com.evcs.favorites.domain.model.DcWattageTier
+import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.domain.model.WattageOption
 import com.evcs.favorites.ui.state.NearbyUiEvent
 import com.evcs.favorites.ui.state.NearbyUiState
@@ -48,6 +52,7 @@ class NearbyViewModel(
     private val routingPreferencesManager: RoutingPreferencesManager? = null,
     private val routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
     private val filterPreferences: NearbyFilterPreferences? = null,
+    private val smartFilterPreferences: SmartFilterPreferences? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
@@ -62,10 +67,22 @@ class NearbyViewModel(
     private val filterPrefs: NearbyFilterPreferences =
         filterPreferences ?: NearbyFilterPreferences(storage = InMemorySessionStorage())
 
+    private val smartFilterPrefs: SmartFilterPreferences =
+        smartFilterPreferences ?: SmartFilterPreferences(storage = InMemorySessionStorage())
+
+    private val initialSmartMode: SmartFilterMode = smartFilterPrefs.getActiveFilterMode()
+    private val initialDcTier: DcWattageTier? = smartFilterPrefs.getSelectedDcTier()
+    private val initialCustomConfig: CustomFilterConfig? = smartFilterPrefs.getCustomConfig()
+    private val initialDcVisible: Boolean = initialSmartMode == SmartFilterMode.DC && initialDcTier != null
+
     private val _uiState = MutableStateFlow(
         NearbyUiState(
             favoriteStationIds = repository.favoriteIdsState.value,
-            selectedWattages = filterPrefs.getSelectedWattages()
+            selectedWattages = filterPrefs.getSelectedWattages(),
+            activeFilterMode = initialSmartMode,
+            selectedDcTier = initialDcTier,
+            isDcSubFilterVisible = initialDcVisible,
+            savedCustomConfig = initialCustomConfig
         )
     )
     val uiState: StateFlow<NearbyUiState> = _uiState.asStateFlow()
@@ -120,6 +137,11 @@ class NearbyViewModel(
      * 4. Updates raw stations and dispatches filter and Top 10 routing pipeline.
      */
     fun scanNearbyStations(): Job {
+        scanJob?.let { activeJob ->
+            if (activeJob.isActive && (_uiState.value.isLocating || _uiState.value.isSearching)) {
+                return activeJob
+            }
+        }
         scanJob?.cancel()
         routingJob?.cancel()
         forecastJob?.cancel()
@@ -254,6 +276,144 @@ class NearbyViewModel(
         }
         return null
     }
+
+    /**
+     * Toggles AC filter mode.
+     * If AC active, resets to NONE; if not active, sets to AC and triggers pipeline.
+     */
+    fun toggleAcFilter(): Job? {
+        val isAcActive = _uiState.value.activeFilterMode == SmartFilterMode.AC
+        val newMode = if (isAcActive) SmartFilterMode.NONE else SmartFilterMode.AC
+        _uiState.update {
+            it.copy(
+                activeFilterMode = newMode,
+                isDcSubFilterVisible = false,
+                selectedDcTier = null
+            )
+        }
+        smartFilterPrefs.saveActiveFilterMode(newMode)
+        smartFilterPrefs.saveSelectedDcTier(null)
+        return triggerFilterPipeline()
+    }
+
+    /**
+     * Enters DC mode: sets isDcSubFilterVisible = true, activeFilterMode = DC,
+     * without filtering until a tier is selected.
+     */
+    fun enterDcMode() {
+        _uiState.update {
+            it.copy(
+                isDcSubFilterVisible = true,
+                activeFilterMode = SmartFilterMode.DC,
+                selectedDcTier = null
+            )
+        }
+        if (_uiState.value.rawStations.isNotEmpty()) {
+            triggerFilterPipeline()
+        }
+    }
+
+    /**
+     * Exits DC mode: sets isDcSubFilterVisible = false, resets selectedDcTier = null,
+     * sets activeFilterMode = NONE, and triggers pipeline with unfiltered stations.
+     */
+    fun exitDcMode(): Job? {
+        _uiState.update {
+            it.copy(
+                isDcSubFilterVisible = false,
+                selectedDcTier = null,
+                activeFilterMode = SmartFilterMode.NONE
+            )
+        }
+        smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)
+        smartFilterPrefs.saveSelectedDcTier(null)
+        return triggerFilterPipeline()
+    }
+
+    /**
+     * Selects DC wattage tier, updates preferences, and triggers filter pipeline.
+     */
+    fun selectDcTier(tier: DcWattageTier): Job? {
+        _uiState.update {
+            it.copy(
+                selectedDcTier = tier,
+                activeFilterMode = SmartFilterMode.DC,
+                isDcSubFilterVisible = true
+            )
+        }
+        smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.DC)
+        smartFilterPrefs.saveSelectedDcTier(tier)
+        return triggerFilterPipeline()
+    }
+
+    /**
+     * Applies custom filter if configured. If not configured, prompts user to configure.
+     */
+    fun applyCustomFilter(): Job? {
+        if (smartFilterPrefs.hasCustomConfig()) {
+            val config = smartFilterPrefs.getCustomConfig()
+            _uiState.update {
+                it.copy(
+                    activeFilterMode = SmartFilterMode.CUSTOM,
+                    isDcSubFilterVisible = false,
+                    selectedDcTier = null,
+                    savedCustomConfig = config,
+                    showCustomConfigPrompt = false
+                )
+            }
+            smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.CUSTOM)
+            smartFilterPrefs.saveSelectedDcTier(null)
+            return triggerFilterPipeline()
+        } else {
+            _uiState.update {
+                it.copy(showCustomConfigPrompt = true)
+            }
+            return null
+        }
+    }
+
+    /**
+     * Persists new custom configuration and directly applies CUSTOM mode.
+     */
+    fun saveAndApplyCustomFilter(config: CustomFilterConfig): Job? {
+        smartFilterPrefs.saveCustomConfig(config)
+        smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.CUSTOM)
+        smartFilterPrefs.saveSelectedDcTier(null)
+        _uiState.update {
+            it.copy(
+                savedCustomConfig = config,
+                activeFilterMode = SmartFilterMode.CUSTOM,
+                isDcSubFilterVisible = false,
+                selectedDcTier = null,
+                showCustomConfigPrompt = false
+            )
+        }
+        return triggerFilterPipeline()
+    }
+
+    /**
+     * Dismisses the custom config prompt dialog.
+     */
+    fun dismissCustomPrompt() {
+        _uiState.update { it.copy(showCustomConfigPrompt = false) }
+    }
+
+    /**
+     * Resets smart filter to NONE and refreshes pipeline.
+     */
+    fun clearSmartFilter(): Job? {
+        _uiState.update {
+            it.copy(
+                activeFilterMode = SmartFilterMode.NONE,
+                selectedDcTier = null,
+                isDcSubFilterVisible = false
+            )
+        }
+        smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)
+        smartFilterPrefs.saveSelectedDcTier(null)
+        return triggerFilterPipeline()
+    }
+
 
     /**
      * Toggles favorite status for a station.
@@ -418,6 +578,32 @@ class NearbyViewModel(
     }
 
     /**
+     * Re-runs the filtering and routing pipeline using current state.
+     */
+    private fun triggerFilterPipeline(forceRefreshForecast: Boolean = false): Job? {
+        val lat = _uiState.value.userLatitude
+        val lon = _uiState.value.userLongitude
+        val raw = _uiState.value.rawStations
+
+        if (raw.isNotEmpty()) {
+            routingJob?.cancel()
+            forecastJob?.cancel()
+            val job = viewModelScope.launch(dispatcher) {
+                executeFilterAndRoutingPipeline(
+                    rawStations = raw,
+                    userLat = lat ?: 0.0,
+                    userLon = lon ?: 0.0,
+                    selectedWattages = _uiState.value.selectedWattages,
+                    forceRefreshForecast = forceRefreshForecast
+                )
+            }
+            routingJob = job
+            return job
+        }
+        return null
+    }
+
+    /**
      * Internal filtering and multi-tier routing pipeline.
      * Strictly enforces <= 10 destinations sent to [MultiTierRoutingCoordinator].
      */
@@ -428,8 +614,28 @@ class NearbyViewModel(
         selectedWattages: Set<WattageOption>,
         forceRefreshForecast: Boolean = false
     ) {
-        // 1. Client-side wattage and port availability filtering (includes full stations for forecast enrichment)
-        val filtered = NearbyStationFilter.filterStations(rawStations, selectedWattages, includeFullStations = true)
+        val currentMode = _uiState.value.activeFilterMode
+        val currentDcTier = _uiState.value.selectedDcTier
+        val currentCustomConfig = _uiState.value.savedCustomConfig ?: smartFilterPrefs.getCustomConfig()
+
+        // 1. Client-side smart/wattage and port availability filtering (includes full stations for forecast enrichment)
+        val filtered = if (currentMode != SmartFilterMode.NONE) {
+            NearbyStationFilter.filterSmartStations(
+                stations = rawStations,
+                mode = currentMode,
+                dcTier = currentDcTier,
+                customConfig = currentCustomConfig,
+                includeFullStations = true
+            )
+        } else if (selectedWattages.isNotEmpty()) {
+            NearbyStationFilter.filterStations(rawStations, selectedWattages, includeFullStations = true)
+        } else {
+            NearbyStationFilter.filterSmartStations(
+                stations = rawStations,
+                mode = SmartFilterMode.NONE,
+                includeFullStations = true
+            )
+        }
 
         // 2. Haversine distance computation and Top 10 extraction
         val top10 = NearbyStationFilter.extractTopNearest(userLat, userLon, filtered, limit = 10)
@@ -557,6 +763,7 @@ class NearbyViewModel(
             routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
             routingPreferencesManager: RoutingPreferencesManager? = null,
             filterPreferences: NearbyFilterPreferences? = null,
+            smartFilterPreferences: SmartFilterPreferences? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Main,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
@@ -569,6 +776,7 @@ class NearbyViewModel(
                     routingPreferencesManager = routingPreferencesManager,
                     routingCoordinator = routingCoordinator,
                     filterPreferences = filterPreferences,
+                    smartFilterPreferences = smartFilterPreferences,
                     dispatcher = dispatcher,
                     ioDispatcher = ioDispatcher
                 ) as T
@@ -576,3 +784,4 @@ class NearbyViewModel(
         }
     }
 }
+

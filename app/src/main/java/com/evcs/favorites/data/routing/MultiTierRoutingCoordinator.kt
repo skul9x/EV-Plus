@@ -44,7 +44,9 @@ open class MultiTierRoutingCoordinator(
                 return@withContext emptyMap()
             }
 
-            val validDestinations = destinations.filter { isValidCoordinate(it.latitude, it.longitude) }
+            val validDestinations = destinations
+                .filter { isValidCoordinate(it.latitude, it.longitude) }
+                .distinctBy { it.id }
             if (validDestinations.isEmpty()) {
                 return@withContext emptyMap()
             }
@@ -111,7 +113,11 @@ open class MultiTierRoutingCoordinator(
         )
 
         if (result.isSuccess) {
-            return result.getOrThrow()
+            val metrics = result.getOrThrow()
+            if (metrics.isNotEmpty() || !settings.autoFallbackEnabled) {
+                return metrics
+            }
+            return computeHaversine(originLat, originLng, destinations)
         }
 
         return if (settings.autoFallbackEnabled) {

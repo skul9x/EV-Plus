@@ -1,92 +1,67 @@
 {
-  "updated_at": "2026-09-04T08:32:00+07:00",
+  "updated_at": "2026-09-04T15:00:00+07:00",
   "working_on": {
-    "feature": "Live Station Forecast Badges on Nearby & Favorites Cards",
-    "task": "Lập toàn bộ kế hoạch triển khai chi tiết theo 4 Phases (plans/260904-0830-live-station-forecast-cards/) để mang dự báo thời gian sạc sắp xong ra card trạm ngoài màn hình chính, kèm bộ lọc Top 5 trạm kín gần nhất, cache 3 phút, retry ngầm exponential backoff và single comprehensive test per phase.",
-    "status": "planned_ready_for_phase_01",
+    "feature": "Smart Filter, Debug Log Viewer, Multi-Clause Forecast Parser & Cloudflare Rate Limiting Circuit Breaker",
+    "task": "Hoàn tất điều tra debug-log.txt, xử lý lỗi parser cho câu ticker phức đa cổng công suất, chống lỗi Cloudflare 429 rate limit bằng circuit breaker 60s và cài đặt APK lên thiết bị.",
+    "status": "completed",
     "files": [
-      "plans/260904-0830-live-station-forecast-cards/plan.md",
-      "plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md",
-      "plans/260904-0830-live-station-forecast-cards/phase-02-repository-cache-and-network-retry.md",
-      "plans/260904-0830-live-station-forecast-cards/phase-03-viewmodel-pipeline.md",
-      "plans/260904-0830-live-station-forecast-cards/phase-04-ui-stationcard-forecast-capsule.md",
-      "get.md",
-      ".brain/session.json",
-      ".brain/handover.md"
+      "app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt",
+      "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
+      "app/src/test/java/com/evcs/favorites/data/parser/StationForecastParserTest.kt",
+      "app/src/test/java/com/evcs/favorites/data/repository/ChargingForecastRepositoryPipelineTest.kt",
+      "app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt"
     ],
     "blockers": [],
-    "notes": "User duyệt giải pháp: Top 5 trạm kín gần nhất, badge Amber ⏱️ Sắp trống, hiển thị đầy đủ danh sách xe/công suất sắp xong, in-memory cache 3 phút, retry ngầm tối đa 2 lần."
-  },
-  "phases_status": {
-    "phase_01_domain_models_and_parser": "Pending",
-    "phase_02_repository_cache_and_retry": "Pending",
-    "phase_03_viewmodel_pipeline": "Pending",
-    "phase_04_ui_stationcard_capsule": "Pending"
+    "notes": "Đã sửa hoàn chỉnh regex câu phức trong StationForecastParser, thêm rate-limit circuit breaker 60s cho EvcsRepository, xây dựng file test chuyên biệt chạy trong 2s và build/install APK trực tiếp qua MCP."
   },
   "pending_tasks": [
     {
-      "task": "Thực hiện Phase 01: Tạo StationForecast domain model, StationForecastParser và chạy test StationForecastParserTest",
-      "priority": "high",
-      "notes": "File đặc tả: plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md"
-    },
-    {
-      "task": "Thực hiện Phase 02: Tích hợp ForecastCache (TTL 3m) và fetchStationForecast kèm Exponential Backoff retry vào EvcsRepository",
-      "priority": "high",
-      "notes": "File đặc tả: plans/260904-0830-live-station-forecast-cards/phase-02-repository-cache-and-network-retry.md"
-    },
-    {
-      "task": "Thực hiện Phase 03: Tích hợp pipeline quét Top 5 trạm kín gần nhất vào NearbyViewModel và FavoritesViewModel",
-      "priority": "high",
-      "notes": "File đặc tả: plans/260904-0830-live-station-forecast-cards/phase-03-viewmodel-pipeline.md"
-    },
-    {
-      "task": "Thực hiện Phase 04: Thêm ForecastCapsule vào StationCard và chuyển StatusBadge sang Amber ⏱️ Sắp trống",
-      "priority": "high",
-      "notes": "File đặc tả: plans/260904-0830-live-station-forecast-cards/phase-04-ui-stationcard-forecast-capsule.md"
+      "task": "Theo dõi hiệu năng thực tế và nhật ký debug log trên thiết bị Android trong quá trình di chuyển",
+      "priority": "medium",
+      "notes": "Kiểm tra màn hình Debug Log Viewer trong Settings khi chạy thực địa."
     }
   ],
   "recent_changes": [
     {
-      "timestamp": "2026-09-04T08:31:00+07:00",
-      "type": "planning",
-      "description": "Hoàn tất lập kế hoạch chi tiết tính năng Live Station Forecast trên card trạm với 4 phase files (.md), tuân thủ quy tắc 1 file test duy nhất per phase",
+      "timestamp": "2026-09-04T14:58:00+07:00",
+      "type": "deployment",
+      "description": "Build file APK app-debug.apk (18.5MB), cài đặt thành công vào điện thoại (3B658D010BU00000) và khởi chạy ứng dụng tự động qua MCP adb.",
+      "files": ["app/build/outputs/apk/debug/app-debug.apk"]
+    },
+    {
+      "timestamp": "2026-09-04T14:56:00+07:00",
+      "type": "testing",
+      "description": "Tạo file test riêng biệt ForecastRateLimitAndCompoundParserTest.kt kiểm thử toàn diện các case câu phức đa công suất, locked teaser banner và circuit breaker HTTP 429, chạy thành công 100% trong 2 giây.",
+      "files": ["app/src/test/java/com/evcs/favorites/data/repository/ForecastRateLimitAndCompoundParserTest.kt"]
+    },
+    {
+      "timestamp": "2026-09-04T14:40:00+07:00",
+      "type": "bugfix_and_enhancement",
+      "description": "Nâng cấp StationForecastParser hỗ trợ câu phức đa trụ (120kW, 60kW...), thêm circuit breaker 60s chống Cloudflare 429 rate limit và cơ chế pacing delay giữa các request trong EvcsRepository.",
       "files": [
-        "plans/260904-0830-live-station-forecast-cards/plan.md",
-        "plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md",
-        "plans/260904-0830-live-station-forecast-cards/phase-02-repository-cache-and-network-retry.md",
-        "plans/260904-0830-live-station-forecast-cards/phase-03-viewmodel-pipeline.md",
-        "plans/260904-0830-live-station-forecast-cards/phase-04-ui-stationcard-forecast-capsule.md"
+        "app/src/main/java/com/evcs/favorites/data/parser/StationForecastParser.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt"
       ]
     },
     {
-      "timestamp": "2026-09-04T08:28:00+07:00",
-      "type": "brainstorming",
-      "description": "Thảo luận 10 Edge Questions về UX/kỹ thuật của tính năng dự báo ngoài card trạm: chọn Top 5 trạm kín gần nhất, Amber badge, TTL 3 phút, retry ngầm exponential backoff, hiển thị đa phiên sạc",
-      "files": ["get.md"]
-    },
-    {
-      "timestamp": "2026-09-04T08:07:00+07:00",
-      "type": "documentation_reverse_engineering",
-      "description": "Bổ sung Section 2 vào get.md: Phân tích thực chứng từ curl_capture_20260904_075005 đối chiếu giữa Tiến Minh Cách Bi và Dabaco Mart Quế Võ",
-      "files": ["get.md", "curl_capture_20260904_075005/"]
+      "timestamp": "2026-09-04T14:30:00+07:00",
+      "type": "debugging",
+      "description": "Phân tích toàn diện 57 log entry trong debug-log.txt, phát hiện lỗi Cloudflare HTTP 429 rate limit (mã lỗi 1015) và lỗi regex parser câu phức ở trạm đa trụ.",
+      "files": ["debug-log.txt"]
     }
   ],
   "decisions_made": [
     {
-      "decision": "Chỉ quét dự báo cho Top 5 trạm kín gần nhất (available_ports == 0) trên cả 2 tab Quanh đây và Yêu thích",
-      "reason": "Tối ưu băng thông mạng, pin điện thoại và tránh rate-limit HTTP từ máy chủ EVCS"
+      "decision": "Xếp HTTP 429 và Cloudflare error 1015 vào non-transient error, không retry 1s/2s",
+      "reason": "Retry ngay lập tức khi đang bị Cloudflare rate-limit sẽ khiến server kéo dài thời gian phạt block IP."
     },
     {
-      "decision": "Dùng badge màu cam hổ phách Amber ⏱️ Sắp trống và Capsule hiển thị đầy đủ các loại trụ sắp xong",
-      "reason": "Tránh gây nhầm lẫn với đỏ 'Hết cổng' và xanh 'Còn cổng', tài xế nhìn thấy ngay trụ mình cần có sắp xong hay không"
+      "decision": "Kích hoạt Circuit Breaker 60 giây khi gặp lỗi 429",
+      "reason": "Ngăn các request dự báo nền tiếp theo bắn vào máy chủ, cho phép block IP tự hết hạn mà không gây lỗi ra UI."
     },
     {
-      "decision": "Bộ nhớ đệm TTL 3 phút (180s) và xóa ngay khi làm mới thủ công",
-      "reason": "Dữ liệu dự báo có tính thời gian thực, 3 phút là chu kỳ cân bằng lý tưởng giữa độ tươi dữ liệu và số lượng request"
-    },
-    {
-      "decision": "Retry ngầm với Exponential Backoff tối đa 2 lần, silent fail an toàn",
-      "reason": "Đảm bảo tính bền bỉ khi mạng 4G chập chờn nhưng không làm gián đoạn hay crash UI"
+      "decision": "Bóc tách câu ticker dự báo phức bằng CLAUSE_REGEX và tổng hợp ForecastSession ảo khi không có script JSON",
+      "reason": "Hỗ trợ trạm có nhiều nhóm trụ (ví dụ 120kW và 60kW) hiển thị đầy đủ trên StationCard và modal chi tiết."
     }
   ]
 }

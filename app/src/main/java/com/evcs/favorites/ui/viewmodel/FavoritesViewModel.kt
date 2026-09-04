@@ -91,10 +91,19 @@ class FavoritesViewModel(
         private set
 
     /**
-     * Initial fetch job if initialized with an authenticated session.
+     * Managed background favorites loading job (consolidating initial load and refresh).
      */
-    var initialLoadJob: Job? = null
+    var favoritesLoadJob: Job? = null
         private set
+
+    /**
+     * Backward-compatible alias for initialLoadJob pointing to favoritesLoadJob.
+     */
+    var initialLoadJob: Job?
+        get() = favoritesLoadJob
+        private set(value) {
+            favoritesLoadJob = value
+        }
 
     /**
      * The active or pending email associated with the login session.
@@ -104,7 +113,7 @@ class FavoritesViewModel(
 
     init {
         if (authEngine.isLoggedIn.value) {
-            initialLoadJob = fetchFavorites()
+            favoritesLoadJob = fetchFavorites()
         }
         if (locationService != null) {
             viewModelScope.launch(dispatcher) {
@@ -247,11 +256,12 @@ class FavoritesViewModel(
      * - Step 2: Asynchronous candidate batch routing via MultiTierRoutingCoordinator.
      */
     fun fetchFavorites(): Job {
+        favoritesLoadJob?.cancel()
         routingJob?.cancel()
         forecastJob?.cancel()
         _uiState.value = FavoritesUiState.Loading
 
-        return viewModelScope.launch(dispatcher) {
+        val job = viewModelScope.launch(dispatcher) {
             try {
                 val coords = locationService?.latestCoordinates ?: currentCoordinates
                 val userLat = coords?.first
@@ -295,6 +305,8 @@ class FavoritesViewModel(
                 _uiState.value = FavoritesUiState.Error(e.message ?: "Đã xảy ra lỗi không mong muốn")
             }
         }
+        favoritesLoadJob = job
+        return job
     }
 
     /**
@@ -310,10 +322,11 @@ class FavoritesViewModel(
         }
 
         invalidateRoutingCache()
+        favoritesLoadJob?.cancel()
         routingJob?.cancel()
         forecastJob?.cancel()
 
-        return viewModelScope.launch(dispatcher) {
+        val job = viewModelScope.launch(dispatcher) {
             try {
                 locationService?.getFreshLocation()
                 val coords = locationService?.latestCoordinates ?: currentCoordinates
@@ -356,6 +369,8 @@ class FavoritesViewModel(
                 _uiState.value = FavoritesUiState.Error(e.message ?: "Lỗi làm mới dữ liệu")
             }
         }
+        favoritesLoadJob = job
+        return job
     }
 
     /**

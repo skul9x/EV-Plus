@@ -3,12 +3,12 @@
     "schema_version": "1.1.0",
     "awf_version": "4.0.2",
     "created_at": "2026-09-03T11:05:00+07:00",
-    "updated_at": "2026-09-04T08:08:00+07:00"
+    "updated_at": "2026-09-04T15:00:00+07:00"
   },
   "project": {
     "name": "EV+",
     "type": "Android Application (Native Jetpack Compose)",
-    "status": "Production-Ready MVP + Nearby Charging Stations with Multi-Tier Routing, Wattage Filter Persistence & Left-Handed Tab Order"
+    "status": "Production-Ready MVP + Smart Filter (AC/DC/Custom), Multi-Tier Routing (Google/OSRM/Haversine), Real-time Forecast Badges with Multi-session Parser & Circuit Breaker, Debug Log Subsystem"
   },
   "tech_stack": {
     "language": "Kotlin 1.9.23",
@@ -18,7 +18,8 @@
     "security": "Jetpack Security Crypto (EncryptedSharedPreferences)",
     "location": "Google Play Services Location (FusedLocationProviderClient)",
     "routing_engines": "Google Routes API v2, OSRM Table Service, Haversine baseline",
-    "filter_persistence": "NearbyFilterPreferences via SessionStorage (EncryptedSharedPreferences)",
+    "filter_persistence": "NearbyFilterPreferences & SmartFilterPreferences via SessionStorage",
+    "resilience_patterns": "Cloudflare HTTP 429 Circuit Breaker (60s cooldown), Exponential Backoff Retry, Request Pacing Delay",
     "build_tool": "Gradle 8.7 (Kotlin DSL)",
     "min_sdk": 26,
     "target_sdk": 34
@@ -62,7 +63,7 @@
       "method": "POST",
       "headers": {
         "Content-Type": "application/json",
-        "Cookie": "PHPSESSID=...; evcs=..."
+        "Cookie": "PHPSESSID=..."
       },
       "purpose": "Lưu và đồng bộ danh sách trạm yêu thích 2 chiều lên cloud EVCS"
     },
@@ -102,101 +103,48 @@
   ],
   "features": [
     {
-      "name": "Station Availability Forecast SSR Parser (get.md)",
-      "status": "designed_spec_ready",
-      "description": "Thuật toán bóc tách dữ liệu dự báo cổng sạc sắp hoàn thành (ví dụ: '2 xe sạc trụ 20kW sẽ xong trong 7-14 phút nữa') từ mã nguồn HTML tĩnh ban đầu do server render, vượt qua cơ chế bị client-side JS ghi đè bởi amd-locked khi tài khoản không có gói VIP EVCS Go."
+      "name": "Authentication & 2-Way Favorite Sync",
+      "status": "Implemented",
+      "description": "Đăng nhập OTP qua email, mã hóa cookie session, tải và đồng bộ danh sách trạm yêu thích 2 chiều với EVCS."
     },
     {
-      "name": "Email OTP Authentication",
-      "status": "implemented",
-      "description": "Đăng nhập 2 bước không cần mật khẩu qua email OTP, tự động lưu và gia hạn session cookie 1 năm"
+      "name": "Nearby Stations & Cluster Search",
+      "status": "Implemented",
+      "description": "Quét GPS, tìm trạm lân cận trong bán kính, phân cụm tọa độ để gọi API ký HMAC."
     },
     {
-      "name": "Real-time Favorites Management",
-      "status": "implemented",
-      "description": "Xem danh sách trạm sạc yêu thích kèm trạng thái cổng sạc, trụ sạc trống theo thời gian thực"
+      "name": "Smart Filter (All, AC, DC Fast, DC Super, Custom kW)",
+      "status": "Implemented",
+      "description": "Thanh filter nhanh ngang kèm modal tùy biến dải công suất min-max kW, lưu trữ bền vững qua SmartFilterPreferences."
     },
     {
-      "name": "Nearby Charging Stations Discovery",
-      "status": "implemented",
-      "description": "Giao diện Hero quét trạm sạc VinFast quanh đây theo tọa độ GPS on-demand, lọc nghiêm ngặt các trạm bảo trì hoặc hết cổng"
+      "name": "Multi-Tier Routing Engine (Google Routes, OSRM, Haversine)",
+      "status": "Implemented",
+      "description": "Tính toán cự ly/thời gian lái xe thực tế, tự động chuyển đổi OSRM -> Google -> Haversine khi có sự cố, cấu hình trong Settings."
     },
     {
-      "name": "Multi-Power Wattage Filter Chips & Persistence",
-      "status": "implemented",
-      "description": "Thanh filter chip ngang gồm 14 cấp công suất (3.5kW đến 360kW). Lưu và tự động khôi phục lựa chọn của người dùng qua các lần mở app bằng NearbyFilterPreferences"
+      "name": "Live Station Forecast Badges & Multi-Clause Parser",
+      "status": "Implemented",
+      "description": "Badge Amber ⏱️ Sắp trống, bóc tách câu đơn/câu phức đa nhóm công suất, cache 3 phút, circuit breaker 60s khi bị Cloudflare 429."
     },
     {
-      "name": "Top 10 Multi-Tier Matrix Routing",
-      "status": "implemented",
-      "description": "Giới hạn tối đa Top 10 trạm sạc gần nhất tính toán ETA lộ trình lái xe thực tế (Tier 1: Google Routes v2, Tier 2: OSRM Table, Tier 3: Haversine)"
-    },
-    {
-      "name": "BYOK Google Routes & Routing Settings",
-      "status": "implemented",
-      "description": "Modal cấu hình Bring-Your-Own-Key Google Routes API, kiểm tra tính hợp lệ của key ngay lập tức và hỗ trợ fallback linh hoạt"
-    },
-    {
-      "name": "Bottom Navigation & Default Start Tab (Nearby Left, Favorites Right)",
-      "status": "implemented",
-      "description": "Thanh điều hướng Material 3 NavigationBar đặt tab Quanh đây bên trái (mặc định mở đầu cho cả khách và thành viên) và Yêu thích bên phải. Đồng bộ trạng thái yêu thích 2 chiều tức thì."
-    },
-    {
-      "name": "Station Name Distance Sanitization & Multiline Full-Text Display",
-      "status": "implemented",
-      "description": "Làm sạch tiền tố khoảng cách ước tính (5.4km », 9.1km », 500m ») từ API search trước khi hiển thị; bọc dòng linh hoạt tối đa 3 dòng kèm căn chỉnh top cho badge trạng thái"
-    },
-    {
-      "name": "1-Tap Maps Routing",
-      "status": "implemented",
-      "description": "Dẫn đường 1 chạm ưu tiên Google Maps Navigation Intent, fallback sang Geo URI và Web Browser"
-    },
-    {
-      "name": "Offline Caching",
-      "status": "implemented",
-      "description": "Tự động cache danh sách trạm sạc dạng JSON snapshot trong storage, xem được khi offline"
+      "name": "In-App Debug Log Subsystem & Viewer",
+      "status": "Implemented",
+      "description": "Ghi nhận vòng tròn 500 mục log mạng, bóc tách và phân loại mức độ, giao diện tra cứu trực tiếp trong tab Cài đặt."
     }
   ],
   "knowledge_items": {
-    "gotchas": [
-      {
-        "issue": "Dự báo cổng sạc trống bị che mất sau 0.5s trên Web (amd-locked vs amd-hasmore)",
-        "solution": "Máy chủ EVCS nhúng sẵn dự báo trong HTML tĩnh ban đầu. Sau ~0.5s, web_charging.js gửi POST /charging nhận amd-locked và ghi đè DOM t.innerHTML = n.ticker nếu không có gói EVCS Go. Với app Native EV+, chỉ cần đọc trực tiếp HTML tĩnh ban đầu từ GET request để bảo toàn trọn vẹn thông tin dự báo cho tài xế xem miễn phí mà không bị che."
-      },
-      {
-        "issue": "Tiền tố khoảng cách từ API tìm kiếm EVCS (5.4km » ...)",
-        "solution": "API Search trả về stationName có kèm khoảng cách và ký tự ». Cần xử lý qua StationNameSanitizer trước khi gán vào domain model và StationUrlBuilder để tránh tạo sai canonical URL slug và tránh đồng bộ ngược tiền tố này lên EVCS cloud."
-      },
-      {
-        "issue": "Độ trễ và fallback tính khoảng cách (Khoảng cách '6.9km • Đường thẳng')",
-        "solution": "Hệ thống 3 tầng: Google Routes (Tier 1) -> OSRM (Tier 2) -> Haversine (Tier 3). Khi chưa nhập API Key hoặc OSRM chưa phản hồi, app tự động kích hoạt Tier 3 hiển thị ngay lập tức khoảng cách đường thẳng offline trong 0ms giúp người dùng biết vị trí tương đối mà không phải đợi mạng."
-      },
-      {
-        "issue": "Lưu trữ bộ lọc công suất an toàn qua app restart",
-        "solution": "NearbyFilterPreferences mã hóa danh sách Enum WattageOption thành chuỗi CSV (ví dụ 'KW_250,KW_180'). Khi đọc lại, split và parse an toàn, bỏ qua các token bị lỗi hoặc không xác định để không gây crash app."
-      },
-      {
-        "issue": "Cloudflare WAF 403 Managed Challenge khi dùng VPN",
-        "solution": "EVCS chặn dải IP datacenter/VPN (như ProtonVPN Datacamp). Phải tắt VPN trên thiết bị hoặc dùng mạng Wi-Fi/4G thông thường để request không bị chặn."
-      },
-      {
-        "issue": "X-Partial header trên endpoint /reward.html",
-        "solution": "Endpoint /reward.html trả về HTML khi có X-Partial: reward (để lấy CSRF). Nhưng khi gửi action: send_otp hoặc verify_otp, KHÔNG được gửi X-Partial để backend trả về JSON."
-      },
-      {
-        "issue": "Strict Top 10 Destinations routing policy",
-        "solution": "Để tối ưu chi phí API Google Routes và độ trễ mạng OSRM, chỉ trích xuất đúng 10 trạm gần nhất theo khoảng cách Haversine gửi vào coordinator tính ma trận lộ trình."
-      },
-      {
-        "issue": "Hai chiều đồng bộ favorites giữa FavoritesScreen và NearbyScreen",
-        "solution": "Dùng chung singleton EvcsRepository: favoritesState (StateFlow<List<Station>>) và favoriteIdsState (StateFlow<Set<String>>) để khi thêm/xóa trạm ở một màn hình, màn hình kia phản ứng tức thì."
-      }
+    "patterns": [
+      "Repository Pattern với In-Memory Cache (ForecastCache) và EncryptedSharedPreferences (SessionStorage)",
+      "Multi-Tier Routing Coordinator với cơ chế Fallback tầng",
+      "Circuit Breaker Pattern cho Cloudflare HTTP 429 Rate Limiting",
+      "Progressive UI State Updates qua Kotlin StateFlow và Coroutines Staggered Pacing",
+      "Dedicated Unit Test Suite per Feature Domain"
     ],
-    "hardware_and_tools": {
-      "mcp_server": "@landicefu/android-adb-mcp-server",
-      "tested_device": "OnePlus 13R (CPH2691)",
-      "adb_device_id": "3B658D010BU00000",
-      "apk_path": "app/build/outputs/apk/debug/app-debug.apk"
-    }
+    "gotchas": [
+      "Cloudflare Rate Limiting (Mã lỗi 1015 / HTTP 429) sẽ phạt nặng hơn nếu retry nhanh (1s/2s). Phải dừng retry lập tức và ngắt mạch 60s.",
+      "Ticker HTML của EVCS có câu phức ghép nhiều nhóm trụ qua dấu phẩy (ví dụ: '3 xe sạc trụ 120kW sẽ xong trong 5-21 phút, 1 xe sạc trụ 60kW sẽ xong trong 1 phút nữa'). Cần dùng CLAUSE_REGEX tách từng vế thay vì regex đơn.",
+      "Các trạm có banner amd-locked (chưa có phiên sạc hoặc cần tài khoản EVCS Go) cần log INFO thay vì WARN để tránh làm bẩn debug log."
+    ]
   }
 }

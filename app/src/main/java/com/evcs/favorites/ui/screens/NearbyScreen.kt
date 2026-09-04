@@ -69,12 +69,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.routing.RoutingSettings
+import com.evcs.favorites.domain.model.DcWattageTier
 import com.evcs.favorites.navigation.MapNavigator
+import com.evcs.favorites.ui.components.CustomConfigPromptDialog
 import com.evcs.favorites.ui.components.LoginRequiredDialog
 import com.evcs.favorites.ui.components.RoutingSettingsModal
+import com.evcs.favorites.ui.components.SmartFilterBar
 import com.evcs.favorites.ui.components.StationCard
 import com.evcs.favorites.ui.components.StationDetailModal
-import com.evcs.favorites.ui.components.WattageFilterChipsRow
 import com.evcs.favorites.ui.state.NearbyUiEvent
 import com.evcs.favorites.ui.state.NearbyUiState
 import com.evcs.favorites.ui.theme.EmeraldContainerDark
@@ -289,8 +291,12 @@ fun NearbyScreen(
                     uiState.hasSearched -> {
                         NearbyResultContent(
                             uiState = uiState,
-                            onToggleWattage = { viewModel.toggleWattageFilter(it) },
-                            onClearFilters = { viewModel.clearWattageFilters() },
+                            onCustomFilterClick = { viewModel.applyCustomFilter() },
+                            onDcFilterClick = { viewModel.enterDcMode() },
+                            onAcFilterClick = { viewModel.toggleAcFilter() },
+                            onSelectDcTier = { viewModel.selectDcTier(it) },
+                            onBackFromDc = { viewModel.exitDcMode() },
+                            onClearFilters = { viewModel.clearSmartFilter() },
                             onFavoriteClick = { viewModel.toggleFavorite(it) },
                             onNavigateClick = { station ->
                                 MapNavigator.navigate(
@@ -324,7 +330,24 @@ fun NearbyScreen(
                     onSaveRoutingSettings(newSettings)
                 },
                 onValidateKey = onValidateGoogleApiKey ?: { Result.success(true) },
-                onDismiss = { showRoutingSettings = false }
+                onDismiss = { showRoutingSettings = false },
+                customFilterConfig = uiState.savedCustomConfig,
+                onSaveCustomFilter = { config ->
+                    viewModel.saveAndApplyCustomFilter(config)
+                }
+            )
+        }
+
+        // Custom Filter Configuration Prompt Dialog
+        if (uiState.showCustomConfigPrompt) {
+            CustomConfigPromptDialog(
+                onConfirmSetup = {
+                    viewModel.dismissCustomPrompt()
+                    showRoutingSettings = true
+                },
+                onDismiss = {
+                    viewModel.dismissCustomPrompt()
+                }
             )
         }
 
@@ -479,12 +502,16 @@ private fun NearbyLoadingContent(
 }
 
 /**
- * Result Content displaying sticky wattage chips, info pill, and scrollable Top 10 list.
+ * Result Content displaying SmartFilterBar, dynamic info pill, and scrollable Top 10 list.
  */
 @Composable
 private fun NearbyResultContent(
     uiState: NearbyUiState,
-    onToggleWattage: (com.evcs.favorites.domain.model.WattageOption) -> Unit,
+    onCustomFilterClick: () -> Unit,
+    onDcFilterClick: () -> Unit,
+    onAcFilterClick: () -> Unit,
+    onSelectDcTier: (DcWattageTier) -> Unit,
+    onBackFromDc: () -> Unit,
     onClearFilters: () -> Unit,
     onFavoriteClick: (Station) -> Unit,
     onNavigateClick: (Station) -> Unit,
@@ -492,11 +519,18 @@ private fun NearbyResultContent(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        // Sticky Top Wattage Filter Chips Row
-        WattageFilterChipsRow(
-            selectedWattages = uiState.selectedWattages,
-            onToggleWattage = onToggleWattage,
-            onClearFilters = onClearFilters,
+        // Smart Filter Bar with 3-button selector & animated DC sub-filter
+        SmartFilterBar(
+            activeFilterMode = uiState.activeFilterMode,
+            isDcSubFilterVisible = uiState.isDcSubFilterVisible,
+            selectedDcTier = uiState.selectedDcTier,
+            savedCustomConfig = uiState.savedCustomConfig,
+            onCustomClick = onCustomFilterClick,
+            onDcClick = onDcFilterClick,
+            onAcClick = onAcFilterClick,
+            onSelectDcTier = onSelectDcTier,
+            onBackFromDc = onBackFromDc,
+            onClearFilter = onClearFilters,
             modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
         )
 
@@ -512,7 +546,7 @@ private fun NearbyResultContent(
             )
         }
 
-        // Header info pill: "Top 10 trạm sạc VinFast gần nhất còn cổng trống"
+        // Header info pill: Dynamic feedback reflecting active filter and station count
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -526,7 +560,7 @@ private fun NearbyResultContent(
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "Top 10 trạm sạc VinFast gần nhất còn cổng trống",
+                    text = uiState.filterSummaryPillText,
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold,
                         color = EmeraldPrimary

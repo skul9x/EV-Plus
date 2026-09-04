@@ -22,13 +22,25 @@ object StationForecastParser {
         options = setOf(RegexOption.IGNORE_CASE)
     )
 
-    // Regex for stripped clean text
+    // Sentence extractor capturing full forecast phrase starting with "Dự kiến" and ending with "phút nữa"
+    private val FULL_SENTENCE_REGEX = Regex(
+        pattern = """(Dự\s*kiến\s+[\s\S]*?phút\s*nữa)""",
+        options = setOf(RegexOption.IGNORE_CASE)
+    )
+
+    // Individual clause regex matching "(\d+) xe sạc trụ ([0-9.]+)kW sẽ xong trong (\d+)(?:-(\d+))? phút"
+    private val CLAUSE_REGEX = Regex(
+        pattern = """(\d+)\s*xe\s*sạc\s*trụ\s*([0-9.]+)\s*k?W\s*sẽ\s*xong\s*trong\s*(\d+)(?:\s*[-–—]\s*(\d+))?\s*phút""",
+        options = setOf(RegexOption.IGNORE_CASE)
+    )
+
+    // Regex for stripped clean text (single clause fallback)
     private val FORECAST_CLEAN_REGEX = Regex(
         pattern = """Dự\s*kiến\s*(\d+)\s*xe\s*sạc\s*trụ\s*([0-9.]+)\s*k?W\s*sẽ\s*xong\s*trong\s*(\d+)(?:\s*[-–—]\s*(\d+))?\s*phút\s*nữa""",
         options = setOf(RegexOption.IGNORE_CASE)
     )
 
-    // Regex to match directly against raw HTML with possible inline tags
+    // Regex to match directly against raw HTML with possible inline tags (single clause fallback)
     private val FORECAST_RAW_HTML_REGEX = Regex(
         pattern = """Dự\s*kiến\s*(?:<[^>]+>)*\s*(\d+)\s*(?:<[^>]+>)*\s*xe\s*sạc\s*trụ\s*(?:<[^>]+>)*\s*([0-9.]+)\s*(?:<[^>]+>)*\s*k?W\s*(?:<[^>]+>)*\s*sẽ\s*xong\s*trong\s*(?:<[^>]+>)*\s*(\d+)(?:\s*(?:<[^>]+>)*\s*[-–—]\s*(?:<[^>]+>)*\s*(\d+))?\s*(?:<[^>]+>)*\s*phút\s*nữa""",
         options = setOf(RegexOption.IGNORE_CASE)
@@ -72,19 +84,23 @@ object StationForecastParser {
             parseDetailedSessions(tickerBlock)
         }
 
-        // Try raw regex on tickerBlock or html
+        val stripped = stripHtmlTags(tickerBlock).ifBlank { stripHtmlTags(html) }
+        val fullSentenceMatch = FULL_SENTENCE_REGEX.find(stripped)
+        val candidateSentence = fullSentenceMatch?.groupValues?.get(1)?.trim()
+
+        val clauses = CLAUSE_REGEX.findAll(candidateSentence ?: stripped).toList()
+
+        // Fallback single-clause regex matchers
         var textMatch = FORECAST_RAW_HTML_REGEX.find(tickerBlock)
             ?: (if (tickerBlock !== html) FORECAST_RAW_HTML_REGEX.find(html) else null)
 
-        // Try stripped text regex if raw regex did not match
         if (textMatch == null) {
-            val stripped = stripHtmlTags(tickerBlock)
             textMatch = FORECAST_CLEAN_REGEX.find(stripped)
                 ?: (if (tickerBlock !== html) FORECAST_CLEAN_REGEX.find(stripHtmlTags(html)) else null)
         }
 
-        // If neither text forecast nor sessions found, return null
-        if (textMatch == null && detailedSessions.isEmpty()) {
+        // If neither clause, text forecast, nor sessions found, return null
+        if (clauses.isEmpty() && textMatch == null && detailedSessions.isEmpty()) {
             return null
         }
 
@@ -94,6 +110,52 @@ object StationForecastParser {
                 html.contains("amd-hasmore", ignoreCase = true) ||
                 tickerBlock.contains("amd-locked", ignoreCase = true) ||
                 html.contains("amd-locked", ignoreCase = true)
+
+        if (clauses.isNotEmpty()) {
+            val primaryClause = clauses.first()
+            val vehicleCount = primaryClause.groupValues[1].toIntOrNull() ?: 1
+            val wattageKw = primaryClause.groupValues[2].toDoubleOrNull() ?: 0.0
+            val minMinutes = primaryClause.groupValues[3].toIntOrNull() ?: 0
+            val maxMinutes = primaryClause.groupValues[4].takeIf { it.isNotBlank() }?.toIntOrNull() ?: minMinutes
+
+            val cleanRawText = candidateSentence ?: stripHtmlTags(primaryClause.value)
+
+            // Synthesize detailedSessions if there are multiple clauses and no structured JSON was provided
+            val effectiveSessions = if (detailedSessions.isNotEmpty()) {
+                detailedSessions
+            } else if (clauses.size > 1) {
+                val generated = mutableListOf<ForecastSession>()
+                for (clause in clauses) {
+                    val count = clause.groupValues[1].toIntOrNull() ?: 1
+                    val kw = clause.groupValues[2].toDoubleOrNull() ?: 0.0
+                    val minM = clause.groupValues[3].toIntOrNull() ?: 0
+                    val maxM = clause.groupValues[4].takeIf { it.isNotBlank() }?.toIntOrNull() ?: minM
+                    if (count <= 1) {
+                        generated.add(ForecastSession(kw = kw, min = minM))
+                    } else {
+                        generated.add(ForecastSession(kw = kw, min = minM))
+                        for (i in 1 until count - 1) {
+                            val interpolated = minM + ((maxM - minM) * i) / (count - 1)
+                            generated.add(ForecastSession(kw = kw, min = interpolated))
+                        }
+                        generated.add(ForecastSession(kw = kw, min = maxM))
+                    }
+                }
+                generated
+            } else {
+                emptyList()
+            }
+
+            return StationForecast(
+                rawText = cleanRawText,
+                vehicleCount = vehicleCount,
+                wattageKw = wattageKw,
+                minMinutes = minMinutes,
+                maxMinutes = maxMinutes,
+                isTeaser = isTeaser,
+                detailedSessions = effectiveSessions
+            )
+        }
 
         if (textMatch != null) {
             val vehicleCount = textMatch.groupValues[1].toIntOrNull() ?: 1
