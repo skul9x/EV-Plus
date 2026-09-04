@@ -5,7 +5,6 @@ import com.evcs.favorites.data.api.EvcsApiClient
 import com.evcs.favorites.data.auth.InMemorySessionStorage
 import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.auth.AuthEngine
-import com.evcs.favorites.data.cache.ForecastCache
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.location.LocationService
@@ -279,47 +278,6 @@ class SingleFlightRequestDeduplicationTest {
         val seqRes = repository.searchNearbyVinFast(21.0285, 105.8542)
         assertTrue(seqRes.isSuccess)
         assertEquals("Sequential search call must trigger fresh HTTP call", 2, searchCallCount.get())
-    }
-
-    @Test
-    fun testEvcsRepository_concurrentFetchStationForecast_deduplicatesToSingleNetworkExecution() = runBlocking {
-        val forecastCallCount = AtomicInteger(0)
-        val sampleHtml = """
-            <div id="stationTicker" class="ticker-box">
-                Dự kiến 1 xe sạc trụ 60kW sẽ xong trong 5 phút nữa
-            </div>
-            <script data-charging-sessions='[{"kw":60.0,"min":5,"soc":80}]'></script>
-        """.trimIndent()
-
-        val fakeApiClient = object : EvcsApiClient(sessionManager, client = okHttpClient, baseUrl = "http://localhost") {
-            override suspend fun fetchChargingForecast(
-                stationName: String,
-                locationId: String,
-                isVinFast: Boolean
-            ): Result<com.evcs.favorites.data.model.ChargingForecastResponse> {
-                forecastCallCount.incrementAndGet()
-                delay(150)
-                return Result.success(com.evcs.favorites.data.model.ChargingForecastResponse(ticker = sampleHtml))
-            }
-        }
-
-        val repository = EvcsRepository(apiClient = fakeApiClient, ioDispatcher = Dispatchers.IO)
-        val station = createSampleStation("st_100", "Trạm Sạc Test")
-
-        val call1 = async(Dispatchers.IO) { repository.fetchStationForecast(station, forceRefresh = true) }
-        val call2 = async(Dispatchers.IO) { repository.fetchStationForecast(station, forceRefresh = true) }
-
-        val res1 = call1.await()
-        val res2 = call2.await()
-
-        assertTrue(res1.isSuccess)
-        assertTrue(res2.isSuccess)
-        assertEquals("Concurrent fetchStationForecast calls must produce exactly 1 network call", 1, forecastCallCount.get())
-
-        // Sequential call
-        val seqRes = repository.fetchStationForecast(station, forceRefresh = true)
-        assertTrue(seqRes.isSuccess)
-        assertEquals("Sequential fetchStationForecast call must trigger fresh network call", 2, forecastCallCount.get())
     }
 
     // -------------------------------------------------------------

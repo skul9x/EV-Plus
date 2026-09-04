@@ -1,5 +1,6 @@
 package com.evcs.favorites.data.routing
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 import java.util.Locale
 
@@ -68,6 +69,7 @@ enum class RoutingEngineType {
 /**
  * Domain representation of driving metrics for navigation and station ordering.
  */
+@Immutable
 @Serializable
 data class DrivingMetrics(
     val distanceMeters: Long,

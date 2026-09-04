@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.evcs.favorites.data.network.AppOkHttpClientProvider
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,7 +28,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
  */
 class RoutingPreferencesManager(
     private val storage: SessionStorage,
-    private val okHttpClient: OkHttpClient = OkHttpClient(),
+    private val okHttpClient: OkHttpClient = AppOkHttpClientProvider.getSharedClient().newBuilder().build(),
     private val baseUrl: String = GoogleRoutesClient.DEFAULT_BASE_URL,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {

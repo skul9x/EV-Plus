@@ -1,14 +1,10 @@
 package com.evcs.favorites.ui.components
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,11 +38,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,7 +54,6 @@ import com.evcs.favorites.data.routing.DrivingMetrics
 import com.evcs.favorites.data.routing.RoutingEngineType
 import com.evcs.favorites.data.routing.TrafficCondition
 import com.evcs.favorites.domain.location.formattedDistance
-import com.evcs.favorites.domain.model.StationForecast
 import com.evcs.favorites.ui.theme.DarkOutline
 import com.evcs.favorites.ui.theme.DarkOnSurfaceVariant
 import com.evcs.favorites.ui.theme.DistancePillBg
@@ -132,8 +127,7 @@ fun StationCard(
                 StatusBadge(
                     depotStatus = station.depotStatus,
                     totalAvailablePlugs = station.totalAvailablePlugs,
-                    totalPlugs = station.totalPlugs,
-                    forecast = station.forecast
+                    totalPlugs = station.totalPlugs
                 )
             }
 
@@ -202,17 +196,17 @@ fun StationCard(
                 )
             }
 
-            ForecastCapsule(forecast = station.forecast)
-
             Spacer(modifier = Modifier.height(12.dp))
 
             // Connector chips (e.g. live availability "✧ 120kW: trống 1/4" or baseline tags "✧ 30kW")
-            val displayPowers = if (station.powers.isNotEmpty()) {
-                station.powers
-            } else if (station.connectors.isNotBlank()) {
-                EvcsRepository.parseConnectorsToPowers(station.connectors)
-            } else {
-                emptyList()
+            val displayPowers = remember(station.powers, station.connectors) {
+                if (station.powers.isNotEmpty()) {
+                    station.powers
+                } else if (station.connectors.isNotBlank()) {
+                    EvcsRepository.parseConnectorsToPowers(station.connectors)
+                } else {
+                    emptyList()
+                }
             }
 
             if (displayPowers.isNotEmpty()) {
@@ -594,11 +588,6 @@ fun WattageChip(
     }
 }
 
-val StatusForecastAmber = Color(0xFFF59E0B)
-val StatusForecastAmberContainer = Color(0x26F59E0B)
-val ForecastCapsuleBg = Color(0x1AF59E0B)
-val ForecastCapsuleBorder = Color(0x4DF59E0B)
-
 /**
  * Resolved representation of status badge appearance and semantic meaning.
  */
@@ -613,15 +602,13 @@ data class StatusBadgeModel(
  * - "Bảo trì" when depotStatus is Maintaining
  * - "Tạm dừng" when depotStatus is OutOfService
  * - "Hoạt động" or "Đã lưu" when totalPlugs == 0 (never "Hết cổng" if unverified)
- * - "⏱️ Sắp trống" when station is full and forecast != null (Amber #F59E0B)
- * - "Hết cổng" when live totalPlugs > 0 and totalAvailablePlugs == 0 without forecast (Red #EF4444)
+ * - "Hết cổng" when live totalPlugs > 0 and totalAvailablePlugs == 0 (Red #EF4444)
  * - "Hoạt động" when totalAvailablePlugs > 0 (Green #10B981)
  */
 fun resolveStatusBadge(
     depotStatus: String,
     totalAvailablePlugs: Int,
-    totalPlugs: Int = 0,
-    forecast: StationForecast? = null
+    totalPlugs: Int = 0
 ): StatusBadgeModel {
     val (statusLabel, dotColor, containerColor) = when {
         depotStatus.equals("Maintaining", ignoreCase = true) -> Triple(
@@ -650,19 +637,11 @@ fun resolveStatusBadge(
             }
         }
         totalPlugs > 0 && totalAvailablePlugs == 0 -> {
-            if (forecast != null) {
-                Triple(
-                    "⏱️ Sắp trống",
-                    StatusForecastAmber,
-                    StatusForecastAmberContainer
-                )
-            } else {
-                Triple(
-                    "Hết cổng",
-                    StatusBusy,
-                    StatusBusyContainer
-                )
-            }
+            Triple(
+                "Hết cổng",
+                StatusBusy,
+                StatusBusyContainer
+            )
         }
         totalAvailablePlugs > 0 || depotStatus.equals("Normal", ignoreCase = true) -> Triple(
             "Hoạt động",
@@ -687,10 +666,9 @@ fun StatusBadge(
     depotStatus: String,
     totalAvailablePlugs: Int,
     totalPlugs: Int = 0,
-    forecast: StationForecast? = null,
     modifier: Modifier = Modifier
 ) {
-    val badge = resolveStatusBadge(depotStatus, totalAvailablePlugs, totalPlugs, forecast)
+    val badge = resolveStatusBadge(depotStatus, totalAvailablePlugs, totalPlugs)
 
     AnimatedContent(
         targetState = badge,
@@ -721,114 +699,6 @@ fun StatusBadge(
                 ),
                 color = targetBadge.dotColor
             )
-        }
-    }
-}
-
-/**
- * Visual model describing the resolved content of the Amber Forecast Capsule.
- */
-data class ForecastCapsuleData(
-    val isMultiSession: Boolean,
-    val singleSummary: String,
-    val header: String = "⚡ DỰ KIẾN CỔNG SẮP TRỐNG:",
-    val bulletLines: List<String> = emptyList()
-)
-
-/**
- * Resolves presentation data for the Amber Forecast Capsule matching 1.md specification:
- * - Case 1 (Single session / 1 power line):
- *     "⏱️ Dự kiến 2 xe sạc trụ 20kW sẽ xong trong 7-14 phút nữa"
- * - Case 2 (Multiple sessions / multi-power levels):
- *     Header: "⚡ DỰ KIẾN CỔNG SẮP TRỐNG:"
- *     Bullets:
- *     "• 20kW:  ~7-14 phút (2 xe)"
- *     "• 60kW:  ~13 phút (1 xe)"
- *     "• 250kW: ~8 phút (1 xe)"
- */
-fun resolveForecastCapsuleData(forecast: StationForecast): ForecastCapsuleData {
-    val isMulti = forecast.isMultiSession
-    val header = "⚡ DỰ KIẾN CỔNG SẮP TRỐNG:"
-    val singleSummary = forecast.formatSingleSummary()
-    val bulletLines = if (isMulti) {
-        forecast.getGroupedPowerForecasts(descending = false).map { it.formatBulletLine() }
-    } else {
-        emptyList()
-    }
-    return ForecastCapsuleData(
-        isMultiSession = isMulti,
-        singleSummary = singleSummary,
-        header = header,
-        bulletLines = bulletLines
-    )
-}
-
-/**
- * Amber Forecast Capsule displayed directly above connector chips on StationCard.
- * Appears with smooth fadeIn + expandVertically animation when station.forecast is available.
- */
-@Composable
-fun ForecastCapsule(
-    forecast: StationForecast?,
-    modifier: Modifier = Modifier
-) {
-    AnimatedVisibility(
-        visible = forecast != null,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically(),
-        modifier = modifier
-    ) {
-        if (forecast != null) {
-            val capsuleData = resolveForecastCapsuleData(forecast)
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(ForecastCapsuleBg)
-                    .border(BorderStroke(1.dp, ForecastCapsuleBorder), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                if (!capsuleData.isMultiSession) {
-                    Text(
-                        text = capsuleData.singleSummary,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp
-                        ),
-                        color = StatusForecastAmber,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = capsuleData.header,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            ),
-                            color = StatusForecastAmber
-                        )
-                        capsuleData.bulletLines.forEach { bullet ->
-                            Text(
-                                text = bullet,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontWeight = FontWeight.Normal,
-                                    fontSize = 12.5.sp,
-                                    fontFamily = FontFamily.Monospace
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.95f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }

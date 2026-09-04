@@ -6,7 +6,6 @@ import java.util.Locale
 import java.util.UUID
 
 enum class DebugLogTag {
-    FORECAST,
     NETWORK,
     SEARCH,
     FAVORITES,
@@ -35,7 +34,6 @@ data class DebugLogEntry(
     val latencyMs: Long? = null,
     val requestSnippet: String? = null,
     val responseSnippet: String? = null,
-    val parsedForecastSummary: String? = null,
     val errorDetails: String? = null
 ) {
     companion object {

@@ -1,7 +1,7 @@
 package com.evcs.favorites.data.model
 
+import androidx.compose.runtime.Immutable
 import com.evcs.favorites.data.routing.DrivingMetrics
-import com.evcs.favorites.domain.model.StationForecast
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -140,6 +140,7 @@ data class SearchRequest(
 /**
  * Domain representation of a power port configuration.
  */
+@Immutable
 @Serializable
 data class PowerPort(
     val typeWatts: Long = 0L,
@@ -164,6 +165,7 @@ data class PowerPort(
 /**
  * Domain model representing an enriched EVCS station.
  */
+@Immutable
 @Serializable
 data class Station(
     val id: String, // locationId
@@ -182,8 +184,7 @@ data class Station(
     val isFreeParking: Boolean = true,
     val workingTimeDescription: String = "24/7",
     val distanceKm: Double? = null,
-    val drivingMetrics: DrivingMetrics? = null,
-    val forecast: StationForecast? = null
+    val drivingMetrics: DrivingMetrics? = null
 ) {
     /**
      * True if verified real-time telemetry metrics are available for this station.
@@ -203,32 +204,4 @@ data class Station(
     val effectiveDurationSeconds: Long?
         get() = drivingMetrics?.durationSeconds
 }
-
-/**
- * Dynamic user partial payload returned from station detail endpoint with `X-Partial: user`.
- */
-@Serializable
-data class UserPartialResponse(
-    val chargeToken: String? = null,
-    val apiToken: String? = null
-)
-
-/**
- * Request payload sent to `POST /charging` to retrieve real-time forecast.
- */
-@Serializable
-data class ChargingForecastRequest(
-    val id: String,
-    val t: String
-)
-
-/**
- * Dynamic real-time charging forecast and occupancy response returned by `POST /charging`.
- */
-@Serializable
-data class ChargingForecastResponse(
-    val ticker: String? = null,
-    val busyKw: Map<String, Int> = emptyMap(),
-    val partial: Boolean = false
-)
 

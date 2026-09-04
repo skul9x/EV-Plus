@@ -96,9 +96,6 @@ class NearbyViewModel(
     var routingJob: Job? = null
         private set
 
-    var forecastJob: Job? = null
-        private set
-
     init {
         // Observe repository favorite IDs to keep UI state automatically in sync
         viewModelScope.launch(dispatcher) {
@@ -144,7 +141,6 @@ class NearbyViewModel(
         }
         scanJob?.cancel()
         routingJob?.cancel()
-        forecastJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             if (!locationService.hasLocationPermission()) {
@@ -231,14 +227,12 @@ class NearbyViewModel(
 
         if (lat != null && lon != null && _uiState.value.hasSearched) {
             routingJob?.cancel()
-            forecastJob?.cancel()
             val job = viewModelScope.launch(dispatcher) {
                 executeFilterAndRoutingPipeline(
                     rawStations = raw,
                     userLat = lat,
                     userLon = lon,
-                    selectedWattages = newSelected,
-                    forceRefreshForecast = false
+                    selectedWattages = newSelected
                 )
             }
             routingJob = job
@@ -261,14 +255,12 @@ class NearbyViewModel(
 
         if (lat != null && lon != null && _uiState.value.hasSearched) {
             routingJob?.cancel()
-            forecastJob?.cancel()
             val job = viewModelScope.launch(dispatcher) {
                 executeFilterAndRoutingPipeline(
                     rawStations = raw,
                     userLat = lat,
                     userLon = lon,
-                    selectedWattages = emptySet(),
-                    forceRefreshForecast = false
+                    selectedWattages = emptySet()
                 )
             }
             routingJob = job
@@ -462,7 +454,6 @@ class NearbyViewModel(
         return if (lat != null && lon != null && (lat != 0.0 || lon != 0.0)) {
             scanJob?.cancel()
             routingJob?.cancel()
-            forecastJob?.cancel()
             val job = viewModelScope.launch(dispatcher) {
                 _uiState.update { it.copy(isSearching = true, errorMessage = null) }
 
@@ -490,8 +481,7 @@ class NearbyViewModel(
                     rawStations = raw,
                     userLat = lat,
                     userLon = lon,
-                    selectedWattages = _uiState.value.selectedWattages,
-                    forceRefreshForecast = true
+                    selectedWattages = _uiState.value.selectedWattages
                 )
             }
             scanJob = job
@@ -520,7 +510,7 @@ class NearbyViewModel(
 
     /**
      * Recalculates driving metrics for the currently visible top 10 stations with the specified [settings].
-     * Avoids GPS hardware re-acquisition and preserves existing station data (e.g. forecast, connectors).
+     * Avoids GPS hardware re-acquisition and preserves existing station data (e.g. connectors).
      */
     fun recalculateRouting(settings: RoutingSettings = prefsManager.settings.value): Job {
         val lat = _uiState.value.userLatitude
@@ -580,21 +570,19 @@ class NearbyViewModel(
     /**
      * Re-runs the filtering and routing pipeline using current state.
      */
-    private fun triggerFilterPipeline(forceRefreshForecast: Boolean = false): Job? {
+    private fun triggerFilterPipeline(): Job? {
         val lat = _uiState.value.userLatitude
         val lon = _uiState.value.userLongitude
         val raw = _uiState.value.rawStations
 
         if (raw.isNotEmpty()) {
             routingJob?.cancel()
-            forecastJob?.cancel()
             val job = viewModelScope.launch(dispatcher) {
                 executeFilterAndRoutingPipeline(
                     rawStations = raw,
                     userLat = lat ?: 0.0,
                     userLon = lon ?: 0.0,
-                    selectedWattages = _uiState.value.selectedWattages,
-                    forceRefreshForecast = forceRefreshForecast
+                    selectedWattages = _uiState.value.selectedWattages
                 )
             }
             routingJob = job
@@ -611,14 +599,13 @@ class NearbyViewModel(
         rawStations: List<Station>,
         userLat: Double,
         userLon: Double,
-        selectedWattages: Set<WattageOption>,
-        forceRefreshForecast: Boolean = false
+        selectedWattages: Set<WattageOption>
     ) {
         val currentMode = _uiState.value.activeFilterMode
         val currentDcTier = _uiState.value.selectedDcTier
         val currentCustomConfig = _uiState.value.savedCustomConfig ?: smartFilterPrefs.getCustomConfig()
 
-        // 1. Client-side smart/wattage and port availability filtering (includes full stations for forecast enrichment)
+        // 1. Client-side smart/wattage and port availability filtering
         val filtered = if (currentMode != SmartFilterMode.NONE) {
             NearbyStationFilter.filterSmartStations(
                 stations = rawStations,
@@ -692,67 +679,12 @@ class NearbyViewModel(
                 isRoutingLoading = false
             )
         }
-
-        // 7. Trigger background forecast enrichment for strictly Top 5 stations
-        enrichTopStationsWithForecast(forceRefresh = forceRefreshForecast)
     }
-
-    /**
-     * Targeted background forecast enrichment unconditionally for the Top 5 nearest stations
-     * from visible top10DisplayStations list.
-     * Progressively updates stations in UI state as each forecast arrives, preserving driving metrics,
-     * connectors, and display sort order.
-     */
-    fun enrichTopStationsWithForecast(forceRefresh: Boolean = false): Job {
-        forecastJob?.cancel()
-        val job = viewModelScope.launch(dispatcher) {
-            val targetStations = _uiState.value.top10DisplayStations.take(5)
-
-            if (targetStations.isEmpty()) return@launch
-
-            withContext(ioDispatcher) {
-                repository.enrichStationsWithForecast(
-                    stations = targetStations,
-                    forceRefresh = forceRefresh,
-                    onStationUpdated = { updatedStation ->
-                        launch(dispatcher) {
-                            _uiState.update { currentState ->
-                                val updatedTop10 = currentState.top10DisplayStations.map { st ->
-                                    if (st.id == updatedStation.id) {
-                                        st.copy(forecast = updatedStation.forecast)
-                                    } else {
-                                        st
-                                    }
-                                }
-                                val updatedRaw = currentState.rawStations.map { st ->
-                                    if (st.id == updatedStation.id) {
-                                        st.copy(forecast = updatedStation.forecast)
-                                    } else {
-                                        st
-                                    }
-                                }
-                                currentState.copy(
-                                    top10DisplayStations = updatedTop10,
-                                    rawStations = updatedRaw
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-        }
-        forecastJob = job
-        return job
-    }
-
-    fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job =
-        enrichTopStationsWithForecast(forceRefresh)
 
     override fun onCleared() {
         super.onCleared()
         scanJob?.cancel()
         routingJob?.cancel()
-        forecastJob?.cancel()
     }
 
     companion object {

@@ -2,25 +2,17 @@ package com.evcs.favorites.data.api
 
 import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.crypto.EvcsHmacSigner
-import com.evcs.favorites.data.model.ChargingForecastRequest
-import com.evcs.favorites.data.model.ChargingForecastResponse
 import com.evcs.favorites.data.model.FavoriteStationRaw
 import com.evcs.favorites.data.model.FavoritesResponse
 import com.evcs.favorites.data.model.SaveFavoritesRequest
 import com.evcs.favorites.data.model.SearchRequest
 import com.evcs.favorites.data.model.SearchResponse
 import com.evcs.favorites.data.model.SearchStationRaw
-import com.evcs.favorites.data.model.UserPartialResponse
 import com.evcs.favorites.util.StationUrlBuilder
-import com.evcs.favorites.data.logging.AppDebugLogger
-import com.evcs.favorites.data.logging.DebugLogEntry
-import com.evcs.favorites.data.logging.DebugLogLevel
-import com.evcs.favorites.data.logging.DebugLogTag
 import com.evcs.favorites.data.logging.DebugLoggingInterceptor
+import com.evcs.favorites.data.network.AppOkHttpClientProvider
 import com.evcs.favorites.util.RetryAfterParser
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -57,7 +49,7 @@ open class EvcsApiClient(
         }
 
         private fun defaultClient(): OkHttpClient {
-            return OkHttpClient.Builder()
+            return AppOkHttpClientProvider.getSharedClient().newBuilder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
                 .followRedirects(true)
@@ -75,6 +67,53 @@ open class EvcsApiClient(
             return lat in -90.0..90.0 && lon in -180.0..180.0
         }
 
+        // Pre-compiled regex patterns for coordinate and metadata parsing (PERF-CPU-01)
+        val LAT_META_NAME_FIRST_REGEX = Regex(
+            """<meta[^>]+(?:name|property)=["'](?:place:location:latitude|og:latitude|latitude)["'][^>]+content=["']([0-9.-]+)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val LAT_META_CONTENT_FIRST_REGEX = Regex(
+            """<meta[^>]+content=["']([0-9.-]+)["'][^>]+(?:name|property)=["'](?:place:location:latitude|og:latitude|latitude)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val LON_META_NAME_FIRST_REGEX = Regex(
+            """<meta[^>]+(?:name|property)=["'](?:place:location:longitude|og:longitude|longitude)["'][^>]+content=["']([0-9.-]+)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val LON_META_CONTENT_FIRST_REGEX = Regex(
+            """<meta[^>]+content=["']([0-9.-]+)["'][^>]+(?:name|property)=["'](?:place:location:longitude|og:longitude|longitude)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val GEO_POS_NAME_FIRST_REGEX = Regex(
+            """<meta[^>]+(?:name|property)=["']geo\.position["'][^>]+content=["']([0-9.-]+)[;,]\s*([0-9.-]+)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val GEO_POS_CONTENT_FIRST_REGEX = Regex(
+            """<meta[^>]+content=["']([0-9.-]+)[;,]\s*([0-9.-]+)["'][^>]+(?:name|property)=["']geo\.position["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val JSON_LAT_LON_REGEX = Regex(""""latitude"\s*:\s*([0-9.-]+)[\s\S]*?"longitude"\s*:\s*([0-9.-]+)""")
+        val JSON_LON_LAT_REGEX = Regex(""""longitude"\s*:\s*([0-9.-]+)[\s\S]*?"latitude"\s*:\s*([0-9.-]+)""")
+        val JSON_SHORT_LAT_LNG_REGEX = Regex(""""lat"\s*:\s*([0-9.-]+)[\s\S]*?"(?:lng|lon|long)"\s*:\s*([0-9.-]+)""")
+        val MAP_QUERY_REGEX = Regex(
+            """(?:(?:maps\.google\.com|google\.com/maps)[^"'>]*?[?&;](?:q|query|ll)=|geo:|navigation:q=)([0-9.-]+)[,;]([0-9.-]+)""",
+            RegexOption.IGNORE_CASE
+        )
+        val DATA_LAT_REGEX = Regex("""data-(?:lat|latitude)=["']([0-9.-]+)["']""", RegexOption.IGNORE_CASE)
+        val DATA_LON_REGEX = Regex("""data-(?:lng|lon|longitude)=["']([0-9.-]+)["']""", RegexOption.IGNORE_CASE)
+        val ADDRESS_META_NAME_FIRST_REGEX = Regex(
+            """<meta[^>]+(?:name|property)=["'](?:business:contact_data:street_address|og:street-address|address)["'][^>]+content=["']([^"']+)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val ADDRESS_META_CONTENT_FIRST_REGEX = Regex(
+            """<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["'](?:business:contact_data:street_address|og:street-address|address)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        val WORKING_TIME_META_REGEX = Regex(
+            """<meta[^>]+(?:name|property)=["']working-time["'][^>]+content=["']([^"']+)["']""",
+            RegexOption.IGNORE_CASE
+        )
+
         /**
          * Parses GPS coordinates from station detail HTML or metadata:
          * 1. Meta tags (place:location:latitude, og:latitude, latitude, geo.position)
@@ -87,10 +126,8 @@ open class EvcsApiClient(
             if (html.isBlank()) return null
 
             // 1. Meta tags: place:location:latitude & place:location:longitude, og:latitude & og:longitude
-            val latMeta = Regex("""<meta[^>]+(?:name|property)=["'](?:place:location:latitude|og:latitude|latitude)["'][^>]+content=["']([0-9.-]+)["']""", RegexOption.IGNORE_CASE).find(html)
-                ?: Regex("""<meta[^>]+content=["']([0-9.-]+)["'][^>]+(?:name|property)=["'](?:place:location:latitude|og:latitude|latitude)["']""", RegexOption.IGNORE_CASE).find(html)
-            val lonMeta = Regex("""<meta[^>]+(?:name|property)=["'](?:place:location:longitude|og:longitude|longitude)["'][^>]+content=["']([0-9.-]+)["']""", RegexOption.IGNORE_CASE).find(html)
-                ?: Regex("""<meta[^>]+content=["']([0-9.-]+)["'][^>]+(?:name|property)=["'](?:place:location:longitude|og:longitude|longitude)["']""", RegexOption.IGNORE_CASE).find(html)
+            val latMeta = LAT_META_NAME_FIRST_REGEX.find(html) ?: LAT_META_CONTENT_FIRST_REGEX.find(html)
+            val lonMeta = LON_META_NAME_FIRST_REGEX.find(html) ?: LON_META_CONTENT_FIRST_REGEX.find(html)
 
             if (latMeta != null && lonMeta != null) {
                 val lat = latMeta.groupValues[1].toDoubleOrNull()
@@ -99,8 +136,7 @@ open class EvcsApiClient(
             }
 
             // 2. geo.position meta tag: content="21.1452;106.1553" or "21.1452, 106.1553"
-            val geoPos = Regex("""<meta[^>]+(?:name|property)=["']geo\.position["'][^>]+content=["']([0-9.-]+)[;,]\s*([0-9.-]+)["']""", RegexOption.IGNORE_CASE).find(html)
-                ?: Regex("""<meta[^>]+content=["']([0-9.-]+)[;,]\s*([0-9.-]+)["'][^>]+(?:name|property)=["']geo\.position["']""", RegexOption.IGNORE_CASE).find(html)
+            val geoPos = GEO_POS_NAME_FIRST_REGEX.find(html) ?: GEO_POS_CONTENT_FIRST_REGEX.find(html)
             if (geoPos != null) {
                 val lat = geoPos.groupValues[1].toDoubleOrNull()
                 val lon = geoPos.groupValues[2].toDoubleOrNull()
@@ -108,13 +144,13 @@ open class EvcsApiClient(
             }
 
             // 3. Embedded JSON / JavaScript: "latitude": 21.1452, "longitude": 106.1553
-            val jsonLatLon = Regex(""""latitude"\s*:\s*([0-9.-]+)[\s\S]*?"longitude"\s*:\s*([0-9.-]+)""").find(html)
+            val jsonLatLon = JSON_LAT_LON_REGEX.find(html)
             if (jsonLatLon != null) {
                 val lat = jsonLatLon.groupValues[1].toDoubleOrNull()
                 val lon = jsonLatLon.groupValues[2].toDoubleOrNull()
                 if (isValidCoordinate(lat, lon)) return Pair(lat!!, lon!!)
             }
-            val jsonLonLat = Regex(""""longitude"\s*:\s*([0-9.-]+)[\s\S]*?"latitude"\s*:\s*([0-9.-]+)""").find(html)
+            val jsonLonLat = JSON_LON_LAT_REGEX.find(html)
             if (jsonLonLat != null) {
                 val lon = jsonLonLat.groupValues[1].toDoubleOrNull()
                 val lat = jsonLonLat.groupValues[2].toDoubleOrNull()
@@ -122,7 +158,7 @@ open class EvcsApiClient(
             }
 
             // 4. Short form lat / lng: "lat": 21.1452, "lng": 106.1553
-            val jsonLatLng = Regex(""""lat"\s*:\s*([0-9.-]+)[\s\S]*?"(?:lng|lon|long)"\s*:\s*([0-9.-]+)""").find(html)
+            val jsonLatLng = JSON_SHORT_LAT_LNG_REGEX.find(html)
             if (jsonLatLng != null) {
                 val lat = jsonLatLng.groupValues[1].toDoubleOrNull()
                 val lon = jsonLatLng.groupValues[2].toDoubleOrNull()
@@ -130,8 +166,7 @@ open class EvcsApiClient(
             }
 
             // 5. Google Maps / navigation query links: query=lat,lon or q=lat,lon or geo:lat,lon
-            val mapRegex = Regex("""(?:(?:maps\.google\.com|google\.com/maps)[^"'>]*?[?&;](?:q|query|ll)=|geo:|navigation:q=)([0-9.-]+)[,;]([0-9.-]+)""", RegexOption.IGNORE_CASE)
-            val mapMatch = mapRegex.find(html)
+            val mapMatch = MAP_QUERY_REGEX.find(html)
             if (mapMatch != null) {
                 val lat = mapMatch.groupValues[1].toDoubleOrNull()
                 val lon = mapMatch.groupValues[2].toDoubleOrNull()
@@ -139,8 +174,8 @@ open class EvcsApiClient(
             }
 
             // 6. Data attributes: data-lat="..." data-lng="..."
-            val dataLatMatch = Regex("""data-(?:lat|latitude)=["']([0-9.-]+)["']""", RegexOption.IGNORE_CASE).find(html)
-            val dataLonMatch = Regex("""data-(?:lng|lon|longitude)=["']([0-9.-]+)["']""", RegexOption.IGNORE_CASE).find(html)
+            val dataLatMatch = DATA_LAT_REGEX.find(html)
+            val dataLonMatch = DATA_LON_REGEX.find(html)
             if (dataLatMatch != null && dataLonMatch != null) {
                 val lat = dataLatMatch.groupValues[1].toDoubleOrNull()
                 val lon = dataLonMatch.groupValues[1].toDoubleOrNull()
@@ -155,11 +190,10 @@ open class EvcsApiClient(
          */
         fun parseStationMetadataFromHtml(html: String): StationDetailMetadata? {
             val coords = parseCoordinatesFromHtml(html) ?: return null
-            val addressMatch = Regex("""<meta[^>]+(?:name|property)=["'](?:business:contact_data:street_address|og:street-address|address)["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(html)
-                ?: Regex("""<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["'](?:business:contact_data:street_address|og:street-address|address)["']""", RegexOption.IGNORE_CASE).find(html)
+            val addressMatch = ADDRESS_META_NAME_FIRST_REGEX.find(html) ?: ADDRESS_META_CONTENT_FIRST_REGEX.find(html)
             val address = addressMatch?.groupValues?.get(1)?.trim()
 
-            val workingTimeMatch = Regex("""<meta[^>]+(?:name|property)=["']working-time["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(html)
+            val workingTimeMatch = WORKING_TIME_META_REGEX.find(html)
             val workingTime = workingTimeMatch?.groupValues?.get(1)?.trim()
 
             return StationDetailMetadata(
@@ -173,16 +207,6 @@ open class EvcsApiClient(
 
     val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
 
-    @Volatile
-    var cachedChargeToken: String? = null
-        internal set
-
-    @Volatile
-    var cachedChargeTokenExpiryMs: Long = 0L
-        internal set
-
-    private val tokenMutex = Mutex()
-
     fun isGlobalRateLimited(): Boolean {
         val blockedUntil = globalRateLimitedUntil.get()
         return blockedUntil > 0L && System.currentTimeMillis() < blockedUntil
@@ -190,16 +214,6 @@ open class EvcsApiClient(
 
     fun resetRateLimitCooldown() {
         globalRateLimitedUntil.set(0L)
-    }
-
-    fun clearTokenCache() {
-        cachedChargeToken = null
-        cachedChargeTokenExpiryMs = 0L
-    }
-
-    fun calculateTokenExpiry(token: String, currentTimeMs: Long = System.currentTimeMillis()): Long {
-        val epochSeconds = token.substringBefore('.').toLongOrNull()
-        return (epochSeconds?.times(1000L) ?: (currentTimeMs + 300_000L)) - 30_000L
     }
 
     /**
@@ -459,299 +473,6 @@ open class EvcsApiClient(
         }
         val metadata = parseStationMetadataFromHtml(htmlResult.getOrThrow())
         return Result.success(metadata)
-    }
-
-    /**
-     * Fetches dynamic charging forecast for a station via 2-step handshake matching web_charging.js.
-     * Step 1: POST canonical station detail URL with `X-Partial: user` to acquire chargeToken.
-     * Step 2: POST `${baseUrl}/charging` with `x-t: <chargeToken>` and `{"id": locationId, "t": ...}`.
-     *
-     * @param stationName Name of the charging station used for canonical slug.
-     * @param locationId Unique station identifier.
-     * @param isVinFast True if VinFast station (t: "vinfast"), false otherwise (t: "other").
-     * @return Result containing [ChargingForecastResponse] or failure exception.
-     */
-    private suspend fun fetchChargeTokenStep1(
-        stationName: String,
-        locationId: String,
-        cookieHeader: String
-    ): String {
-        val detailUrl = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
-        val step1Start = System.currentTimeMillis()
-        val step1RequestBuilder = Request.Builder()
-            .url(detailUrl)
-            .post("".toRequestBody())
-            .addHeader("User-Agent", USER_AGENT_BROWSER)
-            .addHeader("X-Partial", "user")
-            .addHeader("Referer", "$baseUrl/")
-            .addHeader("Origin", baseUrl)
-
-        if (cookieHeader.isNotBlank()) {
-            step1RequestBuilder.addHeader("Cookie", cookieHeader)
-        }
-
-        return client.newCall(step1RequestBuilder.build()).execute().use { response ->
-            val step1Latency = System.currentTimeMillis() - step1Start
-            val responseBody = response.body?.string().orEmpty()
-
-            if (response.code == 429) {
-                val retryAfter = RetryAfterParser.parseRetryAfter(response.header("Retry-After"), responseBody)
-                val cooldownUntil = System.currentTimeMillis() + (retryAfter * 1000L)
-                globalRateLimitedUntil.set(cooldownUntil)
-                throw RateLimitException(
-                    retryAfterSeconds = retryAfter,
-                    message = "Step 1 rate limited: HTTP 429 (Retry-After: ${retryAfter}s)"
-                )
-            }
-
-            if (!response.isSuccessful) {
-                AppDebugLogger.log(
-                    DebugLogEntry(
-                        tag = DebugLogTag.FORECAST,
-                        level = DebugLogLevel.ERROR,
-                        message = "Step 1: Lấy chargeToken thất bại: HTTP ${response.code}",
-                        endpointUrl = detailUrl,
-                        method = "POST",
-                        statusCode = response.code,
-                        latencyMs = step1Latency,
-                        errorDetails = "HTTP ${response.code}"
-                    )
-                )
-                throw IOException("Failed to fetch user partial token: HTTP ${response.code}")
-            }
-
-            // Persist any updated session cookies from Set-Cookie headers
-            for (cookie in response.headers("Set-Cookie")) {
-                sessionManager.saveFromSetCookieHeader(cookie)
-            }
-
-            val userPartial = json.decodeFromString<UserPartialResponse>(responseBody)
-            val token = userPartial.chargeToken
-            if (token.isNullOrBlank()) {
-                AppDebugLogger.log(
-                    DebugLogEntry(
-                        tag = DebugLogTag.FORECAST,
-                        level = DebugLogLevel.ERROR,
-                        message = "Step 1: Không tìm thấy chargeToken trong phản hồi user partial",
-                        endpointUrl = detailUrl,
-                        method = "POST",
-                        statusCode = response.code,
-                        latencyMs = step1Latency,
-                        responseSnippet = responseBody,
-                        errorDetails = "chargeToken is null or blank"
-                    )
-                )
-                throw IOException("Failed to retrieve chargeToken from user partial response")
-            }
-
-            AppDebugLogger.log(
-                DebugLogEntry(
-                    tag = DebugLogTag.FORECAST,
-                    level = DebugLogLevel.INFO,
-                    message = "Step 1: Lấy chargeToken thành công",
-                    endpointUrl = detailUrl,
-                    method = "POST",
-                    statusCode = response.code,
-                    latencyMs = step1Latency,
-                    responseSnippet = "chargeToken: $token"
-                )
-            )
-            token
-        }
-    }
-
-    private suspend fun executeStep2(
-        locationId: String,
-        isVinFast: Boolean,
-        token: String,
-        cookieHeader: String
-    ): okhttp3.Response {
-        val chargingUrl = "$baseUrl/charging"
-        val typeParam = if (isVinFast) "vinfast" else "other"
-        val payload = ChargingForecastRequest(
-            id = locationId,
-            t = typeParam
-        )
-        val jsonString = json.encodeToString(payload)
-
-        val step2RequestBuilder = Request.Builder()
-            .url(chargingUrl)
-            .post(jsonString.toRequestBody(JSON_MEDIA_TYPE))
-            .addHeader("User-Agent", USER_AGENT_BROWSER)
-            .addHeader("x-t", token)
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Referer", "$baseUrl/")
-            .addHeader("Origin", baseUrl)
-
-        if (cookieHeader.isNotBlank()) {
-            step2RequestBuilder.addHeader("Cookie", cookieHeader)
-        }
-
-        return client.newCall(step2RequestBuilder.build()).execute()
-    }
-
-    /**
-     * Fetches dynamic charging forecast for a station via 2-step handshake matching web_charging.js.
-     * Step 1: POST canonical station detail URL with `X-Partial: user` to acquire chargeToken (cached across stations).
-     * Step 2: POST `${baseUrl}/charging` with `x-t: <chargeToken>` and `{"id": locationId, "t": ...}`.
-     *
-     * @param stationName Name of the charging station used for canonical slug.
-     * @param locationId Unique station identifier.
-     * @param isVinFast True if VinFast station (t: "vinfast"), false otherwise (t: "other").
-     * @return Result containing [ChargingForecastResponse] or failure exception.
-     */
-    open suspend fun fetchChargingForecast(
-        stationName: String,
-        locationId: String,
-        isVinFast: Boolean = true
-    ): Result<ChargingForecastResponse> = withContext(Dispatchers.IO) {
-        try {
-            if (isGlobalRateLimited()) {
-                val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
-                return@withContext Result.failure(
-                    RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
-                )
-            }
-
-            val cookieHeader = sessionManager.getCookieHeader()
-
-            // Check if valid cached chargeToken exists
-            var token: String
-            var wasCached = false
-            val existingToken = cachedChargeToken
-            val existingExpiry = cachedChargeTokenExpiryMs
-
-            if (!existingToken.isNullOrBlank() && System.currentTimeMillis() < existingExpiry) {
-                token = existingToken
-                wasCached = true
-            } else {
-                token = tokenMutex.withLock {
-                    val recheckToken = cachedChargeToken
-                    val recheckExpiry = cachedChargeTokenExpiryMs
-                    if (!recheckToken.isNullOrBlank() && System.currentTimeMillis() < recheckExpiry) {
-                        wasCached = true
-                        recheckToken
-                    } else {
-                        if (isGlobalRateLimited()) {
-                            val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
-                            throw RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
-                        }
-                        fetchChargeTokenStep1(stationName, locationId, cookieHeader)
-                    }
-                }
-            }
-
-            if (isGlobalRateLimited()) {
-                val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
-                return@withContext Result.failure(
-                    RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
-                )
-            }
-
-            var step2Response = executeStep2(locationId, isVinFast, token, cookieHeader)
-
-            // Step 2 retry on 401/403 when using cached token
-            if (step2Response.code in listOf(401, 403) && wasCached) {
-                step2Response.close()
-                AppDebugLogger.log(
-                    DebugLogEntry(
-                        tag = DebugLogTag.FORECAST,
-                        level = DebugLogLevel.WARN,
-                        message = "Step 2 nhận mã HTTP ${step2Response.code} với token cache, xóa cache và làm mới chargeToken"
-                    )
-                )
-                token = tokenMutex.withLock {
-                    clearTokenCache()
-                    if (isGlobalRateLimited()) {
-                        val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
-                        throw RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
-                    }
-                    val fresh = fetchChargeTokenStep1(stationName, locationId, cookieHeader)
-                    cachedChargeToken = fresh
-                    cachedChargeTokenExpiryMs = calculateTokenExpiry(fresh)
-                    fresh
-                }
-
-                if (isGlobalRateLimited()) {
-                    val remainingSec = maxOf(1L, (globalRateLimitedUntil.get() - System.currentTimeMillis()) / 1000L)
-                    return@withContext Result.failure(
-                        RateLimitException(remainingSec, message = "Global rate limit active ($remainingSec seconds remaining)")
-                    )
-                }
-
-                step2Response = executeStep2(locationId, isVinFast, token, cookieHeader)
-            }
-
-            step2Response.use { response ->
-                val chargingUrl = "$baseUrl/charging"
-                if (response.code == 429) {
-                    val responseBody = response.body?.string().orEmpty()
-                    val retryAfter = RetryAfterParser.parseRetryAfter(response.header("Retry-After"), responseBody)
-                    val cooldownUntil = System.currentTimeMillis() + (retryAfter * 1000L)
-                    globalRateLimitedUntil.set(cooldownUntil)
-                    throw RateLimitException(
-                        retryAfterSeconds = retryAfter,
-                        message = "Step 2 rate limited: HTTP 429 (Retry-After: ${retryAfter}s)"
-                    )
-                }
-
-                if (!response.isSuccessful) {
-                    clearTokenCache()
-                    AppDebugLogger.log(
-                        DebugLogEntry(
-                            tag = DebugLogTag.FORECAST,
-                            level = DebugLogLevel.ERROR,
-                            message = "Step 2: Yêu cầu /charging thất bại: HTTP ${response.code}",
-                            endpointUrl = chargingUrl,
-                            method = "POST",
-                            statusCode = response.code,
-                            errorDetails = "HTTP ${response.code}"
-                        )
-                    )
-                    return@withContext Result.failure(
-                        IOException("Charging forecast request failed with HTTP ${response.code}")
-                    )
-                }
-
-                // Step 2 succeeded: update cache
-                cachedChargeToken = token
-                cachedChargeTokenExpiryMs = calculateTokenExpiry(token)
-
-                for (cookie in response.headers("Set-Cookie")) {
-                    sessionManager.saveFromSetCookieHeader(cookie)
-                }
-
-                val responseBody = response.body?.string().orEmpty()
-                val forecast = json.decodeFromString<ChargingForecastResponse>(responseBody)
-
-                val tickerSnippet = forecast.ticker.orEmpty().ifBlank { "(trống)" }
-                AppDebugLogger.log(
-                    DebugLogEntry(
-                        tag = DebugLogTag.FORECAST,
-                        level = DebugLogLevel.INFO,
-                        message = "Step 2: Nhận dữ liệu ticker thành công",
-                        endpointUrl = chargingUrl,
-                        method = "POST",
-                        statusCode = response.code,
-                        responseSnippet = tickerSnippet
-                    )
-                )
-
-                Result.success(forecast)
-            }
-        } catch (e: Exception) {
-            if (e !is RateLimitException) {
-                AppDebugLogger.log(
-                    DebugLogEntry(
-                        tag = DebugLogTag.FORECAST,
-                        level = DebugLogLevel.ERROR,
-                        message = "Lỗi kết nối dự báo sạc: ${e.message}",
-                        errorDetails = e.message ?: e.toString()
-                    )
-                )
-            }
-            Result.failure(e)
-        }
     }
 }
 

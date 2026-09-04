@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.evcs.favorites.data.network.AppOkHttpClientProvider
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -16,7 +17,7 @@ import kotlin.math.roundToLong
  * Supports real-time traffic condition detection and secure Android package validation.
  */
 class GoogleRoutesClient(
-    private val okHttpClient: OkHttpClient = OkHttpClient(),
+    private val okHttpClient: OkHttpClient = AppOkHttpClientProvider.getSharedClient().newBuilder().build(),
     private val baseUrl: String = DEFAULT_BASE_URL
 ) {
     companion object {

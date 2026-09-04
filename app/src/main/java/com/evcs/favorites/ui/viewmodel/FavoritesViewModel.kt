@@ -42,9 +42,7 @@ class FavoritesViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<FavoritesUiState>(
-        if (authEngine.isLoggedIn.value) FavoritesUiState.Loading else FavoritesUiState.LoggedOut
-    )
+    private val _uiState = MutableStateFlow<FavoritesUiState>(FavoritesUiState.Loading)
     val uiState: StateFlow<FavoritesUiState> = _uiState.asStateFlow()
     val isLoggedIn: StateFlow<Boolean> = authEngine.isLoggedIn
 
@@ -85,12 +83,6 @@ class FavoritesViewModel(
         private set
 
     /**
-     * Active background forecast enrichment job.
-     */
-    var forecastJob: Job? = null
-        private set
-
-    /**
      * Managed background favorites loading job (consolidating initial load and refresh).
      */
     var favoritesLoadJob: Job? = null
@@ -112,8 +104,15 @@ class FavoritesViewModel(
         get() = pendingEmail.ifBlank { authEngine.sessionManager.userEmail.orEmpty() }
 
     init {
-        if (authEngine.isLoggedIn.value) {
-            favoritesLoadJob = fetchFavorites()
+        viewModelScope.launch(ioDispatcher) {
+            val loggedIn = authEngine.checkLoggedInAsync(ioDispatcher)
+            withContext(dispatcher) {
+                if (loggedIn) {
+                    favoritesLoadJob = fetchFavorites()
+                } else {
+                    _uiState.value = FavoritesUiState.LoggedOut
+                }
+            }
         }
         if (locationService != null) {
             viewModelScope.launch(dispatcher) {
@@ -161,7 +160,6 @@ class FavoritesViewModel(
                         if (existing != null) {
                             repoStation.copy(
                                 drivingMetrics = existing.drivingMetrics ?: repoStation.drivingMetrics,
-                                forecast = existing.forecast ?: repoStation.forecast,
                                 distanceKm = existing.distanceKm ?: repoStation.distanceKm
                             )
                         } else {
@@ -198,8 +196,6 @@ class FavoritesViewModel(
                             userLon = userLon,
                             forceRefresh = false
                         )
-                    } else {
-                        enrichTopStationsWithForecast(forceRefresh = false)
                     }
                 }
             }
@@ -258,7 +254,6 @@ class FavoritesViewModel(
     fun fetchFavorites(): Job {
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
-        forecastJob?.cancel()
         _uiState.value = FavoritesUiState.Loading
 
         val job = viewModelScope.launch(dispatcher) {
@@ -294,8 +289,6 @@ class FavoritesViewModel(
                             userLon = userLon,
                             forceRefresh = false
                         )
-                    } else {
-                        enrichTopStationsWithForecast(forceRefresh = false)
                     }
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "Không thể tải danh sách trạm sạc yêu thích"
@@ -324,7 +317,6 @@ class FavoritesViewModel(
         invalidateRoutingCache()
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
-        forecastJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             try {
@@ -358,8 +350,6 @@ class FavoritesViewModel(
                             userLon = userLon,
                             forceRefresh = true
                         )
-                    } else {
-                        enrichTopStationsWithForecast(forceRefresh = true)
                     }
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "Không thể làm mới danh sách trạm"
@@ -446,26 +436,15 @@ class FavoritesViewModel(
 
             _uiState.update { currentState ->
                 if (currentState is FavoritesUiState.Success) {
-                    val currentStationMap = currentState.stations.associateBy { it.id }
-                    val mergedWithLatest = sortedStations.map { st ->
-                        val latest = currentStationMap[st.id]
-                        if (latest?.forecast != null && st.forecast == null) {
-                            st.copy(forecast = latest.forecast)
-                        } else {
-                            st
-                        }
-                    }
                     currentState.copy(
-                        stations = mergedWithLatest,
-                        selectedStationForDetail = mergedWithLatest.find { it.id == currentState.selectedStationForDetail?.id }
+                        stations = sortedStations,
+                        selectedStationForDetail = sortedStations.find { it.id == currentState.selectedStationForDetail?.id }
                             ?: currentState.selectedStationForDetail
                     )
                 } else {
                     currentState
                 }
             }
-
-            enrichTopStationsWithForecast(forceRefresh = forceRefresh)
         }
 
         routingJob = job
@@ -531,7 +510,6 @@ class FavoritesViewModel(
 
             if (displaced) {
                 routingJob?.cancel()
-                forecastJob?.cancel()
                 invalidateRoutingCache()
                 val step1Stations = DistanceCalculator.sortByDistance(currentState.stations, latitude, longitude)
                 _uiState.value = currentState.copy(stations = step1Stations)
@@ -656,74 +634,12 @@ class FavoritesViewModel(
      */
     fun logout() {
         routingJob?.cancel()
-        forecastJob?.cancel()
         invalidateRoutingCache()
         authEngine.logout()
         pendingEmail = ""
         _selectedStationForDetail.value = null
         _uiState.value = FavoritesUiState.LoggedOut
     }
-
-    /**
-     * Targeted background forecast enrichment unconditionally for the Top 5 favorite stations
-     * from the loaded favorites list.
-     * Progressively updates stations in UI state as each forecast arrives, preserving driving metrics,
-     * connectors, and ETA sort order.
-     */
-    fun enrichTopStationsWithForecast(forceRefresh: Boolean = false): Job {
-        forecastJob?.cancel()
-        val job = viewModelScope.launch(dispatcher) {
-            val currentState = _uiState.value
-            if (currentState !is FavoritesUiState.Success) return@launch
-
-            val targetStations = currentState.stations.take(5)
-
-            if (targetStations.isEmpty()) return@launch
-
-            withContext(ioDispatcher) {
-                repository.enrichStationsWithForecast(
-                    stations = targetStations,
-                    forceRefresh = forceRefresh,
-                    onStationUpdated = { updatedStation ->
-                        launch(dispatcher) {
-                            _uiState.update { current ->
-                                if (current is FavoritesUiState.Success) {
-                                    val updatedStations = current.stations.map { st ->
-                                        if (st.id == updatedStation.id) {
-                                            st.copy(forecast = updatedStation.forecast)
-                                        } else {
-                                            st
-                                        }
-                                    }
-                                    val updatedDetail = if (current.selectedStationForDetail?.id == updatedStation.id) {
-                                        current.selectedStationForDetail.copy(forecast = updatedStation.forecast)
-                                    } else {
-                                        current.selectedStationForDetail
-                                    }
-                                    current.copy(
-                                        stations = updatedStations,
-                                        selectedStationForDetail = updatedDetail
-                                    )
-                                } else {
-                                    current
-                                }
-                            }
-                            if (_selectedStationForDetail.value?.id == updatedStation.id) {
-                                _selectedStationForDetail.value = _selectedStationForDetail.value?.copy(
-                                    forecast = updatedStation.forecast
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-        }
-        forecastJob = job
-        return job
-    }
-
-    fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job =
-        enrichTopStationsWithForecast(forceRefresh)
 
     private fun sortStations(stations: List<Station>): List<Station> {
         return stations.sortedWith(
@@ -747,7 +663,6 @@ class FavoritesViewModel(
     override fun onCleared() {
         super.onCleared()
         routingJob?.cancel()
-        forecastJob?.cancel()
     }
 
     companion object {

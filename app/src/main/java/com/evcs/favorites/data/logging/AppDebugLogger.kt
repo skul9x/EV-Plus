@@ -1,8 +1,14 @@
 package com.evcs.favorites.data.logging
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Thread-safe in-memory circular buffer managing debug logs.
@@ -11,15 +17,23 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object AppDebugLogger {
     const val MAX_CAPACITY = 500
+    const val THROTTLE_INTERVAL_MS = 300L
 
     private val buffer = ArrayDeque<DebugLogEntry>(MAX_CAPACITY)
     private val lock = Any()
+    private var lastEmitTimeMs = 0L
+    private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var trailingEmitJob: Job? = null
 
     private val _logsFlow = MutableStateFlow<List<DebugLogEntry>>(emptyList())
     val logsFlow: StateFlow<List<DebugLogEntry>> = _logsFlow.asStateFlow()
+    val subscriptionCount: StateFlow<Int> = _logsFlow.subscriptionCount
 
     /**
      * Appends an entry into the buffer, discarding the oldest element if max capacity is exceeded.
+     * When there are no active subscribers (_logsFlow.subscriptionCount.value == 0), no snapshot
+     * list is allocated or emitted. When subscribers are present, emissions are throttled to a minimum
+     * interval of [THROTTLE_INTERVAL_MS].
      */
     fun log(entry: DebugLogEntry) {
         synchronized(lock) {
@@ -27,7 +41,29 @@ object AppDebugLogger {
                 buffer.removeFirst()
             }
             buffer.addLast(entry)
-            _logsFlow.value = buffer.toList()
+
+            if (_logsFlow.subscriptionCount.value > 0) {
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastEmitTimeMs
+                if (elapsed >= THROTTLE_INTERVAL_MS) {
+                    trailingEmitJob?.cancel()
+                    trailingEmitJob = null
+                    _logsFlow.value = buffer.toList()
+                    lastEmitTimeMs = now
+                } else if (trailingEmitJob == null) {
+                    val remainingDelay = THROTTLE_INTERVAL_MS - elapsed
+                    trailingEmitJob = coroutineScope.launch {
+                        delay(remainingDelay)
+                        synchronized(lock) {
+                            trailingEmitJob = null
+                            if (_logsFlow.subscriptionCount.value > 0) {
+                                _logsFlow.value = buffer.toList()
+                                lastEmitTimeMs = System.currentTimeMillis()
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -44,7 +80,6 @@ object AppDebugLogger {
         latencyMs: Long? = null,
         requestSnippet: String? = null,
         responseSnippet: String? = null,
-        parsedForecastSummary: String? = null,
         errorDetails: String? = null
     ) {
         log(
@@ -58,7 +93,6 @@ object AppDebugLogger {
                 latencyMs = latencyMs,
                 requestSnippet = requestSnippet,
                 responseSnippet = responseSnippet,
-                parsedForecastSummary = parsedForecastSummary,
                 errorDetails = errorDetails
             )
         )
@@ -74,12 +108,28 @@ object AppDebugLogger {
     }
 
     /**
+     * Immediately pushes the latest snapshot of the buffer into [logsFlow].
+     * Useful for deterministic testing and when UI observers become active.
+     */
+    fun flush() {
+        synchronized(lock) {
+            trailingEmitJob?.cancel()
+            trailingEmitJob = null
+            _logsFlow.value = buffer.toList()
+            lastEmitTimeMs = System.currentTimeMillis()
+        }
+    }
+
+    /**
      * Purges all logs from the buffer and resets the reactive StateFlow.
      */
     fun clear() {
         synchronized(lock) {
+            trailingEmitJob?.cancel()
+            trailingEmitJob = null
             buffer.clear()
             _logsFlow.value = emptyList()
+            lastEmitTimeMs = 0L
         }
     }
 
@@ -105,9 +155,6 @@ object AppDebugLogger {
                 val statusStr = entry.statusCode?.toString() ?: "-"
                 val latencyStr = entry.latencyMs?.let { "${it}ms" } ?: "-"
                 sb.append("Endpoint: $methodStr ${entry.endpointUrl} (HTTP $statusStr, $latencyStr)\n")
-            }
-            if (!entry.parsedForecastSummary.isNullOrBlank()) {
-                sb.append("Dự báo sạc: ${entry.parsedForecastSummary}\n")
             }
             if (!entry.requestSnippet.isNullOrBlank()) {
                 sb.append("Request: ${entry.requestSnippet}\n")

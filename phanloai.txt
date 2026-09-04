@@ -1,0 +1,39 @@
+BẢNG PHÂN LOẠI LỖI HIỆU NĂNG (TRAMSACEV / EV-PLUS)
+=====================================================
+
+[P0] CỰC KỲ NGHIÊM TRỌNG (Nguy cơ Crash OOM, Treo ứng dụng ANR)
+--------------------------------------------------------------
+1. PERF-ANR-01: Khởi tạo Android Keystore & EncryptedSharedPreferences đồng bộ trên Main Thread khi mở app (SessionManager.kt) -> Chặn luồng chính 250-900ms, nguy cơ ANR cao.
+2. PERF-MEM-02: Không giải phóng tài nguyên WebView (thiếu destroy/onRelease) khi đóng modal xem trạm (StationDetailModal.kt) -> Rò rỉ 15-45MB RAM/lần mở, sập OOM khi xem nhiều trạm.
+
+[P1] NGHIÊM TRỌNG (Gây giật lag nặng, tụt khung hình, hao pin, phình to APK)
+--------------------------------------------------------------------------
+3. PERF-UI-04: DebugLogViewerCard dùng Column thường cuộn dọc render đồng thời 500 logs -> Dựng hàng nghìn view cùng lúc, freeze UI (FPS < 15).
+4. PERF-ANR-02: Đọc và giải mã AES JSON snapshot danh sách trạm trên Main Thread trong init Repository (EvcsRepository.kt) -> Chặn Main Thread thêm 50-180ms lúc mở app.
+5. PERF-MEM-01: Sao chép toàn bộ buffer 500 log thành List mới trên mỗi sự kiện ghi log (AppDebugLogger.kt) -> Cấp phát rác liên tục, gây dừng GC pauses giật màn hình.
+6. PERF-UI-01: Data class Station coi là Unstable do chứa standard List<PowerPort> (StationModels.kt) -> Mất Smart Skipping, recompose toàn bộ thẻ trạm khi 1 trạm đổi state.
+7. PERF-UI-02: Gọi hàm Regex parseConnectorsToPowers trực tiếp trong thân Composable thẻ trạm (StationCard.kt) -> Biên dịch Regex lặp đi lặp lại trên mỗi frame cuộn list.
+8. PERF-NET-01: Khởi tạo phân tán 5 OkHttpClient riêng biệt, không chia sẻ ConnectionPool -> Lãng phí socket/thread pool, mất cơ chế Keep-Alive, tăng 100-300ms/request.
+9. PERF-NET-02: DebugLoggingInterceptor đọc đệm toàn bộ request/response body cả trên bản Release -> Lãng phí CPU và bộ nhớ đệm trên mọi request mạng.
+10. PERF-CPU-01: Biên dịch biểu thức chính quy (Regex) động lặp lại trong hot paths bóc tách HTML trạm sạc (StationForecastParser.kt, EvcsApiClient.kt) -> Tốn chu kỳ CPU.
+11. PERF-ASYNC-01: Thu thập Flow bằng collectAsState() thay vì collectAsStateWithLifecycle() (MainActivity.kt) -> Flow tiếp tục chạy ngầm gây hao pin khi ẩn app.
+12. PERF-BUILD-01: Tắt R8 Minification (isMinifyEnabled = false) và thiếu proguard-rules.pro (build.gradle.kts) -> APK phình to gấp 2 lần, thiếu tối ưu nạp DEX.
+
+[P2] TRUNG BÌNH (Suy hao tài nguyên từ từ, thiếu tối ưu tính toán/GPS)
+--------------------------------------------------------------------
+13. PERF-CACHE-01: ForecastCache dùng ConcurrentHashMap không có giới hạn dung lượng và thiếu LRU eviction -> Tích tụ dữ liệu cũ trong RAM theo thời gian.
+14. PERF-STOR-01: Mã hóa AES-GCM chuỗi JSON snapshot lớn vào EncryptedSharedPreferences -> Tốn CPU mã hóa cho dữ liệu công khai (danh sách trạm ngoại tuyến).
+15. PERF-UI-03: Định dạng String.format và tính toán traffic không bọc bằng remember trong Composable (StationCard.kt) -> Cấp phát chuỗi rác trên mỗi frame vẽ.
+16. PERF-CPU-03: Hàm ký HMAC gọi String.format("%02x", b) 32 lần trong vòng lặp (EvcsHmacSigner.kt) -> Cấp phát 32 Formatter object cho mỗi request ký.
+17. PERF-ROUT-01: Thiếu debounce khi thao tác chọn chip bộ lọc công suất với Google Routes Matrix API -> Gây thừa request và lãng phí hạn ngạch API.
+18. PERF-ROUT-02: Thuật toán gom cụm clusterPoints tính .average() lặp O(N) qua nhiều lần map (DistanceCalculator.kt) -> Cấp phát danh sách tọa độ trung gian.
+19. PERF-LOC-01: updateUserLocation vẫn chạy lại pipeline định tuyến khi dịch chuyển GPS < 200m (FavoritesViewModel.kt) -> GPS jitter tại chỗ vẫn tốn CPU và pin.
+20. PERF-ASYNC-02: Lạm dụng Dispatchers.Main làm context mặc định khi filter/sort danh sách trạm sạc -> Nguy cơ rơi khung hình khi danh sách lớn.
+21. PERF-BUILD-02: Import nguyên khối thư viện material-icons-extended khi chưa bật R8 -> Tăng kích thước DEX thêm 15-25MB cho vài icon.
+22. PERF-START-01: Chưa tích hợp Android Baseline Profiles cho Jetpack Compose -> Thời gian khởi động lạnh và tương tác ban đầu chưa được AOT tối ưu.
+
+[P3] THẤP (Kiến trúc & Tối ưu hóa môi trường phát triển)
+-------------------------------------------------------
+23. PERF-CACHE-02: Trùng lặp biến AtomicLong kiểm tra Cooldown/Rate Limit giữa Repository và ApiClient -> Thừa logic quản lý trạng thái.
+24. PERF-CPU-02: Khởi tạo phân tán nhiều instance Json { ... } thay vì dùng chung Singleton -> Lãng phí cache descriptor của serialization.
+25. PERF-BUILD-03: Thiếu cấu hình cờ song song hóa và caching trong gradle.properties -> Thời gian build của developer chậm hơn tiềm năng.

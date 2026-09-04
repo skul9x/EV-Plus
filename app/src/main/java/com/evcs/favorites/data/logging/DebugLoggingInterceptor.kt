@@ -10,12 +10,23 @@ import okio.Buffer
  * recording latencies and peeking response bodies safely without consuming stream data.
  */
 class DebugLoggingInterceptor(
+    var enabled: Boolean = true,
     private val maxBodySnippetLength: Int = 500,
     private val maxPeekBytes: Long = 4096L
 ) : Interceptor {
 
+    constructor(maxBodySnippetLength: Int, maxPeekBytes: Long = 4096L) : this(
+        enabled = true,
+        maxBodySnippetLength = maxBodySnippetLength,
+        maxPeekBytes = maxPeekBytes
+    )
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        if (!enabled) {
+            return chain.proceed(request)
+        }
+
         val startTime = System.currentTimeMillis()
         val method = request.method
         val url = request.url.toString()
@@ -76,7 +87,6 @@ class DebugLoggingInterceptor(
         val partialHeader = request.header("X-Partial")
 
         return when {
-            url.contains("/charging") || partialHeader.equals("user", ignoreCase = true) -> DebugLogTag.FORECAST
             url.contains("/search") -> DebugLogTag.SEARCH
             url.contains("/favorite") || partialHeader.equals("fav", ignoreCase = true) -> DebugLogTag.FAVORITES
             url.contains("/table/v1/driving") || url.contains("osrm") || url.contains("google") -> DebugLogTag.ROUTING

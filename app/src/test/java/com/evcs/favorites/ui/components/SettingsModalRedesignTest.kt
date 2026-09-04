@@ -92,16 +92,15 @@ class SettingsModalRedesignTest {
         assertTrue(AppDebugLogger.getLogs().isEmpty())
         assertTrue(AppDebugLogger.logsFlow.value.isEmpty())
 
-        // Add network and forecast log entries
+        // Add network and search log entries
         AppDebugLogger.log(
-            tag = DebugLogTag.FORECAST,
+            tag = DebugLogTag.SEARCH,
             level = DebugLogLevel.SUCCESS,
-            message = "⏱️ Dự kiến 1 xe sạc trụ 60kW sẽ xong trong 7 phút nữa",
+            message = "Tìm kiếm trạm sạc xung quanh thành công",
             endpointUrl = "https://api.evcs.vn/v1/stations/station-123",
             method = "GET",
             statusCode = 200,
-            latencyMs = 145,
-            parsedForecastSummary = "1 xe sạc trụ 60kW sẽ xong trong 7 phút nữa"
+            latencyMs = 145
         )
 
         AppDebugLogger.log(
@@ -125,8 +124,7 @@ class SettingsModalRedesignTest {
         val formattedText = AppDebugLogger.getFormattedLogText()
         assertTrue(formattedText.contains("=== EVCS DEBUG LOGS ==="))
         assertTrue(formattedText.contains("Tổng số mục: 2"))
-        assertTrue(formattedText.contains("Dự kiến 1 xe sạc trụ 60kW sẽ xong trong 7 phút nữa"))
-        assertTrue(formattedText.contains("Dự báo sạc: 1 xe sạc trụ 60kW sẽ xong trong 7 phút nữa"))
+        assertTrue(formattedText.contains("Tìm kiếm trạm sạc xung quanh thành công"))
         assertTrue(formattedText.contains("Endpoint: GET https://api.evcs.vn/v1/stations/station-123 (HTTP 200, 145ms)"))
         assertTrue(formattedText.contains("Endpoint: POST https://api.evcs.vn/v1/stations/nearby (HTTP 502, 2100ms)"))
         assertTrue(formattedText.contains("java.net.SocketTimeoutException: timeout"))
@@ -139,20 +137,19 @@ class SettingsModalRedesignTest {
     }
 
     @Test
-    fun testLogViewerEntryFormatting_handlesChargingForecastAndErrorStates() {
-        val forecastEntry = com.evcs.favorites.data.logging.DebugLogEntry(
-            tag = DebugLogTag.FORECAST,
+    fun testLogViewerEntryFormatting_handlesNetworkAndErrorStates() {
+        val successEntry = com.evcs.favorites.data.logging.DebugLogEntry(
+            tag = DebugLogTag.SEARCH,
             level = DebugLogLevel.SUCCESS,
-            message = "⏱️ Dự kiến 1 xe sạc trụ 60kW sẽ xong trong 7 phút nữa",
+            message = "Tìm kiếm trạm thành công",
             endpointUrl = "https://api.evcs.vn/stations/detail",
             statusCode = 200,
-            latencyMs = 88,
-            parsedForecastSummary = "1 xe sạc trụ 60kW sẽ xong trong 7 phút nữa"
+            latencyMs = 88
         )
 
-        assertEquals(DebugLogTag.FORECAST, forecastEntry.tag)
-        assertEquals(DebugLogLevel.SUCCESS, forecastEntry.level)
-        assertEquals("1 xe sạc trụ 60kW sẽ xong trong 7 phút nữa", forecastEntry.parsedForecastSummary)
+        assertEquals(DebugLogTag.SEARCH, successEntry.tag)
+        assertEquals(DebugLogLevel.SUCCESS, successEntry.level)
+        assertEquals("Tìm kiếm trạm thành công", successEntry.message)
 
         val errorEntry = com.evcs.favorites.data.logging.DebugLogEntry(
             tag = DebugLogTag.NETWORK,

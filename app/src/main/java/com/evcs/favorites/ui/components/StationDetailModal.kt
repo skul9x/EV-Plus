@@ -37,6 +37,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,10 +57,9 @@ import com.evcs.favorites.util.StationUrlBuilder
 import kotlinx.coroutines.launch
 
 /**
- * Targeted CSS rule to ensure the action button [Xem thêm ↗] does not occlude the
- * duration text on narrow smartphone viewports.
+ * Targeted CSS rule to suppress web forecast ticker banner and more button on station detail WebView.
  */
-const val FORECAST_OVERLAP_FIX_CSS = ".amd-hasmore .amd-item { padding-right: 115px !important; }"
+const val FORECAST_OVERLAP_FIX_CSS = ".amd-ticker, .amd-more { display: none !important; }"
 
 /**
  * JavaScript snippet injected on [WebViewClient.onPageFinished] to apply [FORECAST_OVERLAP_FIX_CSS].
@@ -106,6 +106,15 @@ fun StationDetailModal(
     )
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
+    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+
+    // Ensure native Chromium WebCore memory cleanup when leaving composition or changing station
+    DisposableEffect(station.id) {
+        onDispose {
+            webViewInstance?.let { StationDetailWebViewHelper.cleanUpWebView(it) }
+            webViewInstance = null
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -192,6 +201,7 @@ fun StationDetailModal(
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
                         WebView(context).apply {
+                            webViewInstance = this
                             layoutParams = ViewGroup.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -229,25 +239,23 @@ fun StationDetailModal(
                                 }
                             }
 
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                    super.onPageStarted(view, url, favicon)
+                            webViewClient = StationDetailWebViewHelper.createSafeWebViewClient(
+                                onPageStartedAction = { _, _, _ ->
                                     isLoading = true
-                                }
-
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
+                                },
+                                onPageFinishedAction = { view, url ->
                                     isLoading = false
                                     if (isEvcsDomain(url)) {
                                         view?.evaluateJavascript(FORECAST_OVERLAP_FIX_SCRIPT, null)
                                     }
+                                },
+                                shouldOverrideUrlLoadingAction = { _, _ ->
+                                    false
+                                },
+                                onRendererCrashAction = {
+                                    isLoading = false
                                 }
-
-                                override fun shouldOverrideUrlLoading(
-                                    view: WebView?,
-                                    request: WebResourceRequest?
-                                ): Boolean = false
-                            }
+                            )
 
                             val headers = if (!cookieHeader.isNullOrBlank()) {
                                 mapOf("Cookie" to cookieHeader)
@@ -256,6 +264,12 @@ fun StationDetailModal(
                             }
 
                             loadUrl(detailUrl, headers)
+                        }
+                    },
+                    onRelease = { webView ->
+                        StationDetailWebViewHelper.cleanUpWebView(webView)
+                        if (webViewInstance == webView) {
+                            webViewInstance = null
                         }
                     }
                 )

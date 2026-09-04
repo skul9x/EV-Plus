@@ -3,24 +3,18 @@ package com.evcs.favorites.data.repository
 import com.evcs.favorites.data.api.EvcsApiClient
 import com.evcs.favorites.data.api.RateLimitException
 import com.evcs.favorites.data.auth.SessionStorage
-import com.evcs.favorites.data.cache.ForecastCache
-import com.evcs.favorites.data.logging.AppDebugLogger
-import com.evcs.favorites.data.logging.DebugLogEntry
-import com.evcs.favorites.data.logging.DebugLogLevel
-import com.evcs.favorites.data.logging.DebugLogTag
-import com.evcs.favorites.data.model.ChargingForecastResponse
 import com.evcs.favorites.data.model.FavoriteStationRaw
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.SearchStationRaw
 import com.evcs.favorites.data.model.Station
-import com.evcs.favorites.data.parser.StationForecastParser
 import com.evcs.favorites.domain.location.DistanceCalculator
-import com.evcs.favorites.domain.model.StationForecast
 import com.evcs.favorites.util.SingleFlight
 import com.evcs.favorites.util.StationNameSanitizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
@@ -28,13 +22,13 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -54,16 +48,57 @@ data class CoordinatePair(val latitude: Double, val longitude: Double)
  */
 open class EvcsRepository(
     private val apiClient: EvcsApiClient,
-    private val coordinateCache: MutableMap<String, Pair<Double, Double>> = mutableMapOf(),
+    private val coordinateCache: ConcurrentHashMap<String, Pair<Double, Double>> = ConcurrentHashMap(),
     private val coordinateResolver: ((locationId: String) -> Pair<Double, Double>?)? = null,
     private val cacheStorage: SessionStorage? = null,
     private val autoResolveCoordinates: Boolean = false,
-    val forecastCache: ForecastCache = ForecastCache(),
-    val forecastSemaphore: Semaphore = Semaphore(2),
     private val delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    val singleFlight: SingleFlight = SingleFlight(ioDispatcher)
+    val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
+    private val eagerLoadCache: Boolean = false
 ) {
+    constructor(
+        apiClient: EvcsApiClient,
+        coordinateCache: MutableMap<String, Pair<Double, Double>>,
+        coordinateResolver: ((locationId: String) -> Pair<Double, Double>?)? = null,
+        cacheStorage: SessionStorage? = null,
+        autoResolveCoordinates: Boolean = false,
+        delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+        ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+        singleFlight: SingleFlight = SingleFlight(ioDispatcher),
+        eagerLoadCache: Boolean = false
+    ) : this(
+        apiClient = apiClient,
+        coordinateCache = (coordinateCache as? ConcurrentHashMap<String, Pair<Double, Double>>)
+            ?: DelegatingConcurrentMap(coordinateCache),
+        coordinateResolver = coordinateResolver,
+        cacheStorage = cacheStorage,
+        autoResolveCoordinates = autoResolveCoordinates,
+        delayProvider = delayProvider,
+        ioDispatcher = ioDispatcher,
+        singleFlight = singleFlight,
+        eagerLoadCache = eagerLoadCache
+    )
+
+    private class DelegatingConcurrentMap(
+        private val delegate: MutableMap<String, Pair<Double, Double>>
+    ) : ConcurrentHashMap<String, Pair<Double, Double>>(delegate) {
+        override fun put(key: String, value: Pair<Double, Double>): Pair<Double, Double>? {
+            delegate[key] = value
+            return super.put(key, value)
+        }
+
+        override fun remove(key: String): Pair<Double, Double>? {
+            delegate.remove(key)
+            return super.remove(key)
+        }
+
+        override fun clear() {
+            delegate.clear()
+            super.clear()
+        }
+    }
+
     val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
     companion object {
         // Default coordinates: Hanoi Center (Hoan Kiem)
@@ -72,6 +107,9 @@ open class EvcsRepository(
         const val KEY_OFFLINE_FAVORITES = "evcs_offline_favorites_snapshot"
         const val KEY_COORDINATE_CACHE = "evcs_station_coordinates_cache"
         const val CLUSTER_SEARCH_RADIUS_KM = 15.0
+
+        // Pre-compiled regex for connector power extraction (PERF-UI-02)
+        val KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
 
         /**
          * Parses connector string (e.g. "120kW, 60kW, 7kW") into fallback [PowerPort] list
@@ -84,7 +122,7 @@ open class EvcsRepository(
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .map { part ->
-                    val kwMatch = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE).find(part)
+                    val kwMatch = KW_REGEX.find(part)
                     val watts = kwMatch?.let {
                         (it.groupValues[1].toDoubleOrNull() ?: 0.0) * 1000.0
                     }?.toLong() ?: 0L
@@ -106,7 +144,17 @@ open class EvcsRepository(
     private val _favoriteIdsState = MutableStateFlow<Set<String>>(emptySet())
     val favoriteIdsState: StateFlow<Set<String>> = _favoriteIdsState.asStateFlow()
 
+    private val _isInitialized = MutableStateFlow(false)
+    val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+
     init {
+        if (eagerLoadCache) {
+            loadCacheInternal()
+            _isInitialized.value = true
+        }
+    }
+
+    private fun loadCacheInternal() {
         val persisted = loadCachedCoordinates()
         for ((k, v) in persisted) {
             if (!coordinateCache.containsKey(k)) {
@@ -117,6 +165,24 @@ open class EvcsRepository(
         if (cached.isNotEmpty()) {
             _favoritesState.value = cached
             _favoriteIdsState.value = cached.map { it.id }.toSet()
+        }
+    }
+
+    /**
+     * Asynchronously loads cached coordinates and favorites from persistent storage off the main thread.
+     * Populates [coordinateCache], [_favoritesState], and [_favoriteIdsState] on the specified [dispatcher].
+     */
+    suspend fun initializeAsync(dispatcher: CoroutineDispatcher = Dispatchers.IO) = withContext(dispatcher) {
+        loadCacheInternal()
+        _isInitialized.value = true
+    }
+
+    /**
+     * Non-suspending helper to trigger cache initialization in the provided [CoroutineScope].
+     */
+    fun initialize(scope: CoroutineScope, dispatcher: CoroutineDispatcher = Dispatchers.IO): Job {
+        return scope.launch(dispatcher) {
+            initializeAsync(dispatcher)
         }
     }
 
@@ -581,286 +647,6 @@ open class EvcsRepository(
     fun resetRateLimitCooldown() {
         globalRateLimitedUntil.set(0L)
         apiClient.resetRateLimitCooldown()
-    }
-
-    /**
-     * Clears all cached station forecasts and failure cooldowns.
-     */
-    fun clearForecastCache() {
-        forecastCache.clearAll()
-    }
-
-    /**
-     * Invalidates forecast cache and failure cooldown for a specific station.
-     */
-    fun invalidateForecast(stationId: String) {
-        forecastCache.invalidate(stationId)
-    }
-
-    /**
-     * Fetches charging forecast for a station with in-memory TTL caching (3 minutes),
-     * failure cooldown (1 minute), and transient failure exponential backoff retry.
-     * Silent degradation: guarantees zero exceptions propagated to UI, returning Result.success(null) on error.
-     *
-     * @param station Target station to query forecast for.
-     * @param forceRefresh When true, clears cache and failure cooldown for this station before fetching.
-     * @return Result containing StationForecast if available, or null if no forecast or in failure/cooldown.
-     */
-    open suspend fun fetchStationForecast(
-        station: Station,
-        forceRefresh: Boolean = false
-    ): Result<StationForecast?> = singleFlight.execute("forecast_${station.id}") {
-        fetchStationForecastInternal(station, forceRefresh)
-    }
-
-    private suspend fun fetchStationForecastInternal(
-        station: Station,
-        forceRefresh: Boolean = false
-    ): Result<StationForecast?> = withContext(ioDispatcher) {
-        try {
-            if (isGlobalRateLimited()) {
-                return@withContext Result.success(null)
-            }
-
-            if (forceRefresh) {
-                forecastCache.invalidate(station.id)
-            } else {
-                val cached = forecastCache.get(station.id)
-                if (cached != null) {
-                    return@withContext Result.success(cached)
-                }
-            }
-
-            if (forecastCache.isInCooldown(station.id)) {
-                return@withContext Result.success(null)
-            }
-
-            forecastSemaphore.withPermit {
-                if (isGlobalRateLimited()) {
-                    return@withPermit Result.success(null)
-                }
-
-                // Re-check cache in case a concurrent request already populated it
-                if (!forceRefresh) {
-                    val cached = forecastCache.get(station.id)
-                    if (cached != null) {
-                        return@withPermit Result.success(cached)
-                    }
-                }
-
-                val retryDelays = listOf(1000L, 2000L)
-                var result: Result<ChargingForecastResponse>? = null
-
-                for (attempt in 0..retryDelays.size) {
-                    if (attempt > 0) {
-                        val baseDelay = retryDelays[attempt - 1]
-                        val jitter = kotlin.random.Random.nextLong(0, 301)
-                        delayProvider(baseDelay + jitter)
-                    }
-
-                    result = apiClient.fetchChargingForecast(station.name, station.id, isVinFast = true)
-                    if (result.isSuccess) {
-                        break
-                    }
-
-                    val ex = result.exceptionOrNull() ?: IOException("Network error")
-                    if (!isTransientFailure(ex)) {
-                        break
-                    }
-                }
-
-                if (result == null || result.isFailure) {
-                    val ex = result?.exceptionOrNull()
-                    if (ex is CancellationException) throw ex
-                    val errorMsg = ex?.message.orEmpty()
-                    if (ex is RateLimitException) {
-                        val cooldownSec = ex.retryAfterSeconds
-                        val cooldownUntil = System.currentTimeMillis() + (cooldownSec * 1000L)
-                        globalRateLimitedUntil.set(cooldownUntil)
-                        apiClient.globalRateLimitedUntil.set(cooldownUntil)
-                        AppDebugLogger.log(
-                            DebugLogEntry(
-                                tag = DebugLogTag.FORECAST,
-                                level = DebugLogLevel.WARN,
-                                message = "Cloudflare giới hạn tần suất (HTTP 429). Tạm dừng yêu cầu dự báo sạc nền trong $cooldownSec giây.",
-                                errorDetails = errorMsg
-                            )
-                        )
-                    } else if (errorMsg.contains("429") || errorMsg.contains("1015")) {
-                        val cooldownUntil = System.currentTimeMillis() + 60_000L
-                        globalRateLimitedUntil.set(cooldownUntil)
-                        apiClient.globalRateLimitedUntil.set(cooldownUntil)
-                        AppDebugLogger.log(
-                            DebugLogEntry(
-                                tag = DebugLogTag.FORECAST,
-                                level = DebugLogLevel.WARN,
-                                message = "Cloudflare giới hạn tần suất (HTTP 429). Tạm dừng yêu cầu dự báo sạc nền trong 60 giây.",
-                                errorDetails = errorMsg
-                            )
-                        )
-                    }
-
-                    forecastCache.recordFailure(station.id)
-                    AppDebugLogger.log(
-                        DebugLogEntry(
-                            tag = DebugLogTag.FORECAST,
-                            level = DebugLogLevel.ERROR,
-                            message = "Lỗi mạng/token dự báo sạc trạm ${station.name}: ${ex?.message}",
-                            errorDetails = ex?.message ?: ex?.toString()
-                        )
-                    )
-                    return@withPermit Result.success(null)
-                }
-
-                val forecastResponse = result.getOrNull()
-                val ticker = forecastResponse?.ticker.orEmpty()
-                val forecast = if (ticker.isNotBlank()) {
-                    try {
-                        val parsed = StationForecastParser.parseForecastFromHtml(ticker)
-                        if (parsed != null) {
-                            AppDebugLogger.log(
-                                DebugLogEntry(
-                                    tag = DebugLogTag.FORECAST,
-                                    level = DebugLogLevel.SUCCESS,
-                                    message = parsed.formatSingleSummary(),
-                                    parsedForecastSummary = parsed.formatSingleSummary(),
-                                    responseSnippet = ticker
-                                )
-                            )
-                        } else {
-                            val isTeaserOrLocked = ticker.contains("amd-locked", ignoreCase = true) ||
-                                    ticker.contains("cổng sạc trống", ignoreCase = true)
-                            if (isTeaserOrLocked) {
-                                AppDebugLogger.log(
-                                    DebugLogEntry(
-                                        tag = DebugLogTag.FORECAST,
-                                        level = DebugLogLevel.INFO,
-                                        message = "Trạm chưa có xe sạc hoặc yêu cầu tài khoản EVCS Go (ticker locked)",
-                                        responseSnippet = ticker
-                                    )
-                                )
-                            } else {
-                                AppDebugLogger.log(
-                                    DebugLogEntry(
-                                        tag = DebugLogTag.FORECAST,
-                                        level = DebugLogLevel.WARN,
-                                        message = "Không phân tích được ticker sạc (parser trả về null)",
-                                        responseSnippet = ticker
-                                    )
-                                )
-                            }
-                        }
-                        parsed
-                    } catch (e: Exception) {
-                        AppDebugLogger.log(
-                            DebugLogEntry(
-                                tag = DebugLogTag.FORECAST,
-                                level = DebugLogLevel.WARN,
-                                message = "Phân tích cú pháp ticker sạc thất bại: ${e.message}",
-                                responseSnippet = ticker,
-                                errorDetails = e.message ?: e.toString()
-                            )
-                        )
-                        null
-                    }
-                } else {
-                    AppDebugLogger.log(
-                        DebugLogEntry(
-                            tag = DebugLogTag.FORECAST,
-                            level = DebugLogLevel.INFO,
-                            message = "Không có dữ liệu ticker sạc (trụ có thể đang rảnh hoặc không có phiên sạc)",
-                            responseSnippet = ticker
-                        )
-                    )
-                    null
-                }
-
-                if (forecast != null) {
-                    forecastCache.put(station.id, forecast)
-                }
-
-                Result.success(forecast)
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            forecastCache.recordFailure(station.id)
-            AppDebugLogger.log(
-                DebugLogEntry(
-                    tag = DebugLogTag.FORECAST,
-                    level = DebugLogLevel.ERROR,
-                    message = "Lỗi ngoại lệ khi xử lý dự báo sạc trạm ${station.name}: ${e.message}",
-                    errorDetails = e.message ?: e.toString()
-                )
-            )
-            Result.success(null)
-        }
-    }
-
-    /**
-     * Batch enriches a list of stations with real-time charging forecasts.
-     * Concurrency is throttled to at most 2 simultaneous network requests via Semaphore(2)
-     * and staggered with pacing delay (250ms) to avoid triggering server rate limits.
-     * Instantly aborts the entire batch upon encountering HTTP 429 / RateLimitException.
-     *
-     * @param stations Target stations to enrich.
-     * @param forceRefresh When true, invalidates cache and cooldowns for fresh fetching.
-     * @param onStationUpdated Optional callback invoked as each station is progressively updated.
-     * @return Complete list of stations enriched with forecasts where available.
-     */
-    open suspend fun enrichStationsWithForecast(
-        stations: List<Station>,
-        forceRefresh: Boolean = false,
-        onStationUpdated: ((Station) -> Unit)? = null
-    ): List<Station> = withContext(ioDispatcher) {
-        if (stations.isEmpty() || isGlobalRateLimited()) return@withContext stations
-
-        val enrichedStations = java.util.concurrent.atomic.AtomicReferenceArray(stations.toTypedArray())
-
-        try {
-            coroutineScope {
-                stations.mapIndexed { index, station ->
-                    async {
-                        if (isGlobalRateLimited()) {
-                            this@coroutineScope.cancel(CancellationException("Global rate limit active, aborting forecast batch"))
-                            return@async station
-                        }
-                        if (index > 0) {
-                            delayProvider(index * 250L)
-                        }
-                        if (isGlobalRateLimited()) {
-                            this@coroutineScope.cancel(CancellationException("Global rate limit active, aborting forecast batch"))
-                            return@async station
-                        }
-
-                        val result = fetchStationForecast(station, forceRefresh)
-                        val forecast = result.getOrNull()
-                        val enriched = if (forecast != null) {
-                            station.copy(forecast = forecast)
-                        } else {
-                            station
-                        }
-                        enrichedStations.set(index, enriched)
-                        onStationUpdated?.invoke(enriched)
-
-                        if (isGlobalRateLimited()) {
-                            this@coroutineScope.cancel(CancellationException("Rate limit 429 triggered during forecast batch, aborting"))
-                        }
-                        enriched
-                    }
-                }.awaitAll()
-            }
-        } catch (e: CancellationException) {
-            AppDebugLogger.log(
-                DebugLogEntry(
-                    tag = DebugLogTag.FORECAST,
-                    level = DebugLogLevel.WARN,
-                    message = "Hủy toàn bộ batch dự báo sạc do kích hoạt giới hạn tần suất (HTTP 429)",
-                    errorDetails = e.message
-                )
-            )
-        }
-
-        (0 until stations.size).map { i -> enrichedStations.get(i) }
     }
 }
 

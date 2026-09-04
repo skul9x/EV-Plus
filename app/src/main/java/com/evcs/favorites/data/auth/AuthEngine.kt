@@ -1,5 +1,6 @@
 package com.evcs.favorites.data.auth
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -8,6 +9,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.evcs.favorites.data.network.AppOkHttpClientProvider
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -70,7 +72,7 @@ class AuthEngine(
         }
 
         private fun defaultClient(): OkHttpClient {
-            return OkHttpClient.Builder()
+            return AppOkHttpClientProvider.getSharedClient().newBuilder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
                 .followRedirects(true)
@@ -78,8 +80,18 @@ class AuthEngine(
         }
     }
 
-    private val _isLoggedIn = MutableStateFlow(sessionManager.hasAuthCookie())
+    private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    /**
+     * Asynchronously verifies authentication status on [dispatcher] without blocking the Main Thread,
+     * updating [isLoggedIn] StateFlow.
+     */
+    suspend fun checkLoggedInAsync(dispatcher: CoroutineDispatcher = Dispatchers.IO): Boolean = withContext(dispatcher) {
+        val loggedIn = sessionManager.checkAuthCookieAsync(dispatcher)
+        _isLoggedIn.value = loggedIn
+        loggedIn
+    }
 
     /**
      * Step 1: Fetches the reward.html page snippet to extract CSRF token and PHPSESSID.

@@ -5,7 +5,6 @@ import com.evcs.favorites.data.api.EvcsApiClient
 import com.evcs.favorites.data.auth.AuthEngine
 import com.evcs.favorites.data.auth.InMemorySessionStorage
 import com.evcs.favorites.data.auth.SessionManager
-import com.evcs.favorites.data.cache.ForecastCache
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsRepository
@@ -16,7 +15,6 @@ import com.evcs.favorites.data.routing.RoutingEngineType
 import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.data.routing.TrafficCondition
 import com.evcs.favorites.domain.location.LocationService
-import com.evcs.favorites.domain.model.StationForecast
 import com.evcs.favorites.ui.state.FavoritesUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,10 +38,9 @@ import org.junit.Test
  *
  * Requirements verified:
  * 1. Existing stations retain drivingMetrics (duration, distance, traffic) when repository.favoritesState emits.
- * 2. Existing stations retain StationForecast data during repository state emissions.
- * 3. Removing a favorite via repository emission removes only the targeted station while preserving metrics on remaining stations.
- * 4. Adding a new favorite preserves metrics on existing stations and adds the new station to the UI state with enrichment.
- * 5. Atomic _uiState.update prevents state reversion when concurrent emissions occur.
+ * 2. Removing a favorite via repository emission removes only the targeted station while preserving metrics on remaining stations.
+ * 3. Adding a new favorite preserves metrics on existing stations and adds the new station to the UI state with enrichment.
+ * 4. Atomic _uiState.update prevents state reversion when concurrent emissions occur.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FavoritesTwoWaySyncEnrichmentPreservationTest {
@@ -101,7 +98,6 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
     ) : EvcsRepository(
         apiClient = EvcsApiClient(SessionManager(sessionStorage)),
         cacheStorage = sessionStorage,
-        forecastCache = ForecastCache(timeProvider = { System.currentTimeMillis() }),
         ioDispatcher = testDispatcher
     ) {
         var favoritesResult: Result<List<Station>> = Result.success(emptyList())
@@ -119,35 +115,6 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
             autoResolveUnknownCoordinates: Boolean
         ): Result<List<Station>> {
             return favoritesResult
-        }
-
-        override suspend fun fetchStationForecast(
-            station: Station,
-            forceRefresh: Boolean
-        ): Result<StationForecast?> {
-            return Result.success(
-                StationForecast(
-                    wattageKw = 60.0,
-                    vehicleCount = 2,
-                    minMinutes = 10,
-                    maxMinutes = 15,
-                    rawText = "Dự báo có cổng trống sau 15p tại ${station.name}"
-                )
-            )
-        }
-
-        override suspend fun enrichStationsWithForecast(
-            stations: List<Station>,
-            forceRefresh: Boolean,
-            onStationUpdated: ((Station) -> Unit)?
-        ): List<Station> {
-            return stations.map { station ->
-                val result = fetchStationForecast(station, forceRefresh)
-                val forecast = result.getOrNull()
-                val enriched = if (forecast != null) station.copy(forecast = forecast) else station
-                onStationUpdated?.invoke(enriched)
-                enriched
-            }
         }
     }
 
@@ -268,40 +235,6 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
     }
 
     @Test
-    fun testFavoritesTwoWaySync_existingStationsRetainForecastDataDuringRepoEmissions() = runTest(testDispatcher) {
-        val station1 = createStation("st_1", "Station 1", 21.0300, 105.8500)
-        val station2 = createStation("st_2", "Station 2", 21.0400, 105.8600)
-
-        fakeRepository.favoritesResult = Result.success(listOf(station1, station2))
-        fakeRepository.emitFavorites(listOf(station1, station2))
-
-        val viewModel = createViewModel()
-        advanceUntilIdle()
-
-        val stateBefore = viewModel.uiState.value as FavoritesUiState.Success
-        val st1Before = stateBefore.stations.first { it.id == "st_1" }
-        val st2Before = stateBefore.stations.first { it.id == "st_2" }
-
-        assertNotNull("Station 1 should have forecast", st1Before.forecast)
-        assertNotNull("Station 2 should have forecast", st2Before.forecast)
-        val forecast1 = st1Before.forecast!!
-        val forecast2 = st2Before.forecast!!
-
-        // Emit updated favoritesState without forecast
-        fakeRepository.emitFavorites(listOf(station1, station2))
-        advanceUntilIdle()
-
-        val stateAfter = viewModel.uiState.value as FavoritesUiState.Success
-        val st1After = stateAfter.stations.first { it.id == "st_1" }
-        val st2After = stateAfter.stations.first { it.id == "st_2" }
-
-        assertEquals(forecast1.rawText, st1After.forecast?.rawText)
-        assertEquals(forecast1.wattageKw, st1After.forecast?.wattageKw ?: 0.0, 0.01)
-        assertEquals(forecast2.rawText, st2After.forecast?.rawText)
-        assertEquals(forecast2.wattageKw, st2After.forecast?.wattageKw ?: 0.0, 0.01)
-    }
-
-    @Test
     fun testFavoritesTwoWaySync_removingFavoriteViaRepoEmissionRemovesTargetAndPreservesRemainingMetrics() = runTest(testDispatcher) {
         val station1 = createStation("st_1", "Station 1", 21.0300, 105.8500)
         val station2 = createStation("st_2", "Station 2", 21.0400, 105.8600)
@@ -316,7 +249,6 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
         assertEquals(2, stateBefore.stations.size)
         val st2Before = stateBefore.stations.first { it.id == "st_2" }
         assertNotNull(st2Before.drivingMetrics)
-        assertNotNull(st2Before.forecast)
 
         // Simulate station1 removed via external action (e.g. toggled off from Nearby tab)
         fakeRepository.emitFavorites(listOf(station2))
@@ -328,7 +260,6 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
 
         val st2After = stateAfter.stations[0]
         assertEquals("Station 2 metrics should be preserved", st2Before.drivingMetrics?.durationSeconds, st2After.drivingMetrics?.durationSeconds)
-        assertEquals("Station 2 forecast should be preserved", st2Before.forecast?.rawText, st2After.forecast?.rawText)
     }
 
     @Test
@@ -346,7 +277,6 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
         val stateBefore = viewModel.uiState.value as FavoritesUiState.Success
         val st1Before = stateBefore.stations.first { it.id == "st_1" }
         val origMetrics1 = st1Before.drivingMetrics!!
-        val origForecast1 = st1Before.forecast!!
 
         val coordinatorCallsBefore = fakeCoordinator.callCount
 
@@ -361,11 +291,9 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
 
         val st1After = stateAfter.stations.first { it.id == "st_1" }
         assertEquals("Station 1 metrics preserved", origMetrics1.durationSeconds, st1After.drivingMetrics?.durationSeconds)
-        assertEquals("Station 1 forecast preserved", origForecast1.rawText, st1After.forecast?.rawText)
 
         val st3After = stateAfter.stations.first { it.id == "st_3" }
         assertNotNull("Station 3 should have driving metrics calculated", st3After.drivingMetrics)
-        assertNotNull("Station 3 should have forecast enriched", st3After.forecast)
         assertTrue("Coordinator was invoked for new station", fakeCoordinator.callCount > coordinatorCallsBefore)
     }
 

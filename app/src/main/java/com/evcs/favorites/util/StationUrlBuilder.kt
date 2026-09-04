@@ -17,6 +17,12 @@ object StationUrlBuilder {
 
     const val BASE_URL = "https://evcs.vn"
 
+    // Pre-compiled regex patterns for slug generation (PERF-CPU-01)
+    val DIACRITICS_REGEX = Regex("[\\u0300-\\u036f]")
+    val NON_ALPHANUMERIC_REGEX = Regex("[^a-z0-9]")
+    val WHITESPACE_REGEX = Regex("\\s+")
+    val CONSECUTIVE_DASHES_REGEX = Regex("-+")
+
     /**
      * Converts a station name string into an EVCS URL slug:
      * - Decomposes unicode diacritics (NFD form)
@@ -29,14 +35,14 @@ object StationUrlBuilder {
         if (input.isNullOrBlank()) return ""
         val normalized = Normalizer.normalize(input, Normalizer.Form.NFD)
         return normalized
-            .replace(Regex("[\\u0300-\\u036f]"), "")
+            .replace(DIACRITICS_REGEX, "")
             .replace('đ', 'd')
             .replace('Đ', 'd')
             .lowercase()
-            .replace(Regex("[^a-z0-9]"), " ")
+            .replace(NON_ALPHANUMERIC_REGEX, " ")
             .trim()
-            .replace(Regex("\\s+"), "-")
-            .replace(Regex("-+"), "-")
+            .replace(WHITESPACE_REGEX, "-")
+            .replace(CONSECUTIVE_DASHES_REGEX, "-")
     }
 
     /**

@@ -7,6 +7,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -25,7 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,6 +101,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        lifecycleScope.launch(Dispatchers.IO) {
+            EncryptedSharedPrefsStorage.getInstance(applicationContext).warmUp()
+            repository.initializeAsync()
+        }
+
         setContent {
             EvcsFavoritesTheme {
                 Surface(
@@ -128,9 +136,9 @@ fun FavoritesApp(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val uiState by viewModel.uiState.collectAsState()
-    val isLoggedIn by viewModel.isLoggedIn.collectAsState()
-    val routingSettings by viewModel.routingSettings.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
+    val routingSettings by viewModel.routingSettings.collectAsStateWithLifecycle()
 
     var currentTab by rememberSaveable { mutableStateOf(AppTab.NEARBY) }
     var showPermissionRationale by remember { mutableStateOf(false) }
@@ -183,7 +191,7 @@ fun FavoritesApp(
                             onBackToEmail = { viewModel.backToEmailInput() }
                         )
                     } else {
-                        val selectedStation by viewModel.selectedStationForDetail.collectAsState()
+                        val selectedStation by viewModel.selectedStationForDetail.collectAsStateWithLifecycle()
 
                         FavoritesScreen(
                             uiState = uiState,

@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
@@ -12,6 +15,7 @@ import java.util.UUID
  * Android's EncryptedSharedPreferences in production.
  */
 interface SessionStorage {
+    suspend fun warmUp() {}
     fun getString(key: String): String?
     fun putString(key: String, value: String?)
     fun remove(key: String)
@@ -24,6 +28,14 @@ interface SessionStorage {
 class EncryptedSharedPrefsStorage(context: Context) : SessionStorage {
     private val appContext: Context = context.applicationContext ?: context
     private val lock = Any()
+
+    override suspend fun warmUp() {
+        withContext(Dispatchers.IO) {
+            synchronized(lock) {
+                prefs
+            }
+        }
+    }
 
     private val prefs: SharedPreferences by lazy {
         try {
@@ -221,6 +233,21 @@ class SessionManager(
      * Checks if a valid persistent auth cookie exists.
      */
     fun hasAuthCookie(): Boolean = !authCookie.isNullOrBlank()
+
+    /**
+     * Proactively warms up the underlying storage off the Main Thread.
+     */
+    suspend fun warmUp() {
+        storage.warmUp()
+    }
+
+    /**
+     * Asynchronously checks whether an auth cookie exists off the Main Thread on [dispatcher].
+     */
+    suspend fun checkAuthCookieAsync(dispatcher: CoroutineDispatcher = Dispatchers.IO): Boolean = withContext(dispatcher) {
+        storage.warmUp()
+        hasAuthCookie()
+    }
 
     /**
      * Generates standard Cookie header string for authenticated requests.

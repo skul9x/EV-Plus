@@ -1,6 +1,7 @@
 package com.evcs.favorites.data.routing
 
 import com.evcs.favorites.data.logging.DebugLoggingInterceptor
+import com.evcs.favorites.data.network.AppOkHttpClientProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,7 +25,7 @@ class OsrmRoutingClient(
         const val USER_AGENT_VALUE = "EVCSFavorites-Android/1.0"
 
         private fun defaultClient(): OkHttpClient {
-            return OkHttpClient.Builder()
+            return AppOkHttpClientProvider.getSharedClient().newBuilder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
                 .addInterceptor(DebugLoggingInterceptor())
