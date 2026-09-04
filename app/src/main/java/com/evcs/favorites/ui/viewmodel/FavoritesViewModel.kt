@@ -223,7 +223,7 @@ class FavoritesViewModel(
                             forceRefresh = false
                         )
                     } else {
-                        enrichTopFullStationsWithForecast(forceRefresh = false)
+                        enrichTopStationsWithForecast(forceRefresh = false)
                     }
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "Không thể tải danh sách trạm sạc yêu thích"
@@ -284,7 +284,7 @@ class FavoritesViewModel(
                             forceRefresh = true
                         )
                     } else {
-                        enrichTopFullStationsWithForecast(forceRefresh = true)
+                        enrichTopStationsWithForecast(forceRefresh = true)
                     }
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "Không thể làm mới danh sách trạm"
@@ -379,7 +379,7 @@ class FavoritesViewModel(
                 )
             }
 
-            enrichTopFullStationsWithForecast(forceRefresh = forceRefresh)
+            enrichTopStationsWithForecast(forceRefresh = forceRefresh)
         }
 
         routingJob = job
@@ -557,20 +557,18 @@ class FavoritesViewModel(
     }
 
     /**
-     * Targeted background forecast enrichment strictly for the Top 5 nearest full stations
-     * (totalPlugs > 0 && totalAvailablePlugs == 0) from the loaded favorites list.
+     * Targeted background forecast enrichment unconditionally for the Top 5 favorite stations
+     * from the loaded favorites list.
      * Progressively updates stations in UI state as each forecast arrives, preserving driving metrics,
      * connectors, and ETA sort order.
      */
-    fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job {
+    fun enrichTopStationsWithForecast(forceRefresh: Boolean = false): Job {
         forecastJob?.cancel()
         val job = viewModelScope.launch(dispatcher) {
             val currentState = _uiState.value
             if (currentState !is FavoritesUiState.Success) return@launch
 
-            val targetStations = currentState.stations
-                .filter { it.totalPlugs > 0 && it.totalAvailablePlugs == 0 }
-                .take(5)
+            val targetStations = currentState.stations.take(5)
 
             if (targetStations.isEmpty()) return@launch
 
@@ -612,6 +610,9 @@ class FavoritesViewModel(
         forecastJob = job
         return job
     }
+
+    fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job =
+        enrichTopStationsWithForecast(forceRefresh)
 
     override fun onCleared() {
         super.onCleared()

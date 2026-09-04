@@ -393,22 +393,20 @@ class NearbyViewModel(
             )
         }
 
-        // 7. Trigger background forecast enrichment for strictly Top 5 full stations
-        enrichTopFullStationsWithForecast(forceRefresh = forceRefreshForecast)
+        // 7. Trigger background forecast enrichment for strictly Top 5 stations
+        enrichTopStationsWithForecast(forceRefresh = forceRefreshForecast)
     }
 
     /**
-     * Targeted background forecast enrichment strictly for the Top 5 nearest full stations
-     * (totalPlugs > 0 && totalAvailablePlugs == 0) from visible top10DisplayStations list.
+     * Targeted background forecast enrichment unconditionally for the Top 5 nearest stations
+     * from visible top10DisplayStations list.
      * Progressively updates stations in UI state as each forecast arrives, preserving driving metrics,
      * connectors, and display sort order.
      */
-    fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job {
+    fun enrichTopStationsWithForecast(forceRefresh: Boolean = false): Job {
         forecastJob?.cancel()
         val job = viewModelScope.launch(dispatcher) {
-            val targetStations = _uiState.value.top10DisplayStations
-                .filter { it.totalPlugs > 0 && it.totalAvailablePlugs == 0 }
-                .take(5)
+            val targetStations = _uiState.value.top10DisplayStations.take(5)
 
             if (targetStations.isEmpty()) return@launch
 
@@ -446,6 +444,9 @@ class NearbyViewModel(
         forecastJob = job
         return job
     }
+
+    fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job =
+        enrichTopStationsWithForecast(forceRefresh)
 
     override fun onCleared() {
         super.onCleared()

@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -817,7 +818,8 @@ fun ForecastCapsule(
                                 text = bullet,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontWeight = FontWeight.Normal,
-                                    fontSize = 12.5.sp
+                                    fontSize = 12.5.sp,
+                                    fontFamily = FontFamily.Monospace
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.95f),
                                 maxLines = 1,
