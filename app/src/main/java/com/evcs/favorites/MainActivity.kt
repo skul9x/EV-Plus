@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
     private val repository by lazy {
         EvcsRepository(
             apiClient = apiClient,
-            cacheStorage = EncryptedSharedPrefsStorage(applicationContext),
+            cacheStorage = EncryptedSharedPrefsStorage.getInstance(applicationContext),
             autoResolveCoordinates = true
         )
     }
@@ -224,8 +224,8 @@ fun FavoritesApp(
                             },
                             cookieHeader = viewModel.getCookieHeader(),
                             routingSettings = routingSettings,
-                            onSaveRoutingSettings = { viewModel.updateRoutingSettings(it) },
-                            onValidateGoogleApiKey = { viewModel.validateGoogleApiKey(it) }
+                            onSaveRoutingSettings = { nearbyViewModel.updateRoutingSettings(it) },
+                            onValidateGoogleApiKey = { nearbyViewModel.validateGoogleApiKey(it) }
                         )
                     }
                 }

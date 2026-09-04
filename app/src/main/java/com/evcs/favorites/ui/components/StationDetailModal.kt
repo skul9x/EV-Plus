@@ -56,6 +56,37 @@ import com.evcs.favorites.util.StationUrlBuilder
 import kotlinx.coroutines.launch
 
 /**
+ * Targeted CSS rule to ensure the action button [Xem thêm ↗] does not occlude the
+ * duration text on narrow smartphone viewports.
+ */
+const val FORECAST_OVERLAP_FIX_CSS = ".amd-hasmore .amd-item { padding-right: 115px !important; }"
+
+/**
+ * JavaScript snippet injected on [WebViewClient.onPageFinished] to apply [FORECAST_OVERLAP_FIX_CSS].
+ */
+val FORECAST_OVERLAP_FIX_SCRIPT: String = """
+(function() {
+    var style = document.createElement('style');
+    style.type = 'text/css';
+    style.innerHTML = '$FORECAST_OVERLAP_FIX_CSS';
+    document.head.appendChild(style);
+})();
+""".trimIndent()
+
+/**
+ * Validates that script injection only occurs for trusted EVCS domain endpoints.
+ */
+fun isEvcsDomain(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    return try {
+        val host = java.net.URI(url).host?.lowercase()
+        host == "evcs.vn" || host?.endsWith(".evcs.vn") == true
+    } catch (_: Exception) {
+        url.contains("evcs.vn")
+    }
+}
+
+/**
  * In-app interactive Station Detail View hosted inside a Material 3 [ModalBottomSheet].
  * Displays real-time port telemetry, charging density charts, peak stats, and station info
  * matching the official EVCS experience with session cookie injection.
@@ -207,6 +238,9 @@ fun StationDetailModal(
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
                                     isLoading = false
+                                    if (isEvcsDomain(url)) {
+                                        view?.evaluateJavascript(FORECAST_OVERLAP_FIX_SCRIPT, null)
+                                    }
                                 }
 
                                 override fun shouldOverrideUrlLoading(

@@ -3,6 +3,7 @@ package com.evcs.favorites.data.repository
 import com.evcs.favorites.data.api.EvcsApiClient
 import com.evcs.favorites.data.auth.SessionStorage
 import com.evcs.favorites.data.cache.ForecastCache
+import com.evcs.favorites.data.model.ChargingForecastResponse
 import com.evcs.favorites.data.model.FavoriteStationRaw
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.SearchStationRaw
@@ -11,6 +12,7 @@ import com.evcs.favorites.data.parser.StationForecastParser
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.domain.model.StationForecast
 import com.evcs.favorites.util.StationNameSanitizer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -405,10 +407,13 @@ open class EvcsRepository(
     /**
      * Appends or updates a favorite station in the in-memory state and persistent cache,
      * then dispatches cloud sync via [EvcsApiClient.saveFavorites].
+     * Rolls back in-memory state and persistent storage if cloud sync fails.
      */
-    open suspend fun addFavoriteStation(station: Station): Result<Unit> = withContext(Dispatchers.IO) {
+    open suspend fun addFavoriteStation(station: Station): Result<Unit> = withContext(ioDispatcher) {
+        val previousFavorites = _favoritesState.value
+        val previousIds = _favoriteIdsState.value
         try {
-            val current = _favoritesState.value.toMutableList()
+            val current = previousFavorites.toMutableList()
             val existingIndex = current.indexOfFirst { it.id.equals(station.id, ignoreCase = true) }
             if (existingIndex >= 0) {
                 current[existingIndex] = station
@@ -422,12 +427,19 @@ open class EvcsRepository(
             val rawFavorites = current.map { it.toFavoriteStationRaw() }
             val syncResult = apiClient.saveFavorites(rawFavorites)
             if (syncResult.isFailure) {
+                _favoritesState.value = previousFavorites
+                _favoriteIdsState.value = previousIds
+                saveCachedFavorites(previousFavorites)
                 return@withContext Result.failure(
                     syncResult.exceptionOrNull() ?: IOException("Failed to sync favorites to cloud")
                 )
             }
             Result.success(Unit)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            _favoritesState.value = previousFavorites
+            _favoriteIdsState.value = previousIds
+            saveCachedFavorites(previousFavorites)
             Result.failure(e)
         }
     }
@@ -435,10 +447,13 @@ open class EvcsRepository(
     /**
      * Removes a station from the in-memory favorites state and persistent cache,
      * then dispatches cloud sync via [EvcsApiClient.saveFavorites].
+     * Rolls back in-memory state and persistent storage if cloud sync fails.
      */
-    open suspend fun removeFavoriteStation(locationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+    open suspend fun removeFavoriteStation(locationId: String): Result<Unit> = withContext(ioDispatcher) {
+        val previousFavorites = _favoritesState.value
+        val previousIds = _favoriteIdsState.value
         try {
-            val current = _favoritesState.value.toMutableList()
+            val current = previousFavorites.toMutableList()
             current.removeAll { it.id.equals(locationId, ignoreCase = true) }
             _favoritesState.value = current
             _favoriteIdsState.value = current.map { it.id }.toSet()
@@ -447,12 +462,19 @@ open class EvcsRepository(
             val rawFavorites = current.map { it.toFavoriteStationRaw() }
             val syncResult = apiClient.saveFavorites(rawFavorites)
             if (syncResult.isFailure) {
+                _favoritesState.value = previousFavorites
+                _favoriteIdsState.value = previousIds
+                saveCachedFavorites(previousFavorites)
                 return@withContext Result.failure(
                     syncResult.exceptionOrNull() ?: IOException("Failed to sync favorites to cloud")
                 )
             }
             Result.success(Unit)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            _favoritesState.value = previousFavorites
+            _favoriteIdsState.value = previousIds
+            saveCachedFavorites(previousFavorites)
             Result.failure(e)
         }
     }
@@ -563,7 +585,7 @@ open class EvcsRepository(
                 }
 
                 val retryDelays = listOf(1000L, 2000L)
-                var result: Result<String>? = null
+                var result: Result<ChargingForecastResponse>? = null
 
                 for (attempt in 0..retryDelays.size) {
                     if (attempt > 0) {
@@ -572,7 +594,7 @@ open class EvcsRepository(
                         delayProvider(baseDelay + jitter)
                     }
 
-                    result = apiClient.fetchStationHtml(station.name, station.id)
+                    result = apiClient.fetchChargingForecast(station.name, station.id, isVinFast = true)
                     if (result.isSuccess) {
                         break
                     }
@@ -584,14 +606,21 @@ open class EvcsRepository(
                 }
 
                 if (result == null || result.isFailure) {
+                    val ex = result?.exceptionOrNull()
+                    if (ex is CancellationException) throw ex
                     forecastCache.recordFailure(station.id)
                     return@withPermit Result.success(null)
                 }
 
-                val html = result.getOrNull().orEmpty()
-                val forecast = try {
-                    StationForecastParser.parseForecastFromHtml(html)
-                } catch (e: Exception) {
+                val forecastResponse = result.getOrNull()
+                val ticker = forecastResponse?.ticker.orEmpty()
+                val forecast = if (ticker.isNotBlank()) {
+                    try {
+                        StationForecastParser.parseForecastFromHtml(ticker)
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else {
                     null
                 }
 
@@ -602,6 +631,7 @@ open class EvcsRepository(
                 Result.success(forecast)
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             forecastCache.recordFailure(station.id)
             Result.success(null)
         }

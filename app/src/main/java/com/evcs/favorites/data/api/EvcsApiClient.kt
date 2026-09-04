@@ -2,12 +2,15 @@ package com.evcs.favorites.data.api
 
 import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.crypto.EvcsHmacSigner
+import com.evcs.favorites.data.model.ChargingForecastRequest
+import com.evcs.favorites.data.model.ChargingForecastResponse
 import com.evcs.favorites.data.model.FavoriteStationRaw
 import com.evcs.favorites.data.model.FavoritesResponse
 import com.evcs.favorites.data.model.SaveFavoritesRequest
 import com.evcs.favorites.data.model.SearchRequest
 import com.evcs.favorites.data.model.SearchResponse
 import com.evcs.favorites.data.model.SearchStationRaw
+import com.evcs.favorites.data.model.UserPartialResponse
 import com.evcs.favorites.util.StationUrlBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -180,22 +183,23 @@ open class EvcsApiClient(
                 requestBuilder.addHeader("Cookie", cookieHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    IOException("Failed to fetch favorites: HTTP ${response.code}")
-                )
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("Failed to fetch favorites: HTTP ${response.code}")
+                    )
+                }
+
+                val responseBody = response.body?.string().orEmpty()
+
+                // Persist any updated session cookies from Set-Cookie headers
+                for (cookie in response.headers("Set-Cookie")) {
+                    sessionManager.saveFromSetCookieHeader(cookie)
+                }
+
+                val parsed = json.decodeFromString<FavoritesResponse>(responseBody)
+                Result.success(parsed)
             }
-
-            val responseBody = response.body?.string().orEmpty()
-
-            // Persist any updated session cookies from Set-Cookie headers
-            for (cookie in response.headers("Set-Cookie")) {
-                sessionManager.saveFromSetCookieHeader(cookie)
-            }
-
-            val parsed = json.decodeFromString<FavoritesResponse>(responseBody)
-            Result.success(parsed)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -236,19 +240,20 @@ open class EvcsApiClient(
                 requestBuilder.addHeader("Cookie", cookieHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    IOException("Failed to save favorites: HTTP ${response.code}")
-                )
-            }
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("Failed to save favorites: HTTP ${response.code}")
+                    )
+                }
 
-            // Persist any updated session cookies from Set-Cookie headers
-            for (cookie in response.headers("Set-Cookie")) {
-                sessionManager.saveFromSetCookieHeader(cookie)
-            }
+                // Persist any updated session cookies from Set-Cookie headers
+                for (cookie in response.headers("Set-Cookie")) {
+                    sessionManager.saveFromSetCookieHeader(cookie)
+                }
 
-            Result.success(true)
+                Result.success(true)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -283,24 +288,25 @@ open class EvcsApiClient(
                 requestBuilder.addHeader(headerName, headerValue)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    IOException("Search API request failed with HTTP ${response.code}")
-                )
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("Search API request failed with HTTP ${response.code}")
+                    )
+                }
+
+                val responseBody = response.body?.string().orEmpty()
+                val parsed = json.decodeFromString<SearchResponse>(responseBody)
+
+                if (parsed.code != 200000 && parsed.code != 0) {
+                    return@withContext Result.failure(
+                        IOException("Search API returned error code ${parsed.code}: ${parsed.error}")
+                    )
+                }
+
+                val stations = parsed.data.orEmpty()
+                Result.success(stations)
             }
-
-            val responseBody = response.body?.string().orEmpty()
-            val parsed = json.decodeFromString<SearchResponse>(responseBody)
-
-            if (parsed.code != 200000 && parsed.code != 0) {
-                return@withContext Result.failure(
-                    IOException("Search API returned error code ${parsed.code}: ${parsed.error}")
-                )
-            }
-
-            val stations = parsed.data.orEmpty()
-            Result.success(stations)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -332,15 +338,16 @@ open class EvcsApiClient(
                 requestBuilder.addHeader("Cookie", cookieHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    IOException("Failed to fetch station detail HTML: HTTP ${response.code}")
-                )
-            }
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("Failed to fetch station detail HTML: HTTP ${response.code}")
+                    )
+                }
 
-            val html = response.body?.string().orEmpty()
-            Result.success(html)
+                val html = response.body?.string().orEmpty()
+                Result.success(html)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -378,6 +385,104 @@ open class EvcsApiClient(
         }
         val metadata = parseStationMetadataFromHtml(htmlResult.getOrThrow())
         return Result.success(metadata)
+    }
+
+    /**
+     * Fetches dynamic charging forecast for a station via 2-step handshake matching web_charging.js.
+     * Step 1: POST canonical station detail URL with `X-Partial: user` to acquire chargeToken.
+     * Step 2: POST `${baseUrl}/charging` with `x-t: <chargeToken>` and `{"id": locationId, "t": ...}`.
+     *
+     * @param stationName Name of the charging station used for canonical slug.
+     * @param locationId Unique station identifier.
+     * @param isVinFast True if VinFast station (t: "vinfast"), false otherwise (t: "other").
+     * @return Result containing [ChargingForecastResponse] or failure exception.
+     */
+    open suspend fun fetchChargingForecast(
+        stationName: String,
+        locationId: String,
+        isVinFast: Boolean = true
+    ): Result<ChargingForecastResponse> = withContext(Dispatchers.IO) {
+        try {
+            // Step 1: Send HTTP POST to canonical station detail URL with X-Partial: user
+            val detailUrl = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
+            val step1RequestBuilder = Request.Builder()
+                .url(detailUrl)
+                .post("".toRequestBody())
+                .addHeader("User-Agent", USER_AGENT_BROWSER)
+                .addHeader("X-Partial", "user")
+                .addHeader("Referer", "$baseUrl/")
+                .addHeader("Origin", baseUrl)
+
+            val cookieHeader = sessionManager.getCookieHeader()
+            if (cookieHeader.isNotBlank()) {
+                step1RequestBuilder.addHeader("Cookie", cookieHeader)
+            }
+
+            val chargeToken = client.newCall(step1RequestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("Failed to fetch user partial token: HTTP ${response.code}")
+                    )
+                }
+
+                // Persist any updated session cookies from Set-Cookie headers
+                for (cookie in response.headers("Set-Cookie")) {
+                    sessionManager.saveFromSetCookieHeader(cookie)
+                }
+
+                val responseBody = response.body?.string().orEmpty()
+                val userPartial = json.decodeFromString<UserPartialResponse>(responseBody)
+                userPartial.chargeToken
+            }
+
+            // Step 2: Extract chargeToken from response body JSON. If token is absent, return failure.
+            if (chargeToken.isNullOrBlank()) {
+                return@withContext Result.failure(
+                    IOException("Failed to retrieve chargeToken from user partial response")
+                )
+            }
+
+            // Step 3: Send HTTP POST to ${baseUrl}/charging with headers x-t: <chargeToken>, content-type: application/json, and body {"id":"<locationId>","t":"vinfast"} (or "other")
+            val chargingUrl = "$baseUrl/charging"
+            val typeParam = if (isVinFast) "vinfast" else "other"
+            val payload = ChargingForecastRequest(
+                id = locationId,
+                t = typeParam
+            )
+            val jsonString = json.encodeToString(payload)
+
+            val step2RequestBuilder = Request.Builder()
+                .url(chargingUrl)
+                .post(jsonString.toRequestBody(JSON_MEDIA_TYPE))
+                .addHeader("User-Agent", USER_AGENT_BROWSER)
+                .addHeader("x-t", chargeToken)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Referer", "$baseUrl/")
+                .addHeader("Origin", baseUrl)
+
+            if (cookieHeader.isNotBlank()) {
+                step2RequestBuilder.addHeader("Cookie", cookieHeader)
+            }
+
+            // Step 4: Parse response JSON into ChargingForecastResponse
+            client.newCall(step2RequestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("Charging forecast request failed with HTTP ${response.code}")
+                    )
+                }
+
+                for (cookie in response.headers("Set-Cookie")) {
+                    sessionManager.saveFromSetCookieHeader(cookie)
+                }
+
+                val responseBody = response.body?.string().orEmpty()
+                val forecast = json.decodeFromString<ChargingForecastResponse>(responseBody)
+                Result.success(forecast)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }
 

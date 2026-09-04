@@ -11,6 +11,7 @@ import com.evcs.favorites.data.preferences.NearbyFilterPreferences
 import com.evcs.favorites.data.routing.MultiTierRoutingCoordinator
 import com.evcs.favorites.data.routing.RoutingDestination
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
+import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.domain.filter.NearbyStationFilter
 import com.evcs.favorites.domain.location.LocationService
 import com.evcs.favorites.domain.model.WattageOption
@@ -54,6 +55,10 @@ class NearbyViewModel(
     private val prefsManager: RoutingPreferencesManager =
         routingPreferencesManager ?: RoutingPreferencesManager(storage = InMemorySessionStorage())
 
+    val routingSettings: StateFlow<RoutingSettings> = prefsManager.settings
+
+    private var previousRoutingSettings: RoutingSettings = prefsManager.settings.value
+
     private val filterPrefs: NearbyFilterPreferences =
         filterPreferences ?: NearbyFilterPreferences(storage = InMemorySessionStorage())
 
@@ -82,6 +87,26 @@ class NearbyViewModel(
         viewModelScope.launch(dispatcher) {
             repository.favoriteIdsState.collect { ids ->
                 _uiState.update { it.copy(favoriteStationIds = ids) }
+            }
+        }
+
+        // Observe routing preferences changes
+        viewModelScope.launch(dispatcher) {
+            prefsManager.settings.collect { newSettings ->
+                val engineChanged = newSettings.preferredEngine != previousRoutingSettings.preferredEngine
+                val keyChanged = newSettings.googleApiKey != previousRoutingSettings.googleApiKey
+                val osrmUrlChanged = newSettings.customOsrmServerUrl != previousRoutingSettings.customOsrmServerUrl
+                val fallbackChanged = newSettings.autoFallbackEnabled != previousRoutingSettings.autoFallbackEnabled
+
+                if (engineChanged || keyChanged || osrmUrlChanged || fallbackChanged) {
+                    previousRoutingSettings = newSettings
+                    if (_uiState.value.top10DisplayStations.isNotEmpty() &&
+                        _uiState.value.userLatitude != null &&
+                        _uiState.value.userLongitude != null
+                    ) {
+                        recalculateRouting(newSettings)
+                    }
+                }
             }
         }
     }
@@ -314,6 +339,75 @@ class NearbyViewModel(
         } else {
             scanNearbyStations()
         }
+    }
+
+    /**
+     * Updates routing preferences, saves them to [prefsManager], and triggers immediate
+     * re-calculation of driving metrics for visible top 10 stations.
+     */
+    fun updateRoutingSettings(settings: RoutingSettings): Job {
+        previousRoutingSettings = settings
+        prefsManager.saveSettings(settings)
+        return recalculateRouting(settings)
+    }
+
+    /**
+     * Proactively validates a Google Cloud Routes API key via [prefsManager].
+     */
+    suspend fun validateGoogleApiKey(key: String): Result<Boolean> {
+        return prefsManager.validateGoogleApiKey(key)
+    }
+
+    /**
+     * Recalculates driving metrics for the currently visible top 10 stations with the specified [settings].
+     * Avoids GPS hardware re-acquisition and preserves existing station data (e.g. forecast, connectors).
+     */
+    fun recalculateRouting(settings: RoutingSettings = prefsManager.settings.value): Job {
+        val lat = _uiState.value.userLatitude
+        val lon = _uiState.value.userLongitude
+        val top10 = _uiState.value.top10DisplayStations
+
+        if (lat == null || lon == null || top10.isEmpty()) {
+            return Job().apply { complete() }
+        }
+
+        routingJob?.cancel()
+        val job = viewModelScope.launch(dispatcher) {
+            _uiState.update { it.copy(isRoutingLoading = true) }
+
+            val destinations = top10.take(10).map { station ->
+                RoutingDestination(
+                    id = station.id,
+                    latitude = station.latitude,
+                    longitude = station.longitude
+                )
+            }
+
+            val metrics = withContext(ioDispatcher) {
+                routingCoordinator.calculateRoutes(
+                    originLat = lat,
+                    originLng = lon,
+                    destinations = destinations,
+                    settings = settings
+                )
+            }
+
+            val routedTop10 = top10.map { station ->
+                val m = metrics[station.id]
+                if (m != null) station.copy(drivingMetrics = m) else station
+            }
+            val sortedRoutedTop10 = NearbyStationFilter.sortByDrivingDistance(routedTop10)
+
+            _uiState.update {
+                it.copy(
+                    top10DisplayStations = sortedRoutedTop10,
+                    routingMetrics = metrics,
+                    isRoutingLoading = false
+                )
+            }
+        }
+        routingJob = job
+        return job
     }
 
     /**

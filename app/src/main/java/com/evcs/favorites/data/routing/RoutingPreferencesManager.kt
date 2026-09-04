@@ -42,7 +42,7 @@ class RoutingPreferencesManager(
          */
         fun create(context: Context): RoutingPreferencesManager {
             return RoutingPreferencesManager(
-                storage = EncryptedSharedPrefsStorage(context)
+                storage = EncryptedSharedPrefsStorage.getInstance(context)
             )
         }
     }

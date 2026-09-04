@@ -24,7 +24,7 @@ class NearbyFilterPreferences(
          */
         fun create(context: Context): NearbyFilterPreferences {
             return NearbyFilterPreferences(
-                storage = EncryptedSharedPrefsStorage(context)
+                storage = EncryptedSharedPrefsStorage.getInstance(context)
             )
         }
     }

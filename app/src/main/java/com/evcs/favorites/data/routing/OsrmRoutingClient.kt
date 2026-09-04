@@ -1,5 +1,6 @@
 package com.evcs.favorites.data.routing
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -124,6 +125,7 @@ class OsrmRoutingClient(
                 Result.success(resultMap)
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }

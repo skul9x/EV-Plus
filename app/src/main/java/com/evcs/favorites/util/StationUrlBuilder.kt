@@ -46,8 +46,16 @@ object StationUrlBuilder {
         val sanitizedName = StationNameSanitizer.sanitize(name)
         val slug = slugify(sanitizedName)
         val cleanLocId = locationId.trim()
-        return if (slug.startsWith("vinfast")) {
-            "$baseUrl/tram-sac-$slug-${cleanLocId.lowercase()}.html"
+        var normalizedSlug = slug
+        while (normalizedSlug.startsWith("tram-sac-")) {
+            normalizedSlug = normalizedSlug.removePrefix("tram-sac-")
+        }
+        if (normalizedSlug == "tram-sac") {
+            normalizedSlug = ""
+        }
+        val prefix = if (normalizedSlug.isNotEmpty()) "$baseUrl/tram-sac-$normalizedSlug" else "$baseUrl/tram-sac"
+        return if (normalizedSlug.startsWith("vinfast")) {
+            "$prefix-${cleanLocId.lowercase()}.html"
         } else {
             val encodedId = try {
                 URLEncoder.encode(cleanLocId, StandardCharsets.UTF_8.name())
@@ -55,7 +63,7 @@ object StationUrlBuilder {
             } catch (e: Exception) {
                 cleanLocId
             }
-            "$baseUrl/tram-sac-$slug-c.$encodedId.html"
+            "$prefix-c.$encodedId.html"
         }
     }
 

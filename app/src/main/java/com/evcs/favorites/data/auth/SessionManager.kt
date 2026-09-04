@@ -22,38 +22,78 @@ interface SessionStorage {
  * Production storage backed by Android's EncryptedSharedPreferences.
  */
 class EncryptedSharedPrefsStorage(context: Context) : SessionStorage {
+    private val appContext: Context = context.applicationContext ?: context
+    private val lock = Any()
+
     private val prefs: SharedPreferences by lazy {
         try {
-            val masterKey = MasterKey.Builder(context)
+            val masterKey = MasterKey.Builder(appContext)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
-            EncryptedSharedPreferences.create(
-                context,
+            val esp = EncryptedSharedPreferences.create(
+                appContext,
                 "evcs_secure_session",
                 masterKey,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (e: Exception) {
-            context.getSharedPreferences("evcs_session_prefs", Context.MODE_PRIVATE)
+            val testKey = "__esp_probe__"
+            esp.edit().putString(testKey, "1").commit()
+            if (esp.getString(testKey, null) != "1") {
+                throw IllegalStateException("EncryptedSharedPreferences probe failed")
+            }
+            esp.edit().remove(testKey).commit()
+            esp
+        } catch (e: Throwable) {
+            appContext.getSharedPreferences("evcs_session_prefs", Context.MODE_PRIVATE)
         }
     }
 
-    override fun getString(key: String): String? = prefs.getString(key, null)
+    override fun getString(key: String): String? = synchronized(lock) {
+        prefs.getString(key, null)
+    }
 
     override fun putString(key: String, value: String?) {
-        prefs.edit().apply {
-            if (value == null) remove(key) else putString(key, value)
-            apply()
+        synchronized(lock) {
+            val editor = prefs.edit()
+            if (value == null) {
+                editor.remove(key)
+            } else {
+                editor.putString(key, value)
+            }
+            editor.apply()
         }
     }
 
     override fun remove(key: String) {
-        prefs.edit().remove(key).apply()
+        synchronized(lock) {
+            prefs.edit().remove(key).apply()
+        }
     }
 
     override fun clear() {
-        prefs.edit().clear().apply()
+        synchronized(lock) {
+            prefs.edit().clear().apply()
+        }
+    }
+
+    companion object {
+        @Volatile
+        private var instance: EncryptedSharedPrefsStorage? = null
+
+        fun getInstance(context: Context): EncryptedSharedPrefsStorage {
+            return instance ?: synchronized(this) {
+                instance ?: EncryptedSharedPrefsStorage(context.applicationContext ?: context).also {
+                    instance = it
+                }
+            }
+        }
+
+        internal fun resetInstanceForTesting() {
+            synchronized(this) {
+                instance = null
+            }
+        }
     }
 }
 
@@ -96,7 +136,7 @@ class SessionManager(
         const val KEY_USER_EMAIL = "user_email"
 
         fun create(context: Context): SessionManager {
-            return SessionManager(EncryptedSharedPrefsStorage(context))
+            return SessionManager(EncryptedSharedPrefsStorage.getInstance(context))
         }
     }
 

@@ -204,3 +204,31 @@ data class Station(
         get() = drivingMetrics?.durationSeconds
 }
 
+/**
+ * Dynamic user partial payload returned from station detail endpoint with `X-Partial: user`.
+ */
+@Serializable
+data class UserPartialResponse(
+    val chargeToken: String? = null,
+    val apiToken: String? = null
+)
+
+/**
+ * Request payload sent to `POST /charging` to retrieve real-time forecast.
+ */
+@Serializable
+data class ChargingForecastRequest(
+    val id: String,
+    val t: String
+)
+
+/**
+ * Dynamic real-time charging forecast and occupancy response returned by `POST /charging`.
+ */
+@Serializable
+data class ChargingForecastResponse(
+    val ticker: String? = null,
+    val busyKw: Map<String, Int> = emptyMap(),
+    val partial: Boolean = false
+)
+

@@ -30,7 +30,7 @@ object StationForecastParser {
 
     // Regex to match directly against raw HTML with possible inline tags
     private val FORECAST_RAW_HTML_REGEX = Regex(
-        pattern = """Dự\s*kiến\s*(?:<[^>]+>)?\s*(\d+)\s*(?:<[^>]+>)?\s*xe\s*sạc\s*trụ\s*(?:<[^>]+>)?\s*([0-9.]+)\s*k?W\s*(?:<[^>]+>)?\s*sẽ\s*xong\s*trong\s*(?:<[^>]+>)?\s*(\d+)(?:\s*[-–—]\s*(\d+))?\s*(?:<[^>]+>)?\s*phút\s*nữa""",
+        pattern = """Dự\s*kiến\s*(?:<[^>]+>)*\s*(\d+)\s*(?:<[^>]+>)*\s*xe\s*sạc\s*trụ\s*(?:<[^>]+>)*\s*([0-9.]+)\s*(?:<[^>]+>)*\s*k?W\s*(?:<[^>]+>)*\s*sẽ\s*xong\s*trong\s*(?:<[^>]+>)*\s*(\d+)(?:\s*(?:<[^>]+>)*\s*[-–—]\s*(?:<[^>]+>)*\s*(\d+))?\s*(?:<[^>]+>)*\s*phút\s*nữa""",
         options = setOf(RegexOption.IGNORE_CASE)
     )
 

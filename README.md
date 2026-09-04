@@ -36,14 +36,17 @@ Dự án tuân thủ tiêu chuẩn **Modern Android Development (MAD)** với c�
 | **JVM Target** | OpenJDK | `Java 17` | Môi trường biên dịch chuẩn cho Gradle 8.7 và Kotlin |
 | **Giao diện (UI)** | [Jetpack Compose](https://developer.android.com/jetpack/compose) | `BOM 2024.04.01` | Khung giao diện Declarative UI hiện đại, mượt mà |
 | **Design System** | [Material Design 3](https://m3.material.io/) | `1.2.1` | Hệ thống thiết kế Material You với tone màu EV Emerald chủ đạo |
-| **Kiến trúc (Architecture)** | MVVM + Clean Architecture | AndroidX Lifecycle `2.7.0` | Tách biệt rành mạch Data Layer, Domain Model và UI State |
-| **Bất đồng bộ & Phản ứng** | Kotlin Coroutines & Flow | `1.8.0` | Xử lý đa luồng ngầm, Unidirectional Data Flow (UDF) |
-| **Mạng (Networking)** | [OkHttp](https://square.github.io/okhttp/) | `4.12.0` | Xử lý request, cookie jar, custom headers và pooling |
+| **Biểu tượng (Icons)** | Compose Material Icons Extended | Đi kèm BOM | Cung cấp hệ thống icon phong phú (Bolt, Navigation, Place, Car, Time) |
+| **Kiến trúc (Architecture)** | MVVM + Clean Architecture | AndroidX Lifecycle `2.7.0` | Tách biệt rành mạch Data Layer, Domain Model và UI State qua ViewModel Compose |
+| **Bất đồng bộ & Phản ứng** | Kotlin Coroutines & Flow | `1.8.0` | Xử lý đa luồng ngầm, StateFlow và Unidirectional Data Flow (UDF) |
+| **Mạng (Networking)** | [OkHttp](https://square.github.io/okhttp/) | `4.12.0` | Xử lý HTTP request, cookie jar, custom headers và connection pooling |
 | **Chuyển đổi dữ liệu** | Kotlinx Serialization JSON | `1.6.3` | Parse JSON tốc độ cao, không cần reflection |
-| **Lưu trữ bảo mật** | Jetpack Security Crypto | `1.1.0-alpha06` | `EncryptedSharedPreferences` với MasterKey AES-256 GCM |
+| **Phân tích Telemetry** | Server-Side HTML Parser | Tự phát triển | Phân tích SSR HTML từ trạm sạc EVCS để trích xuất dự báo hoàn thành sạc thời gian thực |
+| **Lưu trữ & Bảo mật** | Jetpack Security Crypto & DataStore | `1.1.0-alpha06` / `1.0.0` | `EncryptedSharedPreferences` (AES-256 GCM) và `Preferences DataStore` |
 | **Định vị (Location)** | Google Play Services Location | `21.2.0` | `FusedLocationProviderClient` lấy tọa độ GPS chính xác và tiết kiệm pin |
 | **Định tuyến (Routing)** | Multi-Tier Engine | Tự phát triển | Phối hợp Google Routes API v2, OSRM Table Service và Haversine |
-| **Kiểm thử (Testing)** | JUnit 4, MockWebServer, Coroutines Test | `4.13.2` / `4.12.0` | Unit test cho toàn bộ Repository, ViewModel, Router, Sanitizer và Preferences |
+| **Bộ nhớ đệm (Caching)** | In-Memory TTL Cache | Tự phát triển | `ForecastCache` (TTL 30s) và `TrafficCache` (TTL 60s) chống spam request |
+| **Kiểm thử (Testing)** | JUnit 4, MockWebServer, Coroutines Test | `4.13.2` / `4.12.0` | Unit test cho toàn bộ Repository, ViewModel, Router, Parser và Preferences |
 
 ---
 

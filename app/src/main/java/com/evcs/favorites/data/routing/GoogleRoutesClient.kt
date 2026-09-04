@@ -1,5 +1,6 @@
 package com.evcs.favorites.data.routing
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -143,6 +144,7 @@ class GoogleRoutesClient(
                 Result.success(resultMap)
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }

@@ -21,8 +21,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToLong
 
 /**
  * ViewModel managing the state of EVCS Favorites, Email OTP authentication flow,
@@ -117,18 +119,78 @@ class FavoritesViewModel(
         // Observe shared repository favorites state for two-way synchronization
         viewModelScope.launch(dispatcher) {
             repository.favoritesState.collect { repoStations ->
-                val currentState = _uiState.value
-                if (currentState is FavoritesUiState.Success) {
-                    val currentIds = currentState.stations.map { it.id }.toSet()
+                val coords = locationService?.latestCoordinates ?: currentCoordinates
+                val userLat = coords?.first
+                val userLon = coords?.second
+                if (coords != null) {
+                    currentCoordinates = coords
+                }
+
+                var hasNewStations = false
+                var stationsToEnrich: List<Station>? = null
+
+                _uiState.update { currentState ->
+                    hasNewStations = false
+                    stationsToEnrich = null
+                    if (currentState !is FavoritesUiState.Success) {
+                        return@update currentState
+                    }
+
+                    val existingMap = currentState.stations.associateBy { it.id }
+                    val currentIds = existingMap.keys
                     val repoIds = repoStations.map { it.id }.toSet()
-                    if (currentIds != repoIds) {
-                        val coords = locationService?.latestCoordinates ?: currentCoordinates
-                        val updated = if (coords != null) {
-                            DistanceCalculator.sortByDistance(repoStations, coords.first, coords.second)
+
+                    val removedIds = currentIds - repoIds
+                    removedIds.forEach { routingCache.remove(it) }
+
+                    if ((repoIds - currentIds).isNotEmpty()) {
+                        hasNewStations = true
+                    }
+
+                    val mergedStations = repoStations.map { repoStation ->
+                        val existing = existingMap[repoStation.id]
+                        if (existing != null) {
+                            repoStation.copy(
+                                drivingMetrics = existing.drivingMetrics ?: repoStation.drivingMetrics,
+                                forecast = existing.forecast ?: repoStation.forecast,
+                                distanceKm = existing.distanceKm ?: repoStation.distanceKm
+                            )
                         } else {
-                            repoStations
+                            repoStation
                         }
-                        _uiState.value = currentState.copy(stations = updated)
+                    }
+
+                    val stationsWithDistances = if (userLat != null && userLon != null) {
+                        DistanceCalculator.attachDistances(mergedStations, userLat, userLon)
+                    } else {
+                        mergedStations
+                    }
+
+                    val sortedStations = sortStations(stationsWithDistances)
+                    stationsToEnrich = sortedStations
+
+                    currentState.copy(
+                        stations = sortedStations,
+                        selectedStationForDetail = sortedStations.find { it.id == currentState.selectedStationForDetail?.id }
+                    )
+                }
+
+                if (_selectedStationForDetail.value != null &&
+                    stationsToEnrich?.none { it.id == _selectedStationForDetail.value?.id } == true
+                ) {
+                    _selectedStationForDetail.value = null
+                }
+
+                if (hasNewStations && stationsToEnrich != null) {
+                    if (userLat != null && userLon != null) {
+                        executeRoutingPipeline(
+                            stations = stationsToEnrich!!,
+                            userLat = userLat,
+                            userLon = userLon,
+                            forceRefresh = false
+                        )
+                    } else {
+                        enrichTopStationsWithForecast(forceRefresh = false)
                     }
                 }
             }
@@ -365,18 +427,27 @@ class FavoritesViewModel(
                 }
             }
 
-            val sortedStations = enrichedStations.sortedWith(
-                compareBy<Station> { it.drivingMetrics?.durationSeconds ?: Long.MAX_VALUE }
-                    .thenBy(nullsLast()) { it.distanceKm }
-            )
+            val sortedStations = sortStations(enrichedStations)
 
-            val currentState = _uiState.value
-            if (currentState is FavoritesUiState.Success) {
-                _uiState.value = currentState.copy(
-                    stations = sortedStations,
-                    selectedStationForDetail = sortedStations.find { it.id == currentState.selectedStationForDetail?.id }
-                        ?: currentState.selectedStationForDetail
-                )
+            _uiState.update { currentState ->
+                if (currentState is FavoritesUiState.Success) {
+                    val currentStationMap = currentState.stations.associateBy { it.id }
+                    val mergedWithLatest = sortedStations.map { st ->
+                        val latest = currentStationMap[st.id]
+                        if (latest?.forecast != null && st.forecast == null) {
+                            st.copy(forecast = latest.forecast)
+                        } else {
+                            st
+                        }
+                    }
+                    currentState.copy(
+                        stations = mergedWithLatest,
+                        selectedStationForDetail = mergedWithLatest.find { it.id == currentState.selectedStationForDetail?.id }
+                            ?: currentState.selectedStationForDetail
+                    )
+                } else {
+                    currentState
+                }
             }
 
             enrichTopStationsWithForecast(forceRefresh = forceRefresh)
@@ -519,20 +590,42 @@ class FavoritesViewModel(
 
     /**
      * Removes a station from the UI favorites list and routing cache.
+     * Restores the station and detail selection if the repository operation fails and rolls back.
      */
-    fun removeFavorite(stationId: String) {
+    fun removeFavorite(stationId: String): Job {
+        val removedStation = (_uiState.value as? FavoritesUiState.Success)?.stations?.find { it.id == stationId }
+        val removedSelected = _selectedStationForDetail.value?.takeIf { it.id == stationId }
         routingCache.remove(stationId)
         if (_selectedStationForDetail.value?.id == stationId) {
             _selectedStationForDetail.value = null
         }
-        val currentState = _uiState.value
-        if (currentState is FavoritesUiState.Success) {
-            val updated = currentState.stations.filter { it.id != stationId }
-            val selected = if (currentState.selectedStationForDetail?.id == stationId) null else currentState.selectedStationForDetail
-            _uiState.value = currentState.copy(stations = updated, selectedStationForDetail = selected)
+        _uiState.update { currentState ->
+            if (currentState is FavoritesUiState.Success) {
+                val updated = currentState.stations.filter { it.id != stationId }
+                val selected = if (currentState.selectedStationForDetail?.id == stationId) null else currentState.selectedStationForDetail
+                currentState.copy(stations = updated, selectedStationForDetail = selected)
+            } else {
+                currentState
+            }
         }
-        viewModelScope.launch(dispatcher) {
-            repository.removeFavoriteStation(stationId)
+        return viewModelScope.launch(dispatcher) {
+            val result = repository.removeFavoriteStation(stationId)
+            if (result.isFailure && removedStation != null) {
+                _uiState.update { currentState ->
+                    if (currentState is FavoritesUiState.Success && currentState.stations.none { it.id == stationId }) {
+                        val restoredStations = sortStations(currentState.stations + removedStation)
+                        currentState.copy(
+                            stations = restoredStations,
+                            selectedStationForDetail = currentState.selectedStationForDetail ?: removedSelected
+                        )
+                    } else {
+                        currentState
+                    }
+                }
+                if (removedSelected != null && _selectedStationForDetail.value == null) {
+                    _selectedStationForDetail.value = removedSelected
+                }
+            }
         }
     }
 
@@ -578,24 +671,27 @@ class FavoritesViewModel(
                     forceRefresh = forceRefresh,
                     onStationUpdated = { updatedStation ->
                         launch(dispatcher) {
-                            val current = _uiState.value
-                            if (current is FavoritesUiState.Success) {
-                                val updatedStations = current.stations.map { st ->
-                                    if (st.id == updatedStation.id) {
-                                        st.copy(forecast = updatedStation.forecast)
-                                    } else {
-                                        st
+                            _uiState.update { current ->
+                                if (current is FavoritesUiState.Success) {
+                                    val updatedStations = current.stations.map { st ->
+                                        if (st.id == updatedStation.id) {
+                                            st.copy(forecast = updatedStation.forecast)
+                                        } else {
+                                            st
+                                        }
                                     }
-                                }
-                                val updatedDetail = if (current.selectedStationForDetail?.id == updatedStation.id) {
-                                    current.selectedStationForDetail.copy(forecast = updatedStation.forecast)
+                                    val updatedDetail = if (current.selectedStationForDetail?.id == updatedStation.id) {
+                                        current.selectedStationForDetail.copy(forecast = updatedStation.forecast)
+                                    } else {
+                                        current.selectedStationForDetail
+                                    }
+                                    current.copy(
+                                        stations = updatedStations,
+                                        selectedStationForDetail = updatedDetail
+                                    )
                                 } else {
-                                    current.selectedStationForDetail
+                                    current
                                 }
-                                _uiState.value = current.copy(
-                                    stations = updatedStations,
-                                    selectedStationForDetail = updatedDetail
-                                )
                             }
                             if (_selectedStationForDetail.value?.id == updatedStation.id) {
                                 _selectedStationForDetail.value = _selectedStationForDetail.value?.copy(
@@ -613,6 +709,25 @@ class FavoritesViewModel(
 
     fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job =
         enrichTopStationsWithForecast(forceRefresh)
+
+    private fun sortStations(stations: List<Station>): List<Station> {
+        return stations.sortedWith(
+            compareBy<Station> { station ->
+                val metrics = station.drivingMetrics
+                when {
+                    metrics == null -> Long.MAX_VALUE
+                    metrics.durationSeconds > 0L -> metrics.durationSeconds
+                    metrics.distanceMeters > 0L -> {
+                        (metrics.distanceMeters / (30.0 * 1000.0 / 3600.0)).roundToLong().coerceAtLeast(60L)
+                    }
+                    (station.distanceKm ?: 0.0) > 0.0 -> {
+                        ((station.distanceKm!! * 1000.0) / (30.0 * 1000.0 / 3600.0)).roundToLong().coerceAtLeast(60L)
+                    }
+                    else -> 0L
+                }
+            }.thenBy(nullsLast()) { it.distanceKm }
+        )
+    }
 
     override fun onCleared() {
         super.onCleared()

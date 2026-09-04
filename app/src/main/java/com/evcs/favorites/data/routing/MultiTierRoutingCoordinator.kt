@@ -1,6 +1,7 @@
 package com.evcs.favorites.data.routing
 
 import com.evcs.favorites.domain.location.DistanceCalculator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -64,6 +65,7 @@ open class MultiTierRoutingCoordinator(
                 }
             }
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             emptyMap()
         }
     }
@@ -187,9 +189,15 @@ open class MultiTierRoutingCoordinator(
                 lon2 = dest.longitude
             ).roundToLong()
 
+            val duration = if (distanceM > 0) {
+                (distanceM / (30.0 * 1000.0 / 3600.0)).roundToLong().coerceAtLeast(60L)
+            } else {
+                0L
+            }
+
             dest.id to DrivingMetrics(
                 distanceMeters = distanceM,
-                durationSeconds = 0L,
+                durationSeconds = duration,
                 staticDurationSeconds = null,
                 trafficCondition = TrafficCondition.UNKNOWN,
                 engineUsed = RoutingEngineType.HAVERSINE

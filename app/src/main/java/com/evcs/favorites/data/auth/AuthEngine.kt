@@ -103,35 +103,36 @@ class AuthEngine(
                 requestBuilder.addHeader("Cookie", cookieHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    java.io.IOException("Lỗi kết nối EVCS (HTTP ${response.code}). Vui lòng tắt VPN (ProtonVPN) hoặc đổi mạng.")
-                )
-            }
-            val responseBody = response.body?.string().orEmpty()
-            if (responseBody.contains("Just a moment...") || responseBody.contains("challenges.cloudflare.com")) {
-                return@withContext Result.failure(
-                    java.io.IOException("EVCS bị chặn bởi Cloudflare. Vui lòng tắt VPN (ProtonVPN) hoặc đổi mạng.")
-                )
-            }
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        java.io.IOException("Lỗi kết nối EVCS (HTTP ${response.code}). Vui lòng tắt VPN (ProtonVPN) hoặc đổi mạng.")
+                    )
+                }
+                val responseBody = response.body?.string().orEmpty()
+                if (responseBody.contains("Just a moment...") || responseBody.contains("challenges.cloudflare.com")) {
+                    return@withContext Result.failure(
+                        java.io.IOException("EVCS bị chặn bởi Cloudflare. Vui lòng tắt VPN (ProtonVPN) hoặc đổi mạng.")
+                    )
+                }
 
-            // Save Set-Cookie headers (such as PHPSESSID)
-            val setCookieHeaders = response.headers("Set-Cookie")
-            for (header in setCookieHeaders) {
-                sessionManager.saveFromSetCookieHeader(header)
-            }
+                // Save Set-Cookie headers (such as PHPSESSID)
+                val setCookieHeaders = response.headers("Set-Cookie")
+                for (header in setCookieHeaders) {
+                    sessionManager.saveFromSetCookieHeader(header)
+                }
 
-            // Extract CSRF token from script tag
-            val csrfToken = extractCsrfToken(responseBody)
-            if (csrfToken.isNullOrBlank()) {
-                return@withContext Result.failure(
-                    IllegalStateException("Không thể trích xuất mã CSRF từ phản hồi của EVCS")
-                )
-            }
+                // Extract CSRF token from script tag
+                val csrfToken = extractCsrfToken(responseBody)
+                if (csrfToken.isNullOrBlank()) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Không thể trích xuất mã CSRF từ phản hồi của EVCS")
+                    )
+                }
 
-            sessionManager.csrfToken = csrfToken
-            Result.success(csrfToken)
+                sessionManager.csrfToken = csrfToken
+                Result.success(csrfToken)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -175,30 +176,31 @@ class AuthEngine(
                 requestBuilder.addHeader("Cookie", cookieHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    java.io.IOException("Lỗi gửi OTP (HTTP ${response.code}). Vui lòng tắt VPN hoặc đổi mạng.")
-                )
-            }
-            val responseBody = response.body?.string().orEmpty()
-            if (responseBody.contains("Just a moment...") || responseBody.contains("challenges.cloudflare.com")) {
-                return@withContext Result.failure(
-                    java.io.IOException("EVCS bị chặn bởi Cloudflare. Vui lòng tắt VPN (ProtonVPN).")
-                )
-            }
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        java.io.IOException("Lỗi gửi OTP (HTTP ${response.code}). Vui lòng tắt VPN hoặc đổi mạng.")
+                    )
+                }
+                val responseBody = response.body?.string().orEmpty()
+                if (responseBody.contains("Just a moment...") || responseBody.contains("challenges.cloudflare.com")) {
+                    return@withContext Result.failure(
+                        java.io.IOException("EVCS bị chặn bởi Cloudflare. Vui lòng tắt VPN (ProtonVPN).")
+                    )
+                }
 
-            // Check for cookie updates
-            for (header in response.headers("Set-Cookie")) {
-                sessionManager.saveFromSetCookieHeader(header)
-            }
+                // Check for cookie updates
+                for (header in response.headers("Set-Cookie")) {
+                    sessionManager.saveFromSetCookieHeader(header)
+                }
 
-            val otpResponse = json.decodeFromString<SendOtpResponse>(responseBody)
-            if (otpResponse.ok) {
-                sessionManager.userEmail = email.trim()
-                Result.success(otpResponse)
-            } else {
-                Result.failure(Exception(otpResponse.error ?: "Failed to send OTP"))
+                val otpResponse = json.decodeFromString<SendOtpResponse>(responseBody)
+                if (otpResponse.ok) {
+                    sessionManager.userEmail = email.trim()
+                    Result.success(otpResponse)
+                } else {
+                    Result.failure(Exception(otpResponse.error ?: "Failed to send OTP"))
+                }
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -237,31 +239,32 @@ class AuthEngine(
                 requestBuilder.addHeader("Cookie", cookieHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    java.io.IOException("Lỗi xác thực (HTTP ${response.code}). Vui lòng tắt VPN hoặc đổi mạng.")
-                )
-            }
-            val responseBody = response.body?.string().orEmpty()
-            if (responseBody.contains("Just a moment...") || responseBody.contains("challenges.cloudflare.com")) {
-                return@withContext Result.failure(
-                    java.io.IOException("EVCS bị chặn bởi Cloudflare. Vui lòng tắt VPN (ProtonVPN).")
-                )
-            }
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        java.io.IOException("Lỗi xác thực (HTTP ${response.code}). Vui lòng tắt VPN hoặc đổi mạng.")
+                    )
+                }
+                val responseBody = response.body?.string().orEmpty()
+                if (responseBody.contains("Just a moment...") || responseBody.contains("challenges.cloudflare.com")) {
+                    return@withContext Result.failure(
+                        java.io.IOException("EVCS bị chặn bởi Cloudflare. Vui lòng tắt VPN (ProtonVPN).")
+                    )
+                }
 
-            // Extract Set-Cookie headers for 1-year evcs auth cookie
-            for (header in response.headers("Set-Cookie")) {
-                sessionManager.saveFromSetCookieHeader(header)
-            }
+                // Extract Set-Cookie headers for 1-year evcs auth cookie
+                for (header in response.headers("Set-Cookie")) {
+                    sessionManager.saveFromSetCookieHeader(header)
+                }
 
-            val verifyResponse = json.decodeFromString<VerifyOtpResponse>(responseBody)
-            if (verifyResponse.ok) {
-                _isLoggedIn.value = true
-                sessionManager.userEmail = email.trim()
-                Result.success(true)
-            } else {
-                Result.failure(Exception(verifyResponse.error ?: "Invalid OTP"))
+                val verifyResponse = json.decodeFromString<VerifyOtpResponse>(responseBody)
+                if (verifyResponse.ok) {
+                    _isLoggedIn.value = true
+                    sessionManager.userEmail = email.trim()
+                    Result.success(true)
+                } else {
+                    Result.failure(Exception(verifyResponse.error ?: "Invalid OTP"))
+                }
             }
         } catch (e: Exception) {
             Result.failure(e)
