@@ -53,10 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.routing.RoutingSettings
+import com.evcs.favorites.ui.components.NativeStationDetailSheet
 import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.components.StationCard
-import com.evcs.favorites.ui.components.StationDetailModal
 import com.evcs.favorites.ui.state.FavoritesUiState
+import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.ui.theme.EmeraldContainerDark
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 import com.evcs.favorites.ui.theme.StatusOffline
@@ -77,6 +78,10 @@ fun FavoritesScreen(
     selectedStationForDetail: Station? = null,
     onDismissDetail: () -> Unit = {},
     cookieHeader: String? = null,
+    stationDetailState: StationDetailUiState = StationDetailUiState(),
+    onRefreshDetail: () -> Unit = {},
+    onToggleFavoriteDetail: ((Station) -> Unit)? = null,
+    onShareDetail: ((Station) -> Unit)? = null,
     routingSettings: RoutingSettings = RoutingSettings(),
     onSaveRoutingSettings: (RoutingSettings) -> Unit = {},
     onValidateGoogleApiKey: (suspend (String) -> Result<Boolean>)? = null,
@@ -207,15 +212,25 @@ fun FavoritesScreen(
             }
         }
 
-        // Station Detail Bottom Sheet
-        val activeStationForDetail = selectedStationForDetail
+        // Station Detail Bottom Sheet (100% Native Jetpack Compose)
+        val activeStationForDetail = stationDetailState.station
+            ?: selectedStationForDetail
             ?: (uiState as? FavoritesUiState.Success)?.selectedStationForDetail
 
         if (activeStationForDetail != null) {
-            StationDetailModal(
-                station = activeStationForDetail,
+            val effectiveDetailState = if (stationDetailState.station != null) {
+                stationDetailState
+            } else {
+                stationDetailState.copy(station = activeStationForDetail)
+            }
+            NativeStationDetailSheet(
+                uiState = effectiveDetailState,
                 onDismiss = onDismissDetail,
-                cookieHeader = cookieHeader
+                onRefresh = onRefreshDetail,
+                isFavorite = true,
+                onNavigate = onNavigateClick,
+                onToggleFavorite = onToggleFavoriteDetail ?: onRemoveFavoriteClick,
+                onShare = onShareDetail
             )
         }
 

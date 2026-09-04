@@ -17,6 +17,9 @@ import com.evcs.favorites.domain.filter.NearbyStationFilter
 import com.evcs.favorites.domain.location.LocationService
 import com.evcs.favorites.domain.model.CustomFilterConfig
 import com.evcs.favorites.domain.model.DcWattageTier
+import com.evcs.favorites.data.repository.EvcsTelemetryRepository
+import com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource
+import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.domain.model.WattageOption
 import com.evcs.favorites.ui.state.NearbyUiEvent
@@ -54,11 +57,26 @@ class NearbyViewModel(
     private val routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
     private val filterPreferences: NearbyFilterPreferences? = null,
     private val smartFilterPreferences: SmartFilterPreferences? = null,
+    telemetryRepository: EvcsTelemetryRepository? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val routingDebounceMs: Long = 300L
 ) : ViewModel() {
+
+    private val telemetryRepo: EvcsTelemetryRepository = telemetryRepository ?: EvcsTelemetryRepository(
+        dataSource = EvcsTelemetryDataSource(sessionManager = sessionManager, ioDispatcher = ioDispatcher),
+        ioDispatcher = ioDispatcher
+    )
+
+    val stationDetailCoordinator: StationDetailCoordinator = StationDetailCoordinator(
+        coroutineScope = viewModelScope,
+        telemetryRepository = telemetryRepo,
+        ioDispatcher = ioDispatcher,
+        mainDispatcher = dispatcher
+    )
+
+    val stationDetailState: StateFlow<StationDetailUiState> = stationDetailCoordinator.stationDetailState
 
     private val prefsManager: RoutingPreferencesManager =
         routingPreferencesManager ?: RoutingPreferencesManager(storage = InMemorySessionStorage())
@@ -486,6 +504,27 @@ class NearbyViewModel(
     }
 
     /**
+     * Selects a station to display its native detail bottom sheet.
+     */
+    fun selectStationForDetail(station: Station): Job {
+        return stationDetailCoordinator.selectStationForDetail(station)
+    }
+
+    /**
+     * Manually refreshes live charging telemetry and 24h usage statistics for the selected station.
+     */
+    fun refreshStationDetail(): Job? {
+        return stationDetailCoordinator.refreshStationDetail()
+    }
+
+    /**
+     * Dismisses the active station detail modal sheet.
+     */
+    fun dismissStationDetail() {
+        stationDetailCoordinator.dismissStationDetail()
+    }
+
+    /**
      * Refreshes nearby stations.
      * Re-scans using existing GPS coordinates if valid; otherwise re-requests fresh location.
      */
@@ -746,6 +785,7 @@ class NearbyViewModel(
         scanJob?.cancel()
         routingJob?.cancel()
         routingDebounceJob?.cancel()
+        stationDetailCoordinator.dismissStationDetail()
     }
 
     companion object {
@@ -757,6 +797,7 @@ class NearbyViewModel(
             routingPreferencesManager: RoutingPreferencesManager? = null,
             filterPreferences: NearbyFilterPreferences? = null,
             smartFilterPreferences: SmartFilterPreferences? = null,
+            telemetryRepository: EvcsTelemetryRepository? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Main,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
             defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -772,6 +813,7 @@ class NearbyViewModel(
                     routingCoordinator = routingCoordinator,
                     filterPreferences = filterPreferences,
                     smartFilterPreferences = smartFilterPreferences,
+                    telemetryRepository = telemetryRepository,
                     dispatcher = dispatcher,
                     ioDispatcher = ioDispatcher,
                     defaultDispatcher = defaultDispatcher,

@@ -97,11 +97,11 @@ class StationCardForecastRemovalTest {
     }
 
     // =========================================================================
-    // 3. StationCard remains decoupled from forecast badges (modal CSS migrated to Phase 01 test)
+    // 3. StationCard remains decoupled from forecast badges; native bottom sheet contract verified
     // =========================================================================
     @Test
     fun stationDetailModalWebViewCssHidesForecastTickerAndMoreButton() {
-        // Modal CSS assertions migrated to StationDetailModalOnDemandForecastTest.
+        // WebView CSS rules retired in Phase 05 in favor of NativeStationDetailSheet
         // Verify StationCard remains decoupled from forecast badges:
         val badge = resolveStatusBadge(
             depotStatus = "Normal",
@@ -110,13 +110,13 @@ class StationCardForecastRemovalTest {
         )
         assertEquals("Hết cổng", badge.label)
         assertFalse(badge.label.contains("Sắp trống"))
-        assertFalse(
-            "Modal CSS must no longer suppress forecast tickers with display: none",
-            FORECAST_OVERLAP_FIX_CSS.contains("display: none !important")
-        )
+
+        // Verify native bottom sheet contract exists and is active
+        val nativeSheetClass = Class.forName("com.evcs.favorites.ui.components.NativeStationDetailSheetKt")
+        val methods = nativeSheetClass.declaredMethods.map { it.name }
         assertTrue(
-            "FORECAST_OVERLAP_FIX_SCRIPT must embed the updated CSS rule",
-            FORECAST_OVERLAP_FIX_SCRIPT.contains(FORECAST_OVERLAP_FIX_CSS)
+            "NativeStationDetailSheet composable must exist",
+            methods.any { it.contains("NativeStationDetailSheet") }
         )
     }
 

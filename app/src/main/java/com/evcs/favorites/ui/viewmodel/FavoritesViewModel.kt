@@ -12,6 +12,9 @@ import com.evcs.favorites.data.routing.DrivingMetrics
 import com.evcs.favorites.data.routing.MultiTierRoutingCoordinator
 import com.evcs.favorites.data.routing.RoutingDestination
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
+import com.evcs.favorites.data.repository.EvcsTelemetryRepository
+import com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource
+import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.domain.location.LocationService
@@ -40,9 +43,24 @@ class FavoritesViewModel(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val routingPreferencesManager: RoutingPreferencesManager? = null,
     private val routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
+    telemetryRepository: EvcsTelemetryRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
+
+    private val telemetryRepo: EvcsTelemetryRepository = telemetryRepository ?: EvcsTelemetryRepository(
+        dataSource = EvcsTelemetryDataSource(sessionManager = authEngine.sessionManager, ioDispatcher = ioDispatcher),
+        ioDispatcher = ioDispatcher
+    )
+
+    val stationDetailCoordinator: StationDetailCoordinator = StationDetailCoordinator(
+        coroutineScope = viewModelScope,
+        telemetryRepository = telemetryRepo,
+        ioDispatcher = ioDispatcher,
+        mainDispatcher = dispatcher
+    )
+
+    val stationDetailState: StateFlow<StationDetailUiState> = stationDetailCoordinator.stationDetailState
 
     private val _uiState = MutableStateFlow<FavoritesUiState>(FavoritesUiState.Loading)
     val uiState: StateFlow<FavoritesUiState> = _uiState.asStateFlow()
@@ -589,6 +607,14 @@ class FavoritesViewModel(
         if (current is FavoritesUiState.Success) {
             _uiState.value = current.copy(selectedStationForDetail = station)
         }
+        stationDetailCoordinator.selectStationForDetail(station)
+    }
+
+    /**
+     * Manually triggers refresh of live charging telemetry and 24h usage statistics.
+     */
+    fun refreshStationDetail(): Job? {
+        return stationDetailCoordinator.refreshStationDetail()
     }
 
     /**
@@ -600,6 +626,7 @@ class FavoritesViewModel(
         if (current is FavoritesUiState.Success) {
             _uiState.value = current.copy(selectedStationForDetail = null)
         }
+        stationDetailCoordinator.dismissStationDetail()
     }
 
     /**
@@ -664,6 +691,7 @@ class FavoritesViewModel(
         authEngine.logout()
         pendingEmail = ""
         _selectedStationForDetail.value = null
+        stationDetailCoordinator.dismissStationDetail()
         currentCoordinates = null
         lastProcessedCoordinates = null
         _uiState.value = FavoritesUiState.LoggedOut
@@ -691,6 +719,7 @@ class FavoritesViewModel(
     override fun onCleared() {
         super.onCleared()
         routingJob?.cancel()
+        stationDetailCoordinator.dismissStationDetail()
     }
 
     companion object {
@@ -705,6 +734,7 @@ class FavoritesViewModel(
             locationService: LocationService? = null,
             routingPreferencesManager: RoutingPreferencesManager? = null,
             routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
+            telemetryRepository: EvcsTelemetryRepository? = null,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
             defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
@@ -717,6 +747,7 @@ class FavoritesViewModel(
                     dispatcher = Dispatchers.Main,
                     routingPreferencesManager = routingPreferencesManager,
                     routingCoordinator = routingCoordinator,
+                    telemetryRepository = telemetryRepository,
                     ioDispatcher = ioDispatcher,
                     defaultDispatcher = defaultDispatcher
                 ) as T

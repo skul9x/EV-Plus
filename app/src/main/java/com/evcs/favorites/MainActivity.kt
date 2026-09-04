@@ -81,13 +81,19 @@ class MainActivity : ComponentActivity() {
     private val routingPreferencesManager by lazy { RoutingPreferencesManager.create(applicationContext) }
     private val nearbyFilterPreferences by lazy { NearbyFilterPreferences.create(applicationContext) }
     private val smartFilterPreferences by lazy { SmartFilterPreferences.create(applicationContext) }
+    private val telemetryRepository by lazy {
+        com.evcs.favorites.data.repository.EvcsTelemetryRepository(
+            com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource(sessionManager)
+        )
+    }
 
     private val favoritesViewModel by viewModels<FavoritesViewModel> {
         FavoritesViewModel.provideFactory(
             repository = repository,
             authEngine = authEngine,
             locationService = locationService,
-            routingPreferencesManager = routingPreferencesManager
+            routingPreferencesManager = routingPreferencesManager,
+            telemetryRepository = telemetryRepository
         )
     }
 
@@ -98,7 +104,8 @@ class MainActivity : ComponentActivity() {
             locationService = locationService,
             routingPreferencesManager = routingPreferencesManager,
             filterPreferences = nearbyFilterPreferences,
-            smartFilterPreferences = smartFilterPreferences
+            smartFilterPreferences = smartFilterPreferences,
+            telemetryRepository = telemetryRepository
         )
     }
 
@@ -197,6 +204,7 @@ fun FavoritesApp(
                         )
                     } else {
                         val selectedStation by viewModel.selectedStationForDetail.collectAsStateWithLifecycle()
+                        val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
 
                         FavoritesScreen(
                             uiState = uiState,
@@ -219,6 +227,10 @@ fun FavoritesApp(
                             selectedStationForDetail = selectedStation,
                             onDismissDetail = {
                                 viewModel.dismissStationDetail()
+                            },
+                            stationDetailState = stationDetailState,
+                            onRefreshDetail = {
+                                viewModel.refreshStationDetail()
                             },
                             cookieHeader = viewModel.getCookieHeader(),
                             routingSettings = routingSettings,

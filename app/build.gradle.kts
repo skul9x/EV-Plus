@@ -88,6 +88,7 @@ dependencies {
 
     // Network & Serialization
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("io.socket:socket.io-client:2.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")

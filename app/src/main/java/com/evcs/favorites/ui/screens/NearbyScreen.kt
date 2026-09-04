@@ -72,10 +72,10 @@ import com.evcs.favorites.domain.model.DcWattageTier
 import com.evcs.favorites.navigation.MapNavigator
 import com.evcs.favorites.ui.components.CustomConfigPromptDialog
 import com.evcs.favorites.ui.components.LoginRequiredDialog
+import com.evcs.favorites.ui.components.NativeStationDetailSheet
 import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.components.SmartFilterBar
 import com.evcs.favorites.ui.components.StationCard
-import com.evcs.favorites.ui.components.StationDetailModal
 import com.evcs.favorites.ui.state.NearbyUiEvent
 import com.evcs.favorites.ui.state.NearbyUiState
 import com.evcs.favorites.ui.theme.EmeraldContainerDark
@@ -108,9 +108,9 @@ fun NearbyScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
 
     var showRoutingSettings by remember { mutableStateOf(false) }
-    var selectedStationForDetail by remember { mutableStateOf<Station?>(null) }
     var showLoginRequiredDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -305,19 +305,34 @@ fun NearbyScreen(
                                     stationName = station.name
                                 )
                             },
-                            onStationClick = { selectedStationForDetail = it }
+                            onStationClick = { station ->
+                                viewModel.selectStationForDetail(station)
+                            }
                         )
                     }
                 }
             }
         }
 
-        // Station Detail Bottom Sheet Modal
-        if (selectedStationForDetail != null) {
-            StationDetailModal(
-                station = selectedStationForDetail!!,
-                onDismiss = { selectedStationForDetail = null },
-                cookieHeader = cookieHeader
+        // Station Detail Bottom Sheet (100% Native Jetpack Compose)
+        if (stationDetailState.station != null) {
+            val isCurrentStationFavorite = uiState.favoriteStationIds.contains(stationDetailState.station?.id)
+            NativeStationDetailSheet(
+                uiState = stationDetailState,
+                onDismiss = { viewModel.dismissStationDetail() },
+                onRefresh = { viewModel.refreshStationDetail() },
+                isFavorite = isCurrentStationFavorite,
+                onNavigate = { station ->
+                    MapNavigator.navigate(
+                        context = context,
+                        latitude = station.latitude,
+                        longitude = station.longitude,
+                        stationName = station.name
+                    )
+                },
+                onToggleFavorite = { station ->
+                    viewModel.toggleFavorite(station)
+                }
             )
         }
 
