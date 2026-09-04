@@ -28,6 +28,7 @@ google-services.json
 lint/
 reports/
 *.png
+*.zip
 
 # Original app heavy binary assets & decompiled dumps
 original_app_data/*.xapk

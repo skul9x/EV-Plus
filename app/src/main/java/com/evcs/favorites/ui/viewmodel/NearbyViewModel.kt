@@ -372,10 +372,11 @@ class NearbyViewModel(
             val m = metrics[station.id]
             if (m != null) station.copy(drivingMetrics = m) else station
         }
+        val sortedRoutedTop10 = NearbyStationFilter.sortByDrivingDistance(routedTop10)
 
         _uiState.update {
             it.copy(
-                top10DisplayStations = routedTop10,
+                top10DisplayStations = sortedRoutedTop10,
                 routingMetrics = metrics,
                 isRoutingLoading = false
             )

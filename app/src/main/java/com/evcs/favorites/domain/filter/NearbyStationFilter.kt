@@ -71,4 +71,31 @@ object NearbyStationFilter {
             .sortedBy { it.distanceKm ?: Double.MAX_VALUE }
             .take(limit)
     }
+
+    /**
+     * Sorts stations ascending by actual driving road distance (`drivingMetrics.distanceMeters`).
+     *
+     * Tie-breaking & Fallback rules:
+     * 1. Primary: ascending by driving road distance in meters.
+     * 2. Fallback distance: If `drivingMetrics` is null or `distanceMeters <= 0`, falls back to
+     *    Haversine distance (`distanceKm * 1000.0`).
+     * 3. Secondary (Tie-breaker): If distance in meters is identical, sort ascending by `drivingMetrics.durationSeconds`.
+     * 4. Stability (Tie-breaker): If duration is also identical, sort ascending by station `id`.
+     *
+     * @param stations List of stations to sort
+     * @return New list of stations sorted by driving distance
+     */
+    fun sortByDrivingDistance(stations: List<Station>): List<Station> {
+        val comparator = compareBy<Station> { station ->
+            station.drivingMetrics?.distanceMeters?.takeIf { it > 0L }
+                ?: station.distanceKm?.let { (it * 1000.0).toLong() }
+                ?: Long.MAX_VALUE
+        }.thenBy { station ->
+            station.drivingMetrics?.durationSeconds ?: Long.MAX_VALUE
+        }.thenBy { station ->
+            station.id
+        }
+
+        return stations.sortedWith(comparator)
+    }
 }
