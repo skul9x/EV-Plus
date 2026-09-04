@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel managing the state of EVCS Favorites, Email OTP authentication flow,
@@ -79,6 +80,12 @@ class FavoritesViewModel(
      * Active background routing job.
      */
     var routingJob: Job? = null
+        private set
+
+    /**
+     * Active background forecast enrichment job.
+     */
+    var forecastJob: Job? = null
         private set
 
     /**
@@ -179,6 +186,7 @@ class FavoritesViewModel(
      */
     fun fetchFavorites(): Job {
         routingJob?.cancel()
+        forecastJob?.cancel()
         _uiState.value = FavoritesUiState.Loading
 
         return viewModelScope.launch(dispatcher) {
@@ -214,6 +222,8 @@ class FavoritesViewModel(
                             userLon = userLon,
                             forceRefresh = false
                         )
+                    } else {
+                        enrichTopFullStationsWithForecast(forceRefresh = false)
                     }
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "Không thể tải danh sách trạm sạc yêu thích"
@@ -239,6 +249,7 @@ class FavoritesViewModel(
 
         invalidateRoutingCache()
         routingJob?.cancel()
+        forecastJob?.cancel()
 
         return viewModelScope.launch(dispatcher) {
             try {
@@ -272,6 +283,8 @@ class FavoritesViewModel(
                             userLon = userLon,
                             forceRefresh = true
                         )
+                    } else {
+                        enrichTopFullStationsWithForecast(forceRefresh = true)
                     }
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "Không thể làm mới danh sách trạm"
@@ -282,6 +295,11 @@ class FavoritesViewModel(
             }
         }
     }
+
+    /**
+     * Alias for [refresh] matching workflow conventions.
+     */
+    fun refreshFavorites(): Job = refresh()
 
     /**
      * Step 2: Asynchronous candidate batch routing and ETA sorting pipeline.
@@ -360,6 +378,8 @@ class FavoritesViewModel(
                         ?: currentState.selectedStationForDetail
                 )
             }
+
+            enrichTopFullStationsWithForecast(forceRefresh = forceRefresh)
         }
 
         routingJob = job
@@ -408,16 +428,24 @@ class FavoritesViewModel(
      */
     fun updateUserLocation(latitude: Double, longitude: Double): Job {
         val previousCoords = currentCoordinates
+        if (previousCoords != null && previousCoords.first == latitude && previousCoords.second == longitude) {
+            return Job().apply { complete() }
+        }
         currentCoordinates = Pair(latitude, longitude)
 
         val currentState = _uiState.value
         if (currentState is FavoritesUiState.Success) {
+            if (currentState.isRefreshing) {
+                return Job().apply { complete() }
+            }
+
             val displaced = previousCoords == null || DistanceCalculator.calculateDistanceMeters(
                 previousCoords.first, previousCoords.second, latitude, longitude
             ) > MAX_DISPLACEMENT_METERS
 
             if (displaced) {
                 routingJob?.cancel()
+                forecastJob?.cancel()
                 invalidateRoutingCache()
                 val step1Stations = DistanceCalculator.sortByDistance(currentState.stations, latitude, longitude)
                 _uiState.value = currentState.copy(stations = step1Stations)
@@ -520,11 +548,75 @@ class FavoritesViewModel(
      */
     fun logout() {
         routingJob?.cancel()
+        forecastJob?.cancel()
         invalidateRoutingCache()
         authEngine.logout()
         pendingEmail = ""
         _selectedStationForDetail.value = null
         _uiState.value = FavoritesUiState.LoggedOut
+    }
+
+    /**
+     * Targeted background forecast enrichment strictly for the Top 5 nearest full stations
+     * (totalPlugs > 0 && totalAvailablePlugs == 0) from the loaded favorites list.
+     * Progressively updates stations in UI state as each forecast arrives, preserving driving metrics,
+     * connectors, and ETA sort order.
+     */
+    fun enrichTopFullStationsWithForecast(forceRefresh: Boolean = false): Job {
+        forecastJob?.cancel()
+        val job = viewModelScope.launch(dispatcher) {
+            val currentState = _uiState.value
+            if (currentState !is FavoritesUiState.Success) return@launch
+
+            val targetStations = currentState.stations
+                .filter { it.totalPlugs > 0 && it.totalAvailablePlugs == 0 }
+                .take(5)
+
+            if (targetStations.isEmpty()) return@launch
+
+            withContext(ioDispatcher) {
+                repository.enrichStationsWithForecast(
+                    stations = targetStations,
+                    forceRefresh = forceRefresh,
+                    onStationUpdated = { updatedStation ->
+                        launch(dispatcher) {
+                            val current = _uiState.value
+                            if (current is FavoritesUiState.Success) {
+                                val updatedStations = current.stations.map { st ->
+                                    if (st.id == updatedStation.id) {
+                                        st.copy(forecast = updatedStation.forecast)
+                                    } else {
+                                        st
+                                    }
+                                }
+                                val updatedDetail = if (current.selectedStationForDetail?.id == updatedStation.id) {
+                                    current.selectedStationForDetail.copy(forecast = updatedStation.forecast)
+                                } else {
+                                    current.selectedStationForDetail
+                                }
+                                _uiState.value = current.copy(
+                                    stations = updatedStations,
+                                    selectedStationForDetail = updatedDetail
+                                )
+                            }
+                            if (_selectedStationForDetail.value?.id == updatedStation.id) {
+                                _selectedStationForDetail.value = _selectedStationForDetail.value?.copy(
+                                    forecast = updatedStation.forecast
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+        }
+        forecastJob = job
+        return job
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        routingJob?.cancel()
+        forecastJob?.cancel()
     }
 
     companion object {

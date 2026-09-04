@@ -1,71 +1,50 @@
 # Handover Document - EV+ (Trạm Sạc EV)
 
-**Ngày cập nhật:** 2026-09-03 20:10:00 (GMT+7)  
+**Ngày cập nhật:** 2026-09-04 08:32:00 (GMT+7)  
 **Thiết bị kiểm thử:** OnePlus 13R (CPH2691 - ADB ID: `3B658D010BU00000`)  
 **Mã nguồn GitHub:** `https://github.com/skul9x/EV-Plus.git` (Branch: `main`)  
-**Trạng thái ứng dụng:** Hoàn thiện 100% tính năng MVP + Nearby Stations + Multi-Tier Routing + Adaptive Launcher + Tên app "EV+"
+**Trạng thái kế hoạch:** Đã tạo toàn bộ plan chi tiết gồm 4 phase tại `plans/260904-0830-live-station-forecast-cards/` cho tính năng đưa dự báo xe sạc sắp xong ra card trạm ngoài màn hình chính.
 
 ---
 
 ## 📍 Đang làm:
-- Dự án đã hoàn tất toàn bộ các tính năng đặt ra:
-  1. Tra cứu trạm sạc quanh đây (Nearby) kèm số cổng trống thời gian thực.
-  2. Định tuyến 3 tầng (Google Routes v2 Live Traffic / OSRM Table / Haversine offline).
-  3. Bộ lọc công suất sạc ghi nhớ liên phiên (Filter Persistence qua SessionStorage).
-  4. Quản lý trạm sạc yêu thích & đồng bộ tài khoản EVCS hai chiều.
-  5. Đổi tên ứng dụng ngắn gọn thành **"EV+"** và tạo bộ icon thích ứng (Adaptive Launcher Icon) chuẩn Android.
-  6. Dọn dẹp thư mục gốc, chuyển dữ liệu app gốc vào `original_app_data/`.
-  7. Khởi tạo Git repo và force push thành công lên GitHub.
-  8. Cài đặt APK `app-debug.apk` và kiểm thử trực tiếp trên điện thoại thật OnePlus 13R.
+- **Chuẩn bị triển khai Phase 01**: Domain Models & Parser Implementation.
+  - File đặc tả: [phase-01-domain-models-and-parser-implementation.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md)
+  - Unit test mục tiêu: `StationForecastParserTest.kt`
 
 ---
 
 ## ✅ ĐÃ XONG:
-1. **Adaptive Launcher Icon (API 26+)**:
-   - `ic_launcher_background.xml`: Nền đen Obsidian viền hào quang phát quang xanh Emerald & Cyan.
-   - `ic_launcher_foreground.xml`: Tia sét năng lượng cao pure white kết hợp huy hiệu dấu cộng `+` phát sáng màu cyan.
-   - `mipmap-anydpi-v26/ic_launcher.xml` & `ic_launcher_round.xml`: Tương thích mọi launcher Android (tròn, vuông, squircle).
-2. **Rút gọn tên ứng dụng thành "EV+"**:
-   - `strings.xml`: `<string name="app_name">EV+</string>`.
-   - `AndroidManifest.xml`: Trỏ `android:label="@string/app_name"` và `android:icon="@mipmap/ic_launcher"`.
-   - `MainActivity.kt`: Cập nhật dialog xin quyền vị trí cho "EV+".
-3. **Tái cấu trúc thư mục sạch sẽ**:
-   - Tạo thư mục `original_app_data/` lưu trữ file .xapk, source code decompile JADX, apktool smali, web templates HTML/JS và script test reverse-engineering.
-   - Tạo `original_app_data/README.md`.
-4. **Git & GitHub Deployment**:
-   - Tạo file `.gitignore` chuẩn Android Native loại trừ build cache và file nhị phân nặng.
-   - Initialized Git, commit 140 files và force push lên repository `https://github.com/skul9x/EV-Plus.git`.
-5. **Biên dịch & Test thiết bị thật**:
-   - Chạy toàn bộ test suites (`./gradlew test` ➔ 100% Pass).
-   - Biên dịch `assembleDebug` và cài đặt lên OnePlus 13R qua ADB MCP.
+1. **Brainstorming & Quyết định UX/Kỹ thuật**:
+   - Chỉ quét dự báo cho **Top 5 trạm kín gần nhất (`available_ports == 0`)** trên cả 2 tab Quanh đây và Yêu thích.
+   - Hiển thị badge Amber `⏱️ Sắp trống` kết hợp Capsule hiển thị đầy đủ chi tiết các xe/trụ sắp xong.
+   - Cache In-Memory với TTL 3 phút (xóa ngay khi pull-to-refresh).
+   - Retry ngầm Exponential Backoff tối đa 2 lần, fail an toàn không làm phiền người dùng.
+2. **Kế hoạch chi tiết theo chuẩn AWF (4 Phase files bằng tiếng Anh)**:
+   - [plan.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/plan.md) (Tổng quan)
+   - [phase-01-domain-models-and-parser-implementation.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md) (Domain Models & HTML Parser)
+   - [phase-02-repository-cache-and-network-retry.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-02-repository-cache-and-network-retry.md) (Cache & Exponential Backoff Retry)
+   - [phase-03-viewmodel-pipeline.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-03-viewmodel-pipeline.md) (Nearby & Favorites ViewModel Orchestration)
+   - [phase-04-ui-stationcard-forecast-capsule.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-04-ui-stationcard-forecast-capsule.md) (StationCard Amber UI & Capsule)
+3. **Quy tắc kiểm thử nghiêm ngặt**:
+   - Mỗi phase chỉ có đúng 1 file test toàn diện.
+   - Sau khi hoàn thành mỗi phase, chỉ chạy đúng 1 test đó để verify rồi dừng chờ review.
 
 ---
 
 ## ⏳ CÒN LẠI / GỢI Ý BƯỚC TIẾP THEO:
-- [ ] Tích hợp thông báo đẩy (Push Notifications) khi trạm sạc yêu thích có cổng sạc vừa được giải phóng rảnh.
-- [ ] Tích hợp widget màn hình chính (Android AppWidget) hiển thị nhanh 3 trạm sạc gần nhất.
-- [ ] Lọc trạm theo hãng xe tương thích hoặc nhà vận hành trạm sạc đối tác.
-
----
-
-## 🔧 QUYẾT ĐỊNH QUAN TRỌNG:
-- **Tên app "EV+"**: Ngắn gọn, hiện đại, dễ nhận diện và không bị cắt ngắn (ellipsis) trên launcher điện thoại.
-- **Adaptive Icon chuẩn Vector**: Không dùng ảnh bitmap cố định, hoàn toàn sắc nét ở mọi mật độ điểm ảnh (hdpi, xhdpi, xxhdpi, xxxhdpi) và tương thích mọi hình dạng mask launcher.
-- **Tách biệt dữ liệu reverse engineering**: Gom toàn bộ file nhị phân nặng và assets gốc vào `original_app_data/` để repository GitHub nhẹ, sạch và đúng chuẩn MAD.
+- [ ] Thực hiện Phase 01: Tạo model `StationForecast`, parser `StationForecastParser`, chạy test `StationForecastParserTest.kt`.
+- [ ] Sau khi anh review Phase 01 -> tiếp tục Phase 02, 03, 04.
 
 ---
 
 ## 📁 FILES QUAN TRỌNG:
-- `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` (Adaptive icon)
-- `app/src/main/res/drawable/ic_launcher_background.xml` (Icon background)
-- `app/src/main/res/drawable/ic_launcher_foreground.xml` (Icon foreground)
-- `app/src/main/res/values/strings.xml` (App name "EV+")
-- `app/src/main/AndroidManifest.xml` (Manifest khai báo icon & tên)
-- `README.md` (Tài liệu tổng quan dự án)
-- `.gitignore` (Quy tắc lọc Git)
-- `.brain/brain.json` (Tri thức tĩnh của dự án)
-- `.brain/session.json` (Trạng thái phiên làm việc)
+- [plans/260904-0830-live-station-forecast-cards/plan.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/plan.md)
+- [plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md](file:///home/skul9x/Desktop/Code/TramsacEV/plans/260904-0830-live-station-forecast-cards/phase-01-domain-models-and-parser-implementation.md)
+- [get.md](file:///home/skul9x/Desktop/Code/TramsacEV/get.md) (Đặc tả giải thuật SSR Regex & Data model)
+- [.brain/session.json](file:///home/skul9x/Desktop/Code/TramsacEV/.brain/session.json) (Trạng thái phiên)
+- [.brain/handover.md](file:///home/skul9x/Desktop/Code/TramsacEV/.brain/handover.md) (Bản giao ban ngữ cảnh)
 
 ---
 
-## 📍 Để tiếp tục: Gõ `/recap` trong phiên làm việc mới!
+## 📍 Để tiếp tục: Gõ `/recap` hoặc `/code phase-01`

@@ -1,6 +1,7 @@
 package com.evcs.favorites.data.model
 
 import com.evcs.favorites.data.routing.DrivingMetrics
+import com.evcs.favorites.domain.model.StationForecast
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -181,7 +182,8 @@ data class Station(
     val isFreeParking: Boolean = true,
     val workingTimeDescription: String = "24/7",
     val distanceKm: Double? = null,
-    val drivingMetrics: DrivingMetrics? = null
+    val drivingMetrics: DrivingMetrics? = null,
+    val forecast: StationForecast? = null
 ) {
     /**
      * True if verified real-time telemetry metrics are available for this station.

@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
  * 1. `POST /favorite.html` with auth cookies & `X-Partial: fav`
  * 2. `POST /search?t=...` signed with HMAC-SHA256
  */
-class EvcsApiClient(
+open class EvcsApiClient(
     private val sessionManager: SessionManager,
     private val client: OkHttpClient = defaultClient(),
     private val baseUrl: String = DEFAULT_BASE_URL
@@ -307,6 +307,46 @@ class EvcsApiClient(
     }
 
     /**
+     * Fetches the raw HTML content of a station detail page.
+     * Uses canonical URL from StationUrlBuilder and mobile browser headers to avoid bot blocks.
+     *
+     * @param stationName Name of the charging station.
+     * @param locationId Unique station identifier.
+     * @return Result containing raw HTML string if successful, or failure exception.
+     */
+    open suspend fun fetchStationHtml(
+        stationName: String,
+        locationId: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val url = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .get()
+                .addHeader("User-Agent", USER_AGENT_BROWSER)
+                .addHeader("Referer", "$baseUrl/")
+                .addHeader("Origin", baseUrl)
+
+            val cookieHeader = sessionManager.getCookieHeader()
+            if (cookieHeader.isNotBlank()) {
+                requestBuilder.addHeader("Cookie", cookieHeader)
+            }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    IOException("Failed to fetch station detail HTML: HTTP ${response.code}")
+                )
+            }
+
+            val html = response.body?.string().orEmpty()
+            Result.success(html)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Fetches station detail HTML page and resolves its GPS coordinates.
      *
      * @param stationName Name of the charging station.
@@ -316,34 +356,13 @@ class EvcsApiClient(
     suspend fun fetchStationCoordinates(
         stationName: String,
         locationId: String
-    ): Result<Pair<Double, Double>?> = withContext(Dispatchers.IO) {
-        try {
-            val url = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
-            val requestBuilder = Request.Builder()
-                .url(url)
-                .get()
-                .addHeader("User-Agent", USER_AGENT_BROWSER)
-                .addHeader("Referer", "$baseUrl/")
-                .addHeader("Origin", baseUrl)
-
-            val cookieHeader = sessionManager.getCookieHeader()
-            if (cookieHeader.isNotBlank()) {
-                requestBuilder.addHeader("Cookie", cookieHeader)
-            }
-
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    IOException("Failed to fetch station detail HTML: HTTP ${response.code}")
-                )
-            }
-
-            val html = response.body?.string().orEmpty()
-            val coords = parseCoordinatesFromHtml(html)
-            Result.success(coords)
-        } catch (e: Exception) {
-            Result.failure(e)
+    ): Result<Pair<Double, Double>?> {
+        val htmlResult = fetchStationHtml(stationName, locationId)
+        if (htmlResult.isFailure) {
+            return Result.failure(htmlResult.exceptionOrNull()!!)
         }
+        val coords = parseCoordinatesFromHtml(htmlResult.getOrThrow())
+        return Result.success(coords)
     }
 
     /**
@@ -352,34 +371,13 @@ class EvcsApiClient(
     suspend fun fetchStationDetailMetadata(
         stationName: String,
         locationId: String
-    ): Result<StationDetailMetadata?> = withContext(Dispatchers.IO) {
-        try {
-            val url = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
-            val requestBuilder = Request.Builder()
-                .url(url)
-                .get()
-                .addHeader("User-Agent", USER_AGENT_BROWSER)
-                .addHeader("Referer", "$baseUrl/")
-                .addHeader("Origin", baseUrl)
-
-            val cookieHeader = sessionManager.getCookieHeader()
-            if (cookieHeader.isNotBlank()) {
-                requestBuilder.addHeader("Cookie", cookieHeader)
-            }
-
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    IOException("Failed to fetch station detail HTML: HTTP ${response.code}")
-                )
-            }
-
-            val html = response.body?.string().orEmpty()
-            val metadata = parseStationMetadataFromHtml(html)
-            Result.success(metadata)
-        } catch (e: Exception) {
-            Result.failure(e)
+    ): Result<StationDetailMetadata?> {
+        val htmlResult = fetchStationHtml(stationName, locationId)
+        if (htmlResult.isFailure) {
+            return Result.failure(htmlResult.exceptionOrNull()!!)
         }
+        val metadata = parseStationMetadataFromHtml(htmlResult.getOrThrow())
+        return Result.success(metadata)
     }
 }
 

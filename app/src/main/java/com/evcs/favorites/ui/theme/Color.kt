@@ -54,8 +54,8 @@ val StatusAvailable = Color(0xFF10B981) // Emerald Green
 val StatusAvailableContainer = Color(0x2610B981) // 15% opacity
 val StatusMaintaining = Color(0xFFF59E0B) // Amber
 val StatusMaintainingContainer = Color(0x26F59E0B)
-val StatusBusy = Color(0xFFF97316) // Orange
-val StatusBusyContainer = Color(0x26F97316)
+val StatusBusy = Color(0xFFEF4444) // Red busy badge (#EF4444)
+val StatusBusyContainer = Color(0x26EF4444)
 val StatusOffline = Color(0xFFEF4444) // Rose Red
 val StatusOfflineContainer = Color(0x26EF4444)
 

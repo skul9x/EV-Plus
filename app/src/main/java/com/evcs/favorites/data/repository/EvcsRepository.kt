@@ -2,12 +2,16 @@ package com.evcs.favorites.data.repository
 
 import com.evcs.favorites.data.api.EvcsApiClient
 import com.evcs.favorites.data.auth.SessionStorage
+import com.evcs.favorites.data.cache.ForecastCache
 import com.evcs.favorites.data.model.FavoriteStationRaw
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.SearchStationRaw
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.data.parser.StationForecastParser
 import com.evcs.favorites.domain.location.DistanceCalculator
+import com.evcs.favorites.domain.model.StationForecast
 import com.evcs.favorites.util.StationNameSanitizer
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -15,6 +19,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -41,7 +47,11 @@ open class EvcsRepository(
     private val coordinateCache: MutableMap<String, Pair<Double, Double>> = mutableMapOf(),
     private val coordinateResolver: ((locationId: String) -> Pair<Double, Double>?)? = null,
     private val cacheStorage: SessionStorage? = null,
-    private val autoResolveCoordinates: Boolean = false
+    private val autoResolveCoordinates: Boolean = false,
+    val forecastCache: ForecastCache = ForecastCache(),
+    val forecastSemaphore: Semaphore = Semaphore(3),
+    private val delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     companion object {
         // Default coordinates: Hanoi Center (Hoan Kiem)
@@ -483,6 +493,151 @@ open class EvcsRepository(
         }
 
         Result.success(domainStations)
+    }
+
+    /**
+     * Checks if an error represents a transient failure eligible for retry.
+     */
+    private fun isTransientFailure(throwable: Throwable): Boolean {
+        val msg = throwable.message.orEmpty()
+        if (msg.contains("HTTP 400") ||
+            msg.contains("HTTP 401") ||
+            msg.contains("HTTP 403") ||
+            msg.contains("HTTP 404")
+        ) {
+            return false
+        }
+        return throwable is IOException ||
+                msg.contains("HTTP 5") ||
+                msg.contains("timeout", ignoreCase = true)
+    }
+
+    /**
+     * Clears all cached station forecasts and failure cooldowns.
+     */
+    fun clearForecastCache() {
+        forecastCache.clearAll()
+    }
+
+    /**
+     * Invalidates forecast cache and failure cooldown for a specific station.
+     */
+    fun invalidateForecast(stationId: String) {
+        forecastCache.invalidate(stationId)
+    }
+
+    /**
+     * Fetches charging forecast for a station with in-memory TTL caching (3 minutes),
+     * failure cooldown (1 minute), and transient failure exponential backoff retry.
+     * Silent degradation: guarantees zero exceptions propagated to UI, returning Result.success(null) on error.
+     *
+     * @param station Target station to query forecast for.
+     * @param forceRefresh When true, clears cache and failure cooldown for this station before fetching.
+     * @return Result containing StationForecast if available, or null if no forecast or in failure/cooldown.
+     */
+    open suspend fun fetchStationForecast(
+        station: Station,
+        forceRefresh: Boolean = false
+    ): Result<StationForecast?> = withContext(ioDispatcher) {
+        try {
+            if (forceRefresh) {
+                forecastCache.invalidate(station.id)
+            } else {
+                val cached = forecastCache.get(station.id)
+                if (cached != null) {
+                    return@withContext Result.success(cached)
+                }
+            }
+
+            if (forecastCache.isInCooldown(station.id)) {
+                return@withContext Result.success(null)
+            }
+
+            forecastSemaphore.withPermit {
+                // Re-check cache in case a concurrent request already populated it
+                if (!forceRefresh) {
+                    val cached = forecastCache.get(station.id)
+                    if (cached != null) {
+                        return@withPermit Result.success(cached)
+                    }
+                }
+
+                val retryDelays = listOf(1000L, 2000L)
+                var result: Result<String>? = null
+
+                for (attempt in 0..retryDelays.size) {
+                    if (attempt > 0) {
+                        val baseDelay = retryDelays[attempt - 1]
+                        val jitter = kotlin.random.Random.nextLong(0, 301)
+                        delayProvider(baseDelay + jitter)
+                    }
+
+                    result = apiClient.fetchStationHtml(station.name, station.id)
+                    if (result.isSuccess) {
+                        break
+                    }
+
+                    val ex = result.exceptionOrNull() ?: IOException("Network error")
+                    if (!isTransientFailure(ex)) {
+                        break
+                    }
+                }
+
+                if (result == null || result.isFailure) {
+                    forecastCache.recordFailure(station.id)
+                    return@withPermit Result.success(null)
+                }
+
+                val html = result.getOrNull().orEmpty()
+                val forecast = try {
+                    StationForecastParser.parseForecastFromHtml(html)
+                } catch (e: Exception) {
+                    null
+                }
+
+                if (forecast != null) {
+                    forecastCache.put(station.id, forecast)
+                }
+
+                Result.success(forecast)
+            }
+        } catch (e: Exception) {
+            forecastCache.recordFailure(station.id)
+            Result.success(null)
+        }
+    }
+
+    /**
+     * Batch enriches a list of stations with real-time charging forecasts.
+     * Concurrency is throttled to at most 3 simultaneous network requests via Semaphore(3).
+     *
+     * @param stations Target stations to enrich.
+     * @param forceRefresh When true, invalidates cache and cooldowns for fresh fetching.
+     * @param onStationUpdated Optional callback invoked as each station is progressively updated.
+     * @return Complete list of stations enriched with forecasts where available.
+     */
+    open suspend fun enrichStationsWithForecast(
+        stations: List<Station>,
+        forceRefresh: Boolean = false,
+        onStationUpdated: ((Station) -> Unit)? = null
+    ): List<Station> = withContext(ioDispatcher) {
+        if (stations.isEmpty()) return@withContext emptyList()
+
+        coroutineScope {
+            stations.map { station ->
+                async {
+                    val result = fetchStationForecast(station, forceRefresh)
+                    val forecast = result.getOrNull()
+                    val enriched = if (forecast != null) {
+                        station.copy(forecast = forecast)
+                    } else {
+                        station
+                    }
+                    onStationUpdated?.invoke(enriched)
+                    enriched
+                }
+            }.awaitAll()
+        }
     }
 }
 

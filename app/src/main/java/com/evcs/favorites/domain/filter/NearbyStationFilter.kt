@@ -21,7 +21,8 @@ object NearbyStationFilter {
      */
     fun filterStations(
         stations: List<Station>,
-        selectedWattages: Set<WattageOption>
+        selectedWattages: Set<WattageOption>,
+        includeFullStations: Boolean = false
     ): List<Station> {
         return stations.filter { station ->
             val isOutOfService = station.depotStatus.equals("Maintaining", ignoreCase = true) ||
@@ -31,12 +32,11 @@ object NearbyStationFilter {
             }
 
             if (selectedWattages.isEmpty()) {
-                station.totalAvailablePlugs > 0
+                station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
             } else {
                 station.powers.any { power ->
-                    power.availablePlugs > 0 && selectedWattages.any { option ->
-                        option.matchesWattage(power.typeWatts)
-                    }
+                    (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0)) &&
+                            selectedWattages.any { option -> option.matchesWattage(power.typeWatts) }
                 }
             }
         }
@@ -92,6 +92,8 @@ object NearbyStationFilter {
                 ?: Long.MAX_VALUE
         }.thenBy { station ->
             station.drivingMetrics?.durationSeconds ?: Long.MAX_VALUE
+        }.thenBy { station ->
+            station.distanceKm ?: Double.MAX_VALUE
         }.thenBy { station ->
             station.id
         }

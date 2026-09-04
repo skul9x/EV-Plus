@@ -3,7 +3,7 @@
     "schema_version": "1.1.0",
     "awf_version": "4.0.2",
     "created_at": "2026-09-03T11:05:00+07:00",
-    "updated_at": "2026-09-03T19:46:00+07:00"
+    "updated_at": "2026-09-04T08:08:00+07:00"
   },
   "project": {
     "name": "EV+",
@@ -85,9 +85,27 @@
       "path": "GET https://router.project-osrm.org/table/v1/driving/{coords}",
       "method": "GET",
       "purpose": "Tính toán ma trận khoảng cách đường bộ và thời gian di chuyển dự kiến miễn phí không cần API key"
+    },
+    {
+      "path": "GET /tram-sac-...html",
+      "method": "GET",
+      "purpose": "Tải trang chi tiết trạm sạc dạng HTML tĩnh (SSR) chứa khối #stationTicker dự báo xe sắp sạc xong"
+    },
+    {
+      "path": "POST /charging",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "purpose": "Lấy trạng thái số cổng đang sạc thực tế (busyKw) và mã HTML ticker cập nhật từ EVCS"
     }
   ],
   "features": [
+    {
+      "name": "Station Availability Forecast SSR Parser (get.md)",
+      "status": "designed_spec_ready",
+      "description": "Thuật toán bóc tách dữ liệu dự báo cổng sạc sắp hoàn thành (ví dụ: '2 xe sạc trụ 20kW sẽ xong trong 7-14 phút nữa') từ mã nguồn HTML tĩnh ban đầu do server render, vượt qua cơ chế bị client-side JS ghi đè bởi amd-locked khi tài khoản không có gói VIP EVCS Go."
+    },
     {
       "name": "Email OTP Authentication",
       "status": "implemented",
@@ -141,6 +159,10 @@
   ],
   "knowledge_items": {
     "gotchas": [
+      {
+        "issue": "Dự báo cổng sạc trống bị che mất sau 0.5s trên Web (amd-locked vs amd-hasmore)",
+        "solution": "Máy chủ EVCS nhúng sẵn dự báo trong HTML tĩnh ban đầu. Sau ~0.5s, web_charging.js gửi POST /charging nhận amd-locked và ghi đè DOM t.innerHTML = n.ticker nếu không có gói EVCS Go. Với app Native EV+, chỉ cần đọc trực tiếp HTML tĩnh ban đầu từ GET request để bảo toàn trọn vẹn thông tin dự báo cho tài xế xem miễn phí mà không bị che."
+      },
       {
         "issue": "Tiền tố khoảng cách từ API tìm kiếm EVCS (5.4km » ...)",
         "solution": "API Search trả về stationName có kèm khoảng cách và ký tự ». Cần xử lý qua StationNameSanitizer trước khi gán vào domain model và StationUrlBuilder để tránh tạo sai canonical URL slug và tránh đồng bộ ngược tiền tố này lên EVCS cloud."

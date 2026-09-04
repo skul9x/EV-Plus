@@ -52,3 +52,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Temporary captures & dumps
+curl_capture_*/
+get.md

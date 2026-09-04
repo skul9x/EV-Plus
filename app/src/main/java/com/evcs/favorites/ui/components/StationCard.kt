@@ -1,5 +1,14 @@
 package com.evcs.favorites.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +57,7 @@ import com.evcs.favorites.data.routing.DrivingMetrics
 import com.evcs.favorites.data.routing.RoutingEngineType
 import com.evcs.favorites.data.routing.TrafficCondition
 import com.evcs.favorites.domain.location.formattedDistance
+import com.evcs.favorites.domain.model.StationForecast
 import com.evcs.favorites.ui.theme.DarkOutline
 import com.evcs.favorites.ui.theme.DarkOnSurfaceVariant
 import com.evcs.favorites.ui.theme.DistancePillBg
@@ -121,7 +131,8 @@ fun StationCard(
                 StatusBadge(
                     depotStatus = station.depotStatus,
                     totalAvailablePlugs = station.totalAvailablePlugs,
-                    totalPlugs = station.totalPlugs
+                    totalPlugs = station.totalPlugs,
+                    forecast = station.forecast
                 )
             }
 
@@ -189,6 +200,8 @@ fun StationCard(
                     lineHeight = 16.sp
                 )
             }
+
+            ForecastCapsule(forecast = station.forecast)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -580,6 +593,11 @@ fun WattageChip(
     }
 }
 
+val StatusForecastAmber = Color(0xFFF59E0B)
+val StatusForecastAmberContainer = Color(0x26F59E0B)
+val ForecastCapsuleBg = Color(0x1AF59E0B)
+val ForecastCapsuleBorder = Color(0x4DF59E0B)
+
 /**
  * Resolved representation of status badge appearance and semantic meaning.
  */
@@ -594,13 +612,15 @@ data class StatusBadgeModel(
  * - "Bảo trì" when depotStatus is Maintaining
  * - "Tạm dừng" when depotStatus is OutOfService
  * - "Hoạt động" or "Đã lưu" when totalPlugs == 0 (never "Hết cổng" if unverified)
- * - "Hoạt động" when totalAvailablePlugs > 0
- * - "Hết cổng" when live totalPlugs > 0 and totalAvailablePlugs == 0
+ * - "⏱️ Sắp trống" when station is full and forecast != null (Amber #F59E0B)
+ * - "Hết cổng" when live totalPlugs > 0 and totalAvailablePlugs == 0 without forecast (Red #EF4444)
+ * - "Hoạt động" when totalAvailablePlugs > 0 (Green #10B981)
  */
 fun resolveStatusBadge(
     depotStatus: String,
     totalAvailablePlugs: Int,
-    totalPlugs: Int = 0
+    totalPlugs: Int = 0,
+    forecast: StationForecast? = null
 ): StatusBadgeModel {
     val (statusLabel, dotColor, containerColor) = when {
         depotStatus.equals("Maintaining", ignoreCase = true) -> Triple(
@@ -628,11 +648,21 @@ fun resolveStatusBadge(
                 )
             }
         }
-        totalPlugs > 0 && totalAvailablePlugs == 0 -> Triple(
-            "Hết cổng",
-            StatusBusy,
-            StatusBusyContainer
-        )
+        totalPlugs > 0 && totalAvailablePlugs == 0 -> {
+            if (forecast != null) {
+                Triple(
+                    "⏱️ Sắp trống",
+                    StatusForecastAmber,
+                    StatusForecastAmberContainer
+                )
+            } else {
+                Triple(
+                    "Hết cổng",
+                    StatusBusy,
+                    StatusBusyContainer
+                )
+            }
+        }
         totalAvailablePlugs > 0 || depotStatus.equals("Normal", ignoreCase = true) -> Triple(
             "Hoạt động",
             StatusAvailable,
@@ -648,37 +678,155 @@ fun resolveStatusBadge(
 }
 
 /**
- * Status badge indicating station readiness (Available, Maintaining, OutOfService, Saved).
+ * Status badge indicating station readiness (Available, Maintaining, OutOfService, Saved, Sắp trống).
+ * Uses AnimatedContent for smooth crossfade transitions between states.
  */
 @Composable
 fun StatusBadge(
     depotStatus: String,
     totalAvailablePlugs: Int,
     totalPlugs: Int = 0,
+    forecast: StationForecast? = null,
     modifier: Modifier = Modifier
 ) {
-    val badge = resolveStatusBadge(depotStatus, totalAvailablePlugs, totalPlugs)
+    val badge = resolveStatusBadge(depotStatus, totalAvailablePlugs, totalPlugs, forecast)
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    AnimatedContent(
+        targetState = badge,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+        },
+        label = "StatusBadgeCrossfade",
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(badge.containerColor)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        Box(
+    ) { targetBadge ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(badge.dotColor)
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = badge.label,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.SemiBold
-            ),
-            color = badge.dotColor
-        )
+                .clip(RoundedCornerShape(12.dp))
+                .background(targetBadge.containerColor)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(targetBadge.dotColor)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = targetBadge.label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = targetBadge.dotColor
+            )
+        }
+    }
+}
+
+/**
+ * Visual model describing the resolved content of the Amber Forecast Capsule.
+ */
+data class ForecastCapsuleData(
+    val isMultiSession: Boolean,
+    val singleSummary: String,
+    val header: String = "⚡ DỰ KIẾN CỔNG SẮP TRỐNG:",
+    val bulletLines: List<String> = emptyList()
+)
+
+/**
+ * Resolves presentation data for the Amber Forecast Capsule matching 1.md specification:
+ * - Case 1 (Single session / 1 power line):
+ *     "⏱️ Dự kiến 2 xe sạc trụ 20kW sẽ xong trong 7-14 phút nữa"
+ * - Case 2 (Multiple sessions / multi-power levels):
+ *     Header: "⚡ DỰ KIẾN CỔNG SẮP TRỐNG:"
+ *     Bullets:
+ *     "• 20kW:  ~7-14 phút (2 xe)"
+ *     "• 60kW:  ~13 phút (1 xe)"
+ *     "• 250kW: ~8 phút (1 xe)"
+ */
+fun resolveForecastCapsuleData(forecast: StationForecast): ForecastCapsuleData {
+    val isMulti = forecast.isMultiSession
+    val header = "⚡ DỰ KIẾN CỔNG SẮP TRỐNG:"
+    val singleSummary = forecast.formatSingleSummary()
+    val bulletLines = if (isMulti) {
+        forecast.getGroupedPowerForecasts(descending = false).map { it.formatBulletLine() }
+    } else {
+        emptyList()
+    }
+    return ForecastCapsuleData(
+        isMultiSession = isMulti,
+        singleSummary = singleSummary,
+        header = header,
+        bulletLines = bulletLines
+    )
+}
+
+/**
+ * Amber Forecast Capsule displayed directly above connector chips on StationCard.
+ * Appears with smooth fadeIn + expandVertically animation when station.forecast is available.
+ */
+@Composable
+fun ForecastCapsule(
+    forecast: StationForecast?,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = forecast != null,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically(),
+        modifier = modifier
+    ) {
+        if (forecast != null) {
+            val capsuleData = resolveForecastCapsuleData(forecast)
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ForecastCapsuleBg)
+                    .border(BorderStroke(1.dp, ForecastCapsuleBorder), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                if (!capsuleData.isMultiSession) {
+                    Text(
+                        text = capsuleData.singleSummary,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp
+                        ),
+                        color = StatusForecastAmber,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = capsuleData.header,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            ),
+                            color = StatusForecastAmber
+                        )
+                        capsuleData.bulletLines.forEach { bullet ->
+                            Text(
+                                text = bullet,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontWeight = FontWeight.Normal,
+                                    fontSize = 12.5.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.95f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
