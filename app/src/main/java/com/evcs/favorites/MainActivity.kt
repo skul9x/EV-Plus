@@ -15,8 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.NearMe
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.evcs.favorites.data.api.EvcsApiClient
 import com.evcs.favorites.data.auth.AuthEngine
 import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
+import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.preferences.NearbyFilterPreferences
 import com.evcs.favorites.data.preferences.SmartFilterPreferences
@@ -71,7 +71,8 @@ class MainActivity : ComponentActivity() {
     private val repository by lazy {
         EvcsRepository(
             apiClient = apiClient,
-            cacheStorage = EncryptedSharedPrefsStorage.getInstance(applicationContext),
+            cacheStorage = PlainSharedPrefsStorage.getInstance(applicationContext),
+            legacyStorage = EncryptedSharedPrefsStorage.getInstance(applicationContext),
             autoResolveCoordinates = true
         )
     }
@@ -106,6 +107,7 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             EncryptedSharedPrefsStorage.getInstance(applicationContext).warmUp()
+            PlainSharedPrefsStorage.getInstance(applicationContext).warmUp()
             repository.initializeAsync()
         }
 
@@ -252,7 +254,7 @@ fun FavoritesApp(
                 },
                 icon = {
                     Icon(
-                        imageVector = Icons.Default.NearMe,
+                        imageVector = AppIcons.NearMe,
                         contentDescription = null,
                         tint = EmeraldPrimary,
                         modifier = Modifier.size(32.dp)

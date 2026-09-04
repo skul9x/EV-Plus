@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.evcs.favorites.data.auth.AuthEngine
 import com.evcs.favorites.data.auth.InMemorySessionStorage
+import com.evcs.favorites.data.cache.BoundedLruMap
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.data.routing.DrivingMetrics
@@ -39,7 +40,8 @@ class FavoritesViewModel(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val routingPreferencesManager: RoutingPreferencesManager? = null,
     private val routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<FavoritesUiState>(FavoritesUiState.Loading)
@@ -68,8 +70,9 @@ class FavoritesViewModel(
     private var cachedOriginLat: Double? = null
     private var cachedOriginLon: Double? = null
     private var cacheTimestamp: Long = 0L
-    private val routingCache = mutableMapOf<String, DrivingMetrics>()
+    private val routingCache = BoundedLruMap<String, DrivingMetrics>(maxCapacity = 100)
     private var currentCoordinates: Pair<Double, Double>? = null
+    private var lastProcessedCoordinates: Pair<Double, Double>? = null
 
     /**
      * Time provider hook to facilitate deterministic time-advance unit tests.
@@ -271,7 +274,9 @@ class FavoritesViewModel(
 
                     // Step 1: Immediate 0ms Haversine sort
                     val step1Stations = if (userLat != null && userLon != null) {
-                        DistanceCalculator.sortByDistance(stations, userLat, userLon)
+                        withContext(defaultDispatcher) {
+                            DistanceCalculator.sortByDistance(stations, userLat, userLon)
+                        }
                     } else {
                         stations
                     }
@@ -332,7 +337,9 @@ class FavoritesViewModel(
                 if (result.isSuccess) {
                     val stations = result.getOrThrow()
                     val step1Stations = if (userLat != null && userLon != null) {
-                        DistanceCalculator.sortByDistance(stations, userLat, userLon)
+                        withContext(defaultDispatcher) {
+                            DistanceCalculator.sortByDistance(stations, userLat, userLon)
+                        }
                     } else {
                         stations
                     }
@@ -388,7 +395,9 @@ class FavoritesViewModel(
             if (validStations.isEmpty()) return@launch
 
             val candidateCount = minOf(validStations.size, MAX_CANDIDATE_STATIONS)
-            val sortedByHaversine = validStations.sortedWith(compareBy(nullsLast()) { it.distanceKm })
+            val sortedByHaversine = withContext(defaultDispatcher) {
+                DistanceCalculator.sortByDistance(validStations, userLat, userLon)
+            }
             val candidates = sortedByHaversine.take(candidateCount)
 
             val candidateDestinations = candidates.map {
@@ -432,7 +441,9 @@ class FavoritesViewModel(
                 }
             }
 
-            val sortedStations = sortStations(enrichedStations)
+            val sortedStations = withContext(defaultDispatcher) {
+                sortStations(enrichedStations)
+            }
 
             _uiState.update { currentState ->
                 if (currentState is FavoritesUiState.Success) {
@@ -492,10 +503,25 @@ class FavoritesViewModel(
      * Updates user location, handling GPS displacement invalidation (> 200m).
      */
     fun updateUserLocation(latitude: Double, longitude: Double): Job {
-        val previousCoords = currentCoordinates
-        if (previousCoords != null && previousCoords.first == latitude && previousCoords.second == longitude) {
-            return Job().apply { complete() }
+        if (lastProcessedCoordinates != null) {
+            val displacement = DistanceCalculator.calculateDistanceMeters(
+                lastProcessedCoordinates!!.first,
+                lastProcessedCoordinates!!.second,
+                latitude,
+                longitude
+            )
+            if (displacement <= MIN_DISPLACEMENT_METERS) {
+                return Job().apply { complete() }
+            }
+            if (displacement <= MAX_DISPLACEMENT_METERS && isCacheValid(latitude, longitude)) {
+                currentCoordinates = Pair(latitude, longitude)
+                lastProcessedCoordinates = Pair(latitude, longitude)
+                return Job().apply { complete() }
+            }
         }
+
+        val previousCoords = currentCoordinates
+        lastProcessedCoordinates = Pair(latitude, longitude)
         currentCoordinates = Pair(latitude, longitude)
 
         val currentState = _uiState.value
@@ -638,6 +664,8 @@ class FavoritesViewModel(
         authEngine.logout()
         pendingEmail = ""
         _selectedStationForDetail.value = null
+        currentCoordinates = null
+        lastProcessedCoordinates = null
         _uiState.value = FavoritesUiState.LoggedOut
     }
 
@@ -667,6 +695,7 @@ class FavoritesViewModel(
 
     companion object {
         const val CACHE_TTL_MS = 180_000L // 3 minutes
+        const val MIN_DISPLACEMENT_METERS = 20.0
         const val MAX_DISPLACEMENT_METERS = 200.0
         const val MAX_CANDIDATE_STATIONS = 10
 
@@ -676,7 +705,8 @@ class FavoritesViewModel(
             locationService: LocationService? = null,
             routingPreferencesManager: RoutingPreferencesManager? = null,
             routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
-            ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+            ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+            defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -687,7 +717,8 @@ class FavoritesViewModel(
                     dispatcher = Dispatchers.Main,
                     routingPreferencesManager = routingPreferencesManager,
                     routingCoordinator = routingCoordinator,
-                    ioDispatcher = ioDispatcher
+                    ioDispatcher = ioDispatcher,
+                    defaultDispatcher = defaultDispatcher
                 ) as T
             }
         }

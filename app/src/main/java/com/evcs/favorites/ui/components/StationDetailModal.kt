@@ -26,8 +26,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.EvStation
 import androidx.compose.material.icons.filled.Refresh
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -140,7 +140,7 @@ fun StationDetailModal(
                         .background(EmeraldContainerDark)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.EvStation,
+                        imageVector = AppIcons.EvStation,
                         contentDescription = null,
                         tint = EmeraldPrimary,
                         modifier = Modifier.size(22.dp)

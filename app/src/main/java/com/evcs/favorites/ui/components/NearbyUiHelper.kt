@@ -2,10 +2,10 @@ package com.evcs.favorites.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.evcs.favorites.domain.model.WattageOption
+import com.evcs.favorites.ui.theme.AppIcons
 
 /**
  * Model describing visual state for the interactive station card favorite button.
@@ -100,7 +100,7 @@ object NearbyUiHelper {
         } else {
             FavoriteIconState(
                 isFavorite = false,
-                icon = Icons.Outlined.FavoriteBorder,
+                icon = AppIcons.FavoriteBorder,
                 tintColor = SlateGray,
                 contentDescription = FAVORITE_ACTION_ADD
             )

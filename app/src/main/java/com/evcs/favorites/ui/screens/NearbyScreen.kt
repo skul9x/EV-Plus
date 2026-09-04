@@ -29,11 +29,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterListOff
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -389,7 +388,7 @@ private fun NearbyInitialHeroContent(
                 .background(EmeraldContainerDark.copy(alpha = 0.6f))
         ) {
             Icon(
-                imageVector = Icons.Default.NearMe,
+                imageVector = AppIcons.NearMe,
                 contentDescription = null,
                 tint = EmeraldPrimary,
                 modifier = Modifier.size(56.dp)
@@ -437,7 +436,7 @@ private fun NearbyInitialHeroContent(
                 .height(54.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.NearMe,
+                imageVector = AppIcons.NearMe,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp)
             )
@@ -627,7 +626,7 @@ private fun NearbyEmptyFilterContent(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Icon(
-                imageVector = Icons.Default.FilterListOff,
+                imageVector = AppIcons.FilterListOff,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier.size(46.dp)

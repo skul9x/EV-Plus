@@ -23,12 +23,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Place
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -139,9 +135,16 @@ fun StationCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val journeyBadgeInfo = formatJourneyBadge(station.drivingMetrics, station.distanceKm)
+                val journeyBadgeInfo = remember(station.drivingMetrics, station.distanceKm) {
+                    formatJourneyBadge(station.drivingMetrics, station.distanceKm)
+                }
                 if (journeyBadgeInfo.text.isNotBlank()) {
                     JourneyBadge(badgeInfo = journeyBadgeInfo)
+                }
+
+                val workingTimeText = remember(station.isFreeParking, station.workingTimeDescription) {
+                    if (station.isFreeParking) "Mở ${station.workingTimeDescription} • Miễn phí gửi xe"
+                    else "Mở ${station.workingTimeDescription} • Gửi xe có phí"
                 }
 
                 // Working time & Parking pill
@@ -153,15 +156,14 @@ fun StationCard(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AccessTime,
+                        imageVector = AppIcons.AccessTime,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (station.isFreeParking) "Mở ${station.workingTimeDescription} • Miễn phí gửi xe"
-                        else "Mở ${station.workingTimeDescription} • Gửi xe có phí",
+                        text = workingTimeText,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -220,6 +222,9 @@ fun StationCard(
                     }
                 }
             } else if (station.connectors.isNotBlank()) {
+                val fallbackConnectorsText = remember(station.connectors) {
+                    "Cổng sạc: ${station.connectors}"
+                }
                 // Fallback basic connectors list
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -229,14 +234,14 @@ fun StationCard(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Bolt,
+                        imageVector = AppIcons.Bolt,
                         contentDescription = null,
                         tint = ElectricCyan,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Cổng sạc: ${station.connectors}",
+                        text = fallbackConnectorsText,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -263,7 +268,7 @@ fun StationCard(
                         .height(44.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Navigation,
+                        imageVector = AppIcons.Navigation,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
@@ -279,7 +284,9 @@ fun StationCard(
                 if (onFavoriteClick != null) {
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    val heartState = NearbyUiHelper.resolveFavoriteIconState(isFavorite)
+                    val heartState = remember(isFavorite) {
+                        NearbyUiHelper.resolveFavoriteIconState(isFavorite)
+                    }
                     IconButton(
                         onClick = { onFavoriteClick(station) },
                         modifier = Modifier
@@ -305,7 +312,7 @@ fun StationCard(
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                     ) {
                         Icon(
-                            imageVector = Icons.Default.DeleteOutline,
+                            imageVector = AppIcons.DeleteOutline,
                             contentDescription = "Xóa yêu thích",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.size(20.dp)
@@ -511,7 +518,7 @@ fun DistanceBadge(
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Icon(
-            imageVector = Icons.Default.Bolt,
+            imageVector = AppIcons.Bolt,
             contentDescription = null,
             tint = DistancePillText,
             modifier = Modifier.size(14.dp)
@@ -668,7 +675,9 @@ fun StatusBadge(
     totalPlugs: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val badge = resolveStatusBadge(depotStatus, totalAvailablePlugs, totalPlugs)
+    val badge = remember(depotStatus, totalAvailablePlugs, totalPlugs) {
+        resolveStatusBadge(depotStatus, totalAvailablePlugs, totalPlugs)
+    }
 
     AnimatedContent(
         targetState = badge,

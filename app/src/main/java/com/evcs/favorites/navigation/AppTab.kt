@@ -3,9 +3,8 @@ package com.evcs.favorites.navigation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.evcs.favorites.ui.theme.AppIcons
 
 /**
  * Top-level application destinations for bottom navigation.
@@ -18,11 +17,11 @@ enum class AppTab(
     NEARBY(
         label = "Quanh đây",
         selectedIcon = Icons.Filled.LocationOn,
-        unselectedIcon = Icons.Outlined.LocationOn
+        unselectedIcon = AppIcons.LocationOn
     ),
     FAVORITES(
         label = "Yêu thích",
         selectedIcon = Icons.Filled.Favorite,
-        unselectedIcon = Icons.Outlined.FavoriteBorder
+        unselectedIcon = AppIcons.FavoriteBorder
     )
 }

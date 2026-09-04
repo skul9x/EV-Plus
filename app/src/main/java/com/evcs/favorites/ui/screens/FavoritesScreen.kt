@@ -23,12 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.EvStation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -102,7 +99,7 @@ fun FavoritesScreen(
                                 .background(EmeraldContainerDark)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Bolt,
+                                imageVector = AppIcons.Bolt,
                                 contentDescription = null,
                                 tint = EmeraldPrimary,
                                 modifier = Modifier.size(20.dp)
@@ -151,7 +148,7 @@ fun FavoritesScreen(
                     // Logout button
                     IconButton(onClick = onLogout) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                            imageVector = AppIcons.Logout,
                             contentDescription = "Đăng xuất",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -343,7 +340,7 @@ private fun EmptyFavoritesContent(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Icon(
-                imageVector = Icons.Default.EvStation,
+                imageVector = AppIcons.EvStation,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier.size(52.dp)
@@ -412,7 +409,7 @@ private fun ErrorContent(
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.CloudOff,
+            imageVector = AppIcons.CloudOff,
             contentDescription = null,
             tint = StatusOffline,
             modifier = Modifier.size(56.dp)

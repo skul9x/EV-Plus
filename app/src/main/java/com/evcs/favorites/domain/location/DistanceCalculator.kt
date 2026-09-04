@@ -143,6 +143,20 @@ object DistanceCalculator {
         return stationsWithDistances.sortedWith(compareBy(nullsLast()) { it.distanceKm })
     }
 
+    private class ClusterAccumulator(initialPoint: Pair<Double, Double>) {
+        val points = mutableListOf(initialPoint)
+        var sumLat: Double = initialPoint.first
+        var sumLon: Double = initialPoint.second
+        val centerLat: Double get() = sumLat / points.size
+        val centerLon: Double get() = sumLon / points.size
+
+        fun add(point: Pair<Double, Double>) {
+            points.add(point)
+            sumLat += point.first
+            sumLon += point.second
+        }
+    }
+
     /**
      * Groups a collection of GPS coordinate points (lat, lon) into geographic clusters
      * where stations in a cluster are within [maxDistanceKm] (default 15.0 km) of each other.
@@ -161,28 +175,24 @@ object DistanceCalculator {
         }
         if (validPoints.isEmpty()) return emptyList()
 
-        val clusters = mutableListOf<MutableList<Pair<Double, Double>>>()
+        val clusters = mutableListOf<ClusterAccumulator>()
 
         for (point in validPoints) {
             val matchedCluster = clusters.firstOrNull { cluster ->
-                val centerLat = cluster.map { it.first }.average()
-                val centerLon = cluster.map { it.second }.average()
-                calculateDistanceKm(centerLat, centerLon, point.first, point.second) <= maxDistanceKm
+                calculateDistanceKm(cluster.centerLat, cluster.centerLon, point.first, point.second) <= maxDistanceKm
             }
 
             if (matchedCluster != null) {
                 matchedCluster.add(point)
             } else {
-                clusters.add(mutableListOf(point))
+                clusters.add(ClusterAccumulator(point))
             }
         }
 
         return clusters.map { cluster ->
-            val centerLat = cluster.map { it.first }.average()
-            val centerLon = cluster.map { it.second }.average()
             GeoCluster(
-                center = Pair(centerLat, centerLon),
-                points = cluster
+                center = Pair(cluster.centerLat, cluster.centerLon),
+                points = cluster.points
             )
         }
     }

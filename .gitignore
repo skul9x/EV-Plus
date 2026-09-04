@@ -1,7 +1,8 @@
 # Built-in Gradle / Android Studio
 .gradle/
-build/
-**/build/
+/build/
+app/build/
+!**/src/**/build/
 *.iml
 .idea/
 local.properties

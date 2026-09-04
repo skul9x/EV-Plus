@@ -27,8 +27,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import com.evcs.favorites.data.cache.BoundedLruMap
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -48,56 +48,16 @@ data class CoordinatePair(val latitude: Double, val longitude: Double)
  */
 open class EvcsRepository(
     private val apiClient: EvcsApiClient,
-    private val coordinateCache: ConcurrentHashMap<String, Pair<Double, Double>> = ConcurrentHashMap(),
+    private val coordinateCache: MutableMap<String, Pair<Double, Double>> = BoundedLruMap(maxCapacity = 500),
     private val coordinateResolver: ((locationId: String) -> Pair<Double, Double>?)? = null,
     private val cacheStorage: SessionStorage? = null,
+    private val legacyStorage: SessionStorage? = null,
     private val autoResolveCoordinates: Boolean = false,
     private val delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
     private val eagerLoadCache: Boolean = false
 ) {
-    constructor(
-        apiClient: EvcsApiClient,
-        coordinateCache: MutableMap<String, Pair<Double, Double>>,
-        coordinateResolver: ((locationId: String) -> Pair<Double, Double>?)? = null,
-        cacheStorage: SessionStorage? = null,
-        autoResolveCoordinates: Boolean = false,
-        delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
-        ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-        singleFlight: SingleFlight = SingleFlight(ioDispatcher),
-        eagerLoadCache: Boolean = false
-    ) : this(
-        apiClient = apiClient,
-        coordinateCache = (coordinateCache as? ConcurrentHashMap<String, Pair<Double, Double>>)
-            ?: DelegatingConcurrentMap(coordinateCache),
-        coordinateResolver = coordinateResolver,
-        cacheStorage = cacheStorage,
-        autoResolveCoordinates = autoResolveCoordinates,
-        delayProvider = delayProvider,
-        ioDispatcher = ioDispatcher,
-        singleFlight = singleFlight,
-        eagerLoadCache = eagerLoadCache
-    )
-
-    private class DelegatingConcurrentMap(
-        private val delegate: MutableMap<String, Pair<Double, Double>>
-    ) : ConcurrentHashMap<String, Pair<Double, Double>>(delegate) {
-        override fun put(key: String, value: Pair<Double, Double>): Pair<Double, Double>? {
-            delegate[key] = value
-            return super.put(key, value)
-        }
-
-        override fun remove(key: String): Pair<Double, Double>? {
-            delegate.remove(key)
-            return super.remove(key)
-        }
-
-        override fun clear() {
-            delegate.clear()
-            super.clear()
-        }
-    }
 
     val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
     companion object {
@@ -190,7 +150,16 @@ open class EvcsRepository(
      * Retrieves cached coordinates map from persistent storage.
      */
     fun loadCachedCoordinates(): Map<String, Pair<Double, Double>> {
-        val rawJson = cacheStorage?.getString(KEY_COORDINATE_CACHE) ?: return emptyMap()
+        var rawJson = cacheStorage?.getString(KEY_COORDINATE_CACHE)
+        if (rawJson == null && legacyStorage != null) {
+            val legacyJson = legacyStorage.getString(KEY_COORDINATE_CACHE)
+            if (legacyJson != null) {
+                cacheStorage?.putString(KEY_COORDINATE_CACHE, legacyJson)
+                legacyStorage.remove(KEY_COORDINATE_CACHE)
+                rawJson = legacyJson
+            }
+        }
+        if (rawJson == null) return emptyMap()
         return try {
             val map = EvcsApiClient.json.decodeFromString<Map<String, CoordinatePair>>(rawJson)
             map.mapValues { Pair(it.value.latitude, it.value.longitude) }
@@ -229,7 +198,16 @@ open class EvcsRepository(
      * Retrieves cached favorites list from persistent storage if available.
      */
     fun getCachedFavorites(): List<Station> {
-        val rawJson = cacheStorage?.getString(KEY_OFFLINE_FAVORITES) ?: return emptyList()
+        var rawJson = cacheStorage?.getString(KEY_OFFLINE_FAVORITES)
+        if (rawJson == null && legacyStorage != null) {
+            val legacyJson = legacyStorage.getString(KEY_OFFLINE_FAVORITES)
+            if (legacyJson != null) {
+                cacheStorage?.putString(KEY_OFFLINE_FAVORITES, legacyJson)
+                legacyStorage.remove(KEY_OFFLINE_FAVORITES)
+                rawJson = legacyJson
+            }
+        }
+        if (rawJson == null) return emptyList()
         return try {
             EvcsApiClient.json.decodeFromString<List<Station>>(rawJson)
         } catch (e: Exception) {

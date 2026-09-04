@@ -25,12 +25,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Terminal
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -122,7 +120,7 @@ fun DebugLogViewerCard(
                         .background(EmeraldContainerDark)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Terminal,
+                        imageVector = AppIcons.Terminal,
                         contentDescription = null,
                         tint = EmeraldPrimary,
                         modifier = Modifier.size(20.dp)
@@ -216,7 +214,7 @@ fun DebugLogViewerCard(
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ContentCopy,
+                        imageVector = AppIcons.ContentCopy,
                         contentDescription = "Sao chép",
                         modifier = Modifier.size(15.dp),
                         tint = EmeraldPrimary
@@ -243,7 +241,7 @@ fun DebugLogViewerCard(
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DeleteOutline,
+                        imageVector = AppIcons.DeleteOutline,
                         contentDescription = "Xóa log",
                         modifier = Modifier.size(15.dp),
                         tint = StatusOffline

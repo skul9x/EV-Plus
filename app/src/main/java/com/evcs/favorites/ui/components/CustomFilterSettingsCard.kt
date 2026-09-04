@@ -23,9 +23,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Tune
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -243,7 +241,7 @@ fun CustomFilterSettingsCard(
                         .background(EmeraldContainerDark)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Tune,
+                        imageVector = AppIcons.Tune,
                         contentDescription = null,
                         tint = EmeraldPrimary,
                         modifier = Modifier.size(20.dp)
@@ -429,7 +427,7 @@ fun CustomFilterSettingsCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Error,
+                            imageVector = AppIcons.Error,
                             contentDescription = null,
                             tint = StatusOffline,
                             modifier = Modifier.size(16.dp)
@@ -492,7 +490,7 @@ fun CustomFilterSettingsCard(
                 )
             ) {
                 Icon(
-                    imageVector = Icons.Default.Save,
+                    imageVector = AppIcons.Save,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )

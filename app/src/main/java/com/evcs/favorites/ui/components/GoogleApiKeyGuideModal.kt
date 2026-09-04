@@ -27,17 +27,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -212,7 +206,7 @@ fun GoogleApiKeyGuideModal(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.CheckCircle,
+                                        imageVector = AppIcons.CheckCircle,
                                         contentDescription = null,
                                         tint = StatusAvailable,
                                         modifier = Modifier.size(16.dp)
@@ -363,7 +357,7 @@ private fun FreeTierSafetyCard(freeTierInfo: FreeTierInfo) {
             Spacer(modifier = Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.Top) {
                 Icon(
-                    imageVector = Icons.Default.Security,
+                    imageVector = AppIcons.Security,
                     contentDescription = null,
                     tint = EmeraldPrimary,
                     modifier = Modifier
@@ -501,7 +495,7 @@ private fun StepContentCard(
                 ) {
                     Row(verticalAlignment = Alignment.Top) {
                         Icon(
-                            imageVector = Icons.Default.Lightbulb,
+                            imageVector = AppIcons.Lightbulb,
                             contentDescription = null,
                             tint = StatusMaintaining,
                             modifier = Modifier
@@ -548,7 +542,7 @@ private fun StepContentCard(
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            imageVector = AppIcons.OpenInNew,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
@@ -576,7 +570,7 @@ private fun StepContentCard(
                         border = androidx.compose.foundation.BorderStroke(1.dp, DarkOutline)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ContentCopy,
+                            imageVector = AppIcons.ContentCopy,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
@@ -655,7 +649,7 @@ private fun TroubleshootingFaqSection(
                             modifier = Modifier.weight(1f)
                         )
                         Icon(
-                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            imageVector = if (isExpanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
                             contentDescription = if (isExpanded) "Thu gọn" else "Mở rộng",
                             tint = DarkOnSurfaceVariant
                         )
@@ -711,7 +705,7 @@ private fun TroubleshootingFaqSection(
                                 )
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    imageVector = AppIcons.OpenInNew,
                                     contentDescription = null,
                                     modifier = Modifier.size(14.dp)
                                 )

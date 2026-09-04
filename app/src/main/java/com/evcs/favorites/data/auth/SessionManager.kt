@@ -110,6 +110,74 @@ class EncryptedSharedPrefsStorage(context: Context) : SessionStorage {
 }
 
 /**
+ * Production storage backed by standard unencrypted SharedPreferences for non-sensitive public caches.
+ * Eliminates CPU-heavy AES-GCM Keystore crypto overhead for public offline snapshots and coordinates.
+ */
+class PlainSharedPrefsStorage(
+    context: Context,
+    prefsName: String = "evcs_public_cache"
+) : SessionStorage {
+    private val appContext: Context = context.applicationContext ?: context
+    private val lock = Any()
+    private val prefs by lazy { appContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE) }
+
+    override suspend fun warmUp() {
+        withContext(Dispatchers.IO) {
+            synchronized(lock) {
+                prefs
+            }
+        }
+    }
+
+    override fun getString(key: String): String? = synchronized(lock) {
+        prefs.getString(key, null)
+    }
+
+    override fun putString(key: String, value: String?) {
+        synchronized(lock) {
+            val editor = prefs.edit()
+            if (value == null) {
+                editor.remove(key)
+            } else {
+                editor.putString(key, value)
+            }
+            editor.apply()
+        }
+    }
+
+    override fun remove(key: String) {
+        synchronized(lock) {
+            prefs.edit().remove(key).apply()
+        }
+    }
+
+    override fun clear() {
+        synchronized(lock) {
+            prefs.edit().clear().apply()
+        }
+    }
+
+    companion object {
+        @Volatile
+        private var instance: PlainSharedPrefsStorage? = null
+
+        fun getInstance(context: Context): PlainSharedPrefsStorage {
+            return instance ?: synchronized(this) {
+                instance ?: PlainSharedPrefsStorage(context.applicationContext ?: context).also {
+                    instance = it
+                }
+            }
+        }
+
+        internal fun resetInstanceForTesting() {
+            synchronized(this) {
+                instance = null
+            }
+        }
+    }
+}
+
+/**
  * In-memory storage useful for unit testing and fast testing.
  */
 class InMemorySessionStorage(

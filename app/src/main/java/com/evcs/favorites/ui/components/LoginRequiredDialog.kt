@@ -2,8 +2,7 @@ package com.evcs.favorites.ui.components
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -34,7 +33,7 @@ fun LoginRequiredDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
-                imageVector = Icons.Default.AccountCircle,
+                imageVector = AppIcons.AccountCircle,
                 contentDescription = null,
                 tint = EmeraldPrimary,
                 modifier = Modifier.size(36.dp)

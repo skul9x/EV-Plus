@@ -26,12 +26,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Key
+import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -130,7 +128,7 @@ fun LoginScreen(
                     .border(2.dp, EmeraldPrimary.copy(alpha = 0.5f), CircleShape)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Bolt,
+                    imageVector = AppIcons.Bolt,
                     contentDescription = "EVCS Logo",
                     tint = EmeraldPrimary,
                     modifier = Modifier.size(54.dp)
@@ -179,7 +177,7 @@ fun LoginScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ErrorOutline,
+                            imageVector = AppIcons.ErrorOutline,
                             contentDescription = null,
                             tint = StatusOffline,
                             modifier = Modifier.size(20.dp)
@@ -305,7 +303,7 @@ fun LoginScreen(
                     placeholder = { Text("• • • • • •") },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Default.Key,
+                            imageVector = AppIcons.Key,
                             contentDescription = null,
                             tint = ElectricCyan
                         )
@@ -371,7 +369,7 @@ fun LoginScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
-                            imageVector = Icons.Default.CheckCircle,
+                            imageVector = AppIcons.CheckCircle,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )

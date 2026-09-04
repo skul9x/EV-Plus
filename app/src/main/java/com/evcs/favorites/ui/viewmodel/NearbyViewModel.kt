@@ -25,6 +25,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,7 +55,9 @@ class NearbyViewModel(
     private val filterPreferences: NearbyFilterPreferences? = null,
     private val smartFilterPreferences: SmartFilterPreferences? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val routingDebounceMs: Long = 300L
 ) : ViewModel() {
 
     private val prefsManager: RoutingPreferencesManager =
@@ -116,6 +119,9 @@ class NearbyViewModel(
     var routingJob: Job? = null
         private set
 
+    var routingDebounceJob: Job? = null
+        private set
+
     init {
         // Observe repository favorite IDs to keep UI state automatically in sync
         viewModelScope.launch(dispatcher) {
@@ -161,6 +167,7 @@ class NearbyViewModel(
         }
         scanJob?.cancel()
         routingJob?.cancel()
+        routingDebounceJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             if (!locationService.hasLocationPermission()) {
@@ -218,7 +225,8 @@ class NearbyViewModel(
                 rawStations = raw,
                 userLat = lat,
                 userLon = lon,
-                selectedWattages = _uiState.value.selectedWattages
+                selectedWattages = _uiState.value.selectedWattages,
+                debounce = false
             )
         }
         scanJob = job
@@ -488,6 +496,7 @@ class NearbyViewModel(
         return if (lat != null && lon != null && (lat != 0.0 || lon != 0.0)) {
             scanJob?.cancel()
             routingJob?.cancel()
+            routingDebounceJob?.cancel()
             val job = viewModelScope.launch(dispatcher) {
                 _uiState.update { it.copy(isSearching = true, errorMessage = null) }
 
@@ -515,7 +524,8 @@ class NearbyViewModel(
                     rawStations = raw,
                     userLat = lat,
                     userLon = lon,
-                    selectedWattages = _uiState.value.selectedWattages
+                    selectedWattages = _uiState.value.selectedWattages,
+                    debounce = false
                 )
             }
             scanJob = job
@@ -556,6 +566,7 @@ class NearbyViewModel(
         }
 
         routingJob?.cancel()
+        routingDebounceJob?.cancel()
         val job = viewModelScope.launch(dispatcher) {
             _uiState.update { it.copy(isRoutingLoading = true) }
 
@@ -580,7 +591,9 @@ class NearbyViewModel(
                 val m = metrics[station.id]
                 if (m != null) station.copy(drivingMetrics = m) else station
             }
-            val sortedRoutedTop10 = NearbyStationFilter.sortByDrivingDistance(routedTop10)
+            val sortedRoutedTop10 = withContext(defaultDispatcher) {
+                NearbyStationFilter.sortByDrivingDistance(routedTop10)
+            }
 
             _uiState.update {
                 it.copy(
@@ -633,43 +646,37 @@ class NearbyViewModel(
         rawStations: List<Station>,
         userLat: Double,
         userLon: Double,
-        selectedWattages: Set<WattageOption>
+        selectedWattages: Set<WattageOption>,
+        debounce: Boolean = true
     ) {
         val currentMode = _uiState.value.activeFilterMode
         val currentDcTier = _uiState.value.selectedDcTier
         val currentCustomConfig = _uiState.value.savedCustomConfig ?: smartFilterPrefs.getCustomConfig()
 
-        // 1. Client-side smart/wattage and port availability filtering
-        val filtered = if (currentMode != SmartFilterMode.NONE) {
-            NearbyStationFilter.filterSmartStations(
-                stations = rawStations,
-                mode = currentMode,
-                dcTier = currentDcTier,
-                customConfig = currentCustomConfig,
-                includeFullStations = true
-            )
-        } else if (selectedWattages.isNotEmpty()) {
-            NearbyStationFilter.filterStations(rawStations, selectedWattages, includeFullStations = true)
-        } else {
-            NearbyStationFilter.filterSmartStations(
-                stations = rawStations,
-                mode = SmartFilterMode.NONE,
-                includeFullStations = true
-            )
-        }
-
-        // 2. Haversine distance computation and Top 10 extraction
-        val top10 = NearbyStationFilter.extractTopNearest(userLat, userLon, filtered, limit = 10)
-
-        // 3. Immediately show Top 10 with Haversine distance while routing computes
-        _uiState.update {
-            it.copy(
-                top10DisplayStations = top10,
-                isRoutingLoading = top10.isNotEmpty()
-            )
+        // 1. Client-side smart/wattage and port availability filtering & 2. Haversine distance computation and Top 10 extraction
+        val top10 = withContext(defaultDispatcher) {
+            val f = if (currentMode != SmartFilterMode.NONE) {
+                NearbyStationFilter.filterSmartStations(
+                    stations = rawStations,
+                    mode = currentMode,
+                    dcTier = currentDcTier,
+                    customConfig = currentCustomConfig,
+                    includeFullStations = true
+                )
+            } else if (selectedWattages.isNotEmpty()) {
+                NearbyStationFilter.filterStations(rawStations, selectedWattages, includeFullStations = true)
+            } else {
+                NearbyStationFilter.filterSmartStations(
+                    stations = rawStations,
+                    mode = SmartFilterMode.NONE,
+                    includeFullStations = true
+                )
+            }
+            NearbyStationFilter.extractTopNearest(userLat, userLon, f, limit = 10)
         }
 
         if (top10.isEmpty()) {
+            routingDebounceJob?.cancel()
             _uiState.update {
                 it.copy(
                     top10DisplayStations = emptyList(),
@@ -680,7 +687,17 @@ class NearbyViewModel(
             return
         }
 
-        // 4. Map to strictly <= 10 destinations
+        // 3. Immediately show Top 10 with Haversine distance while routing computes
+        _uiState.update {
+            it.copy(
+                top10DisplayStations = top10,
+                isRoutingLoading = true
+            )
+        }
+
+        // 4. Debounced Remote Route Calculation
+        routingDebounceJob?.cancel()
+
         val destinations = top10.take(10).map { station ->
             RoutingDestination(
                 id = station.id,
@@ -689,29 +706,38 @@ class NearbyViewModel(
             )
         }
 
-        // 5. Dispatch multi-tier routing calculation
-        val metrics = withContext(ioDispatcher) {
-            routingCoordinator.calculateRoutes(
-                originLat = userLat,
-                originLng = userLon,
-                destinations = destinations,
-                settings = prefsManager.settings.value
-            )
+        suspend fun calculateAndApplyRoutes() {
+            val metrics = withContext(ioDispatcher) {
+                routingCoordinator.calculateRoutes(
+                    originLat = userLat,
+                    originLng = userLon,
+                    destinations = destinations,
+                    settings = prefsManager.settings.value
+                )
+            }
+            val routedTop10 = top10.map { station ->
+                val m = metrics[station.id]
+                if (m != null) station.copy(drivingMetrics = m) else station
+            }
+            val sorted = withContext(defaultDispatcher) {
+                NearbyStationFilter.sortByDrivingDistance(routedTop10)
+            }
+            _uiState.update {
+                it.copy(
+                    top10DisplayStations = sorted,
+                    routingMetrics = metrics,
+                    isRoutingLoading = false
+                )
+            }
         }
 
-        // 6. Merge drivingMetrics into Top 10 stations and update routingMetrics map
-        val routedTop10 = top10.map { station ->
-            val m = metrics[station.id]
-            if (m != null) station.copy(drivingMetrics = m) else station
-        }
-        val sortedRoutedTop10 = NearbyStationFilter.sortByDrivingDistance(routedTop10)
-
-        _uiState.update {
-            it.copy(
-                top10DisplayStations = sortedRoutedTop10,
-                routingMetrics = metrics,
-                isRoutingLoading = false
-            )
+        if (!debounce || routingDebounceMs <= 0L) {
+            calculateAndApplyRoutes()
+        } else {
+            routingDebounceJob = viewModelScope.launch(dispatcher) {
+                delay(routingDebounceMs)
+                calculateAndApplyRoutes()
+            }
         }
     }
 
@@ -719,6 +745,7 @@ class NearbyViewModel(
         super.onCleared()
         scanJob?.cancel()
         routingJob?.cancel()
+        routingDebounceJob?.cancel()
     }
 
     companion object {
@@ -731,7 +758,9 @@ class NearbyViewModel(
             filterPreferences: NearbyFilterPreferences? = null,
             smartFilterPreferences: SmartFilterPreferences? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Main,
-            ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+            ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+            defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
+            routingDebounceMs: Long = 300L
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -744,7 +773,9 @@ class NearbyViewModel(
                     filterPreferences = filterPreferences,
                     smartFilterPreferences = smartFilterPreferences,
                     dispatcher = dispatcher,
-                    ioDispatcher = ioDispatcher
+                    ioDispatcher = ioDispatcher,
+                    defaultDispatcher = defaultDispatcher,
+                    routingDebounceMs = routingDebounceMs
                 ) as T
             }
         }

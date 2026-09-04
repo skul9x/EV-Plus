@@ -20,6 +20,8 @@ object EvcsHmacSigner {
     const val DEFAULT_ORIGIN: String = "https://evcs.vn"
     const val DEFAULT_REFERER: String = "https://evcs.vn/"
 
+    private val HEX_CHARS = "0123456789abcdef".toCharArray()
+
     /**
      * Signs the request body and timestamp using HMAC-SHA256.
      *
@@ -36,7 +38,8 @@ object EvcsHmacSigner {
         val hmacBytes = mac.doFinal(dataToSign)
         val sb = StringBuilder(hmacBytes.size * 2)
         for (b in hmacBytes) {
-            sb.append(String.format("%02x", b))
+            val v = b.toInt() and 0xFF
+            sb.append(HEX_CHARS[v ushr 4]).append(HEX_CHARS[v and 0x0F])
         }
         return sb.toString()
     }
