@@ -19,7 +19,7 @@
 - **Giám sát số lượng súng sạc trống / đang sạc / bảo trì** theo từng phân cấp công suất thực tế.
 - **Thư viện ảnh trạm sạc chân thực** từ VinFast CDN giải mã trực tiếp.
 - **Đồng bộ danh sách Yêu thích xuyên suốt thiết bị** qua Google Sign-In & Firebase Firestore.
-- **Dẫn đường thông minh 3 tầng** (Google Routes API v2, OSRM và Haversine).
+- **Dẫn đường 1-Chạm & Tính cự ly thông minh** (1-Tap Turn-by-Turn Navigation qua Google Maps, tính khoảng cách OSRM & Haversine 0ms).
 
 ---
 
@@ -44,11 +44,10 @@
 - **3-Way Conflict Resolution**: Tự động hợp nhất (Merge) danh sách trạm đã lưu khi người dùng từ chế độ Khách chuyển sang đăng nhập Google, không bao giờ bị mất trạm đã ghim.
 - Cập nhật thời gian thực 2 chiều với Cloud Firestore (`users/{uid}/favorites`).
 
-### 5. 🗺️ Hệ Thống Định Tuyến 3 Tầng (3-Tier Multi-Engine Routing)
-- **Tier 1 (Google Routes API v2 - BYOK)**: Tính toán thời gian di chuyển (ETA) chính xác theo tình trạng kẹt xe thực tế (Live Traffic).
-- **Tier 2 (OSRM Open Source Routing)**: Tính toán cự ly lộ trình đường sá thực tế miễn phí.
-- **Tier 3 (Haversine Formula)**: Tính toán khoảng cách đường thẳng offline 0ms.
-- **1-Tap Google Maps Navigation**: Mở nhanh Google Maps / Waze với tọa độ chính xác của trạm sạc.
+### 5. 🗺️ Tính Cự Ly & Dẫn Đường 1-Chạm (Distance & 1-Tap Navigation)
+- **1-Tap Google Maps Navigation**: Mở trực tiếp ứng dụng Google Maps với tọa độ chính xác của trạm sạc để bắt đầu dẫn đường tức thì.
+- **OSRM Road Network Engine**: Tính toán cự ly lộ trình đường sá thực tế mã nguồn mở.
+- **Haversine Baseline (Offline 0ms)**: Tính toán khoảng cách đường thẳng ngay lập tức không phụ thuộc mạng.
 
 ---
 
@@ -72,7 +71,8 @@ Dự án tuân thủ triệt để tiêu chuẩn **Modern Android Development (M
 | **Giải mã Ảnh CDN** | Custom VinFast CDN Decoder | Tự phát triển | Phân tích Base64 URI tham số để trích xuất URL ảnh gốc S3 |
 | **Lưu trữ Cục bộ** | EncryptedSharedPreferences & DataStore | `1.1.0-alpha06` / `1.0.0` | Mã hóa phần cứng AES-256 GCM (Android KeyStore) |
 | **Định vị GPS** | Google Play Services Location | `21.2.0` | FusedLocationProviderClient định vị GPS chính xác |
-| **Định tuyến (Routing)** | Multi-Tier Routing Engine | Tự phát triển | Điều phối Google Routes API v2, OSRM và Haversine |
+| **Dẫn đường & Bản đồ** | Android Intent Maps Deep Link | Native | Khởi chạy Google Maps dẫn đường 1-chạm |
+| **Tính khoảng cách** | OSRM & Haversine Engine | Tự phát triển | Tính toán khoảng cách lái xe thực tế và khoảng cách đường thẳng 0ms offline |
 | **Kiểm thử (Testing)** | JUnit 4, Kotlinx Coroutines Test, Mockito | `4.13.2` / `1.8.0` | Kiểm thử đơn vị (Unit Test) cho DataSources, Repositories, ViewModels |
 
 ---
@@ -90,7 +90,7 @@ graph TD
 
     subgraph Domain_Layer [Domain & Coordination Layer]
         C --> E[StationMediaUrlDecoder]
-        B --> F[Multi-Tier Routing Engine]
+        B --> F[Distance & Navigation Coordinator]
         P --> G[AuthService / FirebaseAuthManager]
     end
 
@@ -102,11 +102,12 @@ graph TD
         K --> L[Evcs REST API Engine]
     end
 
-    subgraph External_Services [External Cloud & APIs]
+    subgraph External_Services [External Cloud & Apps]
         J --> M[(Firebase Firestore)]
         G --> N[Google Identity Services]
         L --> O[VinFast / EVCS Telemetry Endpoints]
         E --> Q[VinFast CDN Media Cloud]
+        F --> R[Google Maps App Navigation Intent]
     end
 ```
 
@@ -179,7 +180,7 @@ adb shell am start -n com.evcs.favorites/.MainActivity
 ## 🔒 Bảo Mật & Quyền Riêng Tư
 
 - **Local-First & Không thu thập dữ liệu trái phép**: Tọa độ GPS chỉ được dùng trên máy để tính cự ly đến trạm sạc gần nhất.
-- **Mã hóa phần cứng AES-256 GCM**: Khóa API và cấu hình được bảo vệ bằng Android KeyStore.
+- **Mã hóa phần cứng AES-256 GCM**: Khóa cấu hình được bảo vệ bằng Android KeyStore.
 - **Xác thực an toàn Google Credential Manager**: Không lưu giữ mật khẩu người dùng ở client.
 
 ---
