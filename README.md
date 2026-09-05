@@ -1,158 +1,190 @@
-# ⚡ EV+
+# ⚡ EV Plus (EV+) - Trạm Sạc Xe Điện Thông Minh
 
-> **Native Android App** tra cứu trạm sạc xe điện thông minh, giám sát cổng sạc khả dụng thời gian thực và dẫn đường tối ưu dành cho tài xế xe điện.
+> **Native Android App** tra cứu trạm sạc xe điện thông minh, giám sát cổng sạc khả dụng thời gian thực, hiển thị album ảnh thực tế trạm sạc và đồng bộ trạm yêu thích đám mây (Local-First Cloud Firestore).
 
 [![Platform](https://img.shields.io/badge/Platform-Android_8.0+_(API_26--34)-green.svg)](https://developer.android.com)
 [![Language](https://img.shields.io/badge/Kotlin-1.9.23-purple.svg)](https://kotlinlang.org)
 [![UI Framework](https://img.shields.io/badge/UI-Jetpack_Compose_Material3-blue.svg)](https://developer.android.com/jetpack/compose)
 [![Architecture](https://img.shields.io/badge/Architecture-Clean_Architecture_+_MVVM-orange.svg)](#-kiến-trúc-hệ-thống)
+[![Database](https://img.shields.io/badge/Cloud_DB-Firebase_Firestore-yellow.svg)](https://firebase.google.com)
+[![Auth](https://img.shields.io/badge/Auth-Google_Credential_Manager-red.svg)](https://developer.android.com/identity/sign-in/credential-manager)
 [![Build](https://img.shields.io/badge/Build-Gradle_Kotlin_DSL-teal.svg)](https://gradle.org)
-[![Security](https://img.shields.io/badge/Security-AES--256_GCM_Encrypted-red.svg)](#-bảo-mật--an-toàn-thông-tin)
 
 ---
 
 ## 📖 Giới thiệu (Overview)
 
-**EV+** được phát triển nhằm giải quyết triệt để các hạn chế về hiệu năng, độ trễ và sự phụ thuộc vào webview cồng kềnh của ứng dụng gốc. Ứng dụng mang lại trải nghiệm Android Native thuần khiết: khởi động tức thì, định vị trạm sạc lân cận trong 0ms, tra cứu số cổng sạc trống và dẫn đường chính xác cho các tài xế xe điện (EV).
+**EV Plus** được phát triển nhằm mang lại trải nghiệm Android Native thuần khiết, siêu tốc và hiện đại cho cộng đồng người dùng xe điện (EV):
+- **Khởi động 0ms tức thì** với kiến trúc Local-First.
+- **Giám sát số lượng súng sạc trống / đang sạc / bảo trì** theo từng phân cấp công suất thực tế.
+- **Thư viện ảnh trạm sạc chân thực** từ VinFast CDN giải mã trực tiếp.
+- **Đồng bộ danh sách Yêu thích xuyên suốt thiết bị** qua Google Sign-In & Firebase Firestore.
+- **Dẫn đường thông minh 3 tầng** (Google Routes API v2, OSRM và Haversine).
 
-### 🌟 Điểm nổi bật:
-- 🚀 **Khám phá tức thì không cần đăng nhập**: Mở app là thấy ngay toàn bộ trạm sạc quanh vị trí hiện tại kèm khoảng cách và trạng thái súng sạc.
-- ⚡ **Theo dõi cổng sạc trực tiếp (Live Connectors)**: Hiển thị rõ số cổng sạc đang rảnh / tổng số cổng theo từng loại công suất (11kW, 20kW, 60kW, 120kW, 180kW, v.v.).
-- 🎯 **Bộ lọc công suất thông minh & Ghi nhớ liên phiên (Filter Persistence)**: Dễ dàng lọc trạm theo công suất sạc phù hợp với xe; trạng thái bộ lọc được lưu tự động vào `SessionStorage` và khôi phục khi mở lại app.
-- 🗺️ **Hệ thống Định tuyến 3 Tầng (3-Tier Multi-Engine Routing)**: Kết hợp linh hoạt giữa Google Routes API v2 (ETA thực tế kèm Live Traffic), OSRM Table Service (định tuyến mã nguồn mở) và Haversine baseline (khoảng cách đường thẳng offline 0ms).
-- 📍 **Dẫn đường 1-Chạm (1-Tap Turn-by-Turn Navigation)**: Mở trực tiếp Google Maps với tọa độ chính xác của trạm sạc.
-- ⭐️ **Đồng bộ Trạm Yêu thích**: Đăng nhập an toàn qua Email OTP, đồng bộ 2 chiều danh sách trạm yêu thích từ tài khoản EVCS.
+---
+
+## 🌟 Tính Năng Nổi Bật (Key Features)
+
+### 1. ⚡ Tra cứu Trạm Sạc & Cổng Sạc Trực Tiếp (Live Telemetry)
+- Tìm kiếm trạm sạc quanh vị trí GPS hiện tại với độ trễ siêu thấp (<200ms).
+- Phân loại rõ ràng các loại cổng sạc: **11kW, 30kW, 60kW, 120kW, 150kW, 180kW, 250kW, 300kW, 360kW** (tự động loại trừ các trụ AC 3.5kW/7kW xe máy không tương thích ô tô).
+- Hiển thị trực quan: Cổng đang rảnh (Xanh lá), Đang sạc (Xanh dương), Bảo trì/Lỗi (Xám/Đỏ).
+
+### 2. 🖼️ Thư Viện Ảnh Trạm Sạc & Trình Phóng To Toàn Màn Hình (Photo Gallery & Lightbox)
+- **VinFast CDN Direct Decoder**: Tự động bóc tách và giải mã URL ảnh gốc VinFast từ chuỗi Base64 tham số `url=`, vượt qua hoàn toàn cơ chế chặn 403 Cloudflare của proxy trung gian.
+- **Image Lightbox Modal**: Trải nghiệm xem ảnh toàn màn hình với thanh trượt mượt mà, hỗ trợ zoom và tải ảnh bất đồng bộ với Coil.
+
+### 3. 🔐 Đăng Nhập 1-Chạm Google Credential Manager & Guest Mode
+- Hỗ trợ chế độ **Khách (Guest)** dùng ngay không cần tài khoản.
+- Tích hợp **Google Credential Manager (1-Tap Sign-In)** thế hệ mới nhất của Android, an toàn và liền mạch.
+- Tự động lắng nghe trạng thái đăng nhập qua `StateFlow<AuthState>`.
+
+### 4. ☁️ Đồng Bộ Trạm Yêu Thích Đám Mây (Local-First Firestore Sync)
+- **Zero-Latency (0ms Startup)**: Dữ liệu trạm yêu thích luôn được đọc từ Local Storage trước để hiển thị ngay lập tức.
+- **3-Way Conflict Resolution**: Tự động hợp nhất (Merge) danh sách trạm đã lưu khi người dùng từ chế độ Khách chuyển sang đăng nhập Google, không bao giờ bị mất trạm đã ghim.
+- Cập nhật thời gian thực 2 chiều với Cloud Firestore (`users/{uid}/favorites`).
+
+### 5. 🗺️ Hệ Thống Định Tuyến 3 Tầng (3-Tier Multi-Engine Routing)
+- **Tier 1 (Google Routes API v2 - BYOK)**: Tính toán thời gian di chuyển (ETA) chính xác theo tình trạng kẹt xe thực tế (Live Traffic).
+- **Tier 2 (OSRM Open Source Routing)**: Tính toán cự ly lộ trình đường sá thực tế miễn phí.
+- **Tier 3 (Haversine Formula)**: Tính toán khoảng cách đường thẳng offline 0ms.
+- **1-Tap Google Maps Navigation**: Mở nhanh Google Maps / Waze với tọa độ chính xác của trạm sạc.
 
 ---
 
 ## 🛠️ Tech Stack Chi Tiết
 
-Dự án tuân thủ tiêu chuẩn **Modern Android Development (MAD)** với các công nghệ cập nhật nhất:
+Dự án tuân thủ triệt để tiêu chuẩn **Modern Android Development (MAD)**:
 
 | Tầng / Thành phần | Công nghệ / Thư viện | Phiên bản | Vai trò & Mục đích |
 |---|---|---|---|
-| **Ngôn ngữ** | [Kotlin](https://kotlinlang.org/) | `1.9.23` | Ngôn ngữ phát triển toàn bộ dự án, type-safe & null-safe |
-| **Hệ điều hành hỗ trợ** | Android SDK | `minSdk 26` / `targetSdk 34` | Tương thích từ Android 8.0 đến Android 14+ |
-| **JVM Target** | OpenJDK | `Java 17` | Môi trường biên dịch chuẩn cho Gradle 8.7 và Kotlin |
-| **Giao diện (UI)** | [Jetpack Compose](https://developer.android.com/jetpack/compose) | `BOM 2024.04.01` | Khung giao diện Declarative UI hiện đại, mượt mà |
-| **Design System** | [Material Design 3](https://m3.material.io/) | `1.2.1` | Hệ thống thiết kế Material You với tone màu EV Emerald chủ đạo |
-| **Biểu tượng (Icons)** | Compose Material Icons Extended | Đi kèm BOM | Cung cấp hệ thống icon phong phú (Bolt, Navigation, Place, Car, Time) |
-| **Kiến trúc (Architecture)** | MVVM + Clean Architecture | AndroidX Lifecycle `2.7.0` | Tách biệt rành mạch Data Layer, Domain Model và UI State qua ViewModel Compose |
-| **Bất đồng bộ & Phản ứng** | Kotlin Coroutines & Flow | `1.8.0` | Xử lý đa luồng ngầm, StateFlow và Unidirectional Data Flow (UDF) |
-| **Mạng (Networking)** | [OkHttp](https://square.github.io/okhttp/) | `4.12.0` | Xử lý HTTP request, cookie jar, custom headers và connection pooling |
-| **Chuyển đổi dữ liệu** | Kotlinx Serialization JSON | `1.6.3` | Parse JSON tốc độ cao, không cần reflection |
-| **Phân tích Telemetry** | Server-Side HTML Parser | Tự phát triển | Phân tích SSR HTML từ trạm sạc EVCS để trích xuất dự báo hoàn thành sạc thời gian thực |
-| **Lưu trữ & Bảo mật** | Jetpack Security Crypto & DataStore | `1.1.0-alpha06` / `1.0.0` | `EncryptedSharedPreferences` (AES-256 GCM) và `Preferences DataStore` |
-| **Định vị (Location)** | Google Play Services Location | `21.2.0` | `FusedLocationProviderClient` lấy tọa độ GPS chính xác và tiết kiệm pin |
-| **Định tuyến (Routing)** | Multi-Tier Engine | Tự phát triển | Phối hợp Google Routes API v2, OSRM Table Service và Haversine |
-| **Bộ nhớ đệm (Caching)** | In-Memory TTL Cache | Tự phát triển | `ForecastCache` (TTL 30s) và `TrafficCache` (TTL 60s) chống spam request |
-| **Kiểm thử (Testing)** | JUnit 4, MockWebServer, Coroutines Test | `4.13.2` / `4.12.0` | Unit test cho toàn bộ Repository, ViewModel, Router, Parser và Preferences |
+| **Ngôn ngữ** | [Kotlin](https://kotlinlang.org/) | `1.9.23` | Ngôn ngữ chính, Type-safe, Null-safety, Coroutines & Flow |
+| **Giao diện (UI)** | [Jetpack Compose](https://developer.android.com/jetpack/compose) | `BOM 2024.04.01` | Declarative UI, Animations, Custom Modals, BottomSheet |
+| **Design System** | [Material 3 (Material You)](https://m3.material.io/) | `1.2.1` | Hệ thống thiết kế Material You với tone màu EV Emerald chủ đạo |
+| **Tải & Cache Ảnh** | [Coil Compose](https://coil-kt.github.io/coil/) | `2.6.0` | Tải ảnh bất đồng bộ, tối ưu bộ nhớ RAM, caching thông minh |
+| **Bảo mật & Định danh** | AndroidX Credential Manager & Google ID | `1.2.2` / `1.1.1` | Đăng nhập 1-chạm Google Sign-In bảo mật cao |
+| **Cloud Authentication** | Firebase Auth KTX | `22.3.1` (BOM 32.8.0) | Quản lý phiên xác thực người dùng và Token đám mây |
+| **Cloud Database** | Firebase Firestore KTX | `24.11.0` (BOM 32.8.0) | Cơ sở dữ liệu NoSQL đám mây lưu trữ danh sách trạm yêu thích |
+| **Kiến trúc (Architecture)** | Clean Architecture + MVVM + UDF | Lifecycle `2.7.0` | Quản lý trạng thái StateFlow, tách biệt Data / Domain / Presentation |
+| **Bất đồng bộ** | Kotlin Coroutines & Flow | `1.8.0` | Xử lý đa luồng ngầm, Reactive Streams |
+| **Mạng (Networking)** | [OkHttp](https://square.github.io/okhttp/) | `4.12.0` | HTTP Client, Connection Pooling, CookieJar, Interceptors |
+| **Phân tích dữ liệu** | Kotlinx Serialization JSON | `1.6.3` | Parse JSON tốc độ cao, type-safe |
+| **Giải mã Ảnh CDN** | Custom VinFast CDN Decoder | Tự phát triển | Phân tích Base64 URI tham số để trích xuất URL ảnh gốc S3 |
+| **Lưu trữ Cục bộ** | EncryptedSharedPreferences & DataStore | `1.1.0-alpha06` / `1.0.0` | Mã hóa phần cứng AES-256 GCM (Android KeyStore) |
+| **Định vị GPS** | Google Play Services Location | `21.2.0` | FusedLocationProviderClient định vị GPS chính xác |
+| **Định tuyến (Routing)** | Multi-Tier Routing Engine | Tự phát triển | Điều phối Google Routes API v2, OSRM và Haversine |
+| **Kiểm thử (Testing)** | JUnit 4, Kotlinx Coroutines Test, Mockito | `4.13.2` / `1.8.0` | Kiểm thử đơn vị (Unit Test) cho DataSources, Repositories, ViewModels |
 
 ---
 
-## 📂 Cấu Trúc Thư Mục (Project Structure)
+## 🏛️ Kiến Trúc Hệ Thống (Architecture)
 
+```mermaid
+graph TD
+    subgraph UI_Layer [Presentation Layer - Jetpack Compose]
+        A[FavoritesScreen / NearbyScreen] --> B[FavoritesViewModel / NearbyViewModel]
+        B --> C[StationDetailCoordinator]
+        C --> D[NativeStationDetailSheet & PhotoLightbox]
+        B --> P[FavoritesProfileHeader]
+    end
+
+    subgraph Domain_Layer [Domain & Coordination Layer]
+        C --> E[StationMediaUrlDecoder]
+        B --> F[Multi-Tier Routing Engine]
+        P --> G[AuthService / FirebaseAuthManager]
+    end
+
+    subgraph Data_Layer [Data & Synchronization Layer]
+        B --> H[FirestoreFavoritesRepository]
+        H --> I[Local Preferences Storage]
+        H --> J[Cloud Firestore DataSource]
+        C --> K[EvcsTelemetryRepository]
+        K --> L[Evcs REST API Engine]
+    end
+
+    subgraph External_Services [External Cloud & APIs]
+        J --> M[(Firebase Firestore)]
+        G --> N[Google Identity Services]
+        L --> O[VinFast / EVCS Telemetry Endpoints]
+        E --> Q[VinFast CDN Media Cloud]
+    end
 ```
-TramsacEV/
-├── app/                                    # Mã nguồn Android chính
+
+---
+
+## 📂 Cấu Trúc Thư Mục Dự Án (Project Structure)
+
+```text
+EV-Plus/
+├── app/
 │   ├── src/
 │   │   ├── main/
-│   │   │   ├── AndroidManifest.xml         # Manifest cấu hình permissions và app_name "Trạm Sạc EV+"
+│   │   │   ├── AndroidManifest.xml
 │   │   │   ├── java/com/evcs/favorites/
-│   │   │   │   ├── data/                   # Data Layer (Api, Models, Preferences, Repository, Storage)
-│   │   │   │   ├── domain/                 # Domain Layer (Models, Routing Engines, Location Services)
-│   │   │   │   ├── navigation/             # AppTab (Nearby trái, Favorites phải)
-│   │   │   │   ├── ui/                     # UI Layer (Screens, Components, Theme, ViewModels)
-│   │   │   │   └── util/                   # Tiện ích (StationNameSanitizer, TokenGenerator, v.v.)
-│   │   │   └── res/
-│   │   │       └── values/strings.xml      # Định nghĩa chuỗi tài nguyên ("Trạm Sạc EV+")
-│   │   └── test/                           # Bộ Unit Test toàn diện (JVM-based)
-│   └── build.gradle.kts                    # Cấu hình build module app
-│
-├── original_app_data/                      # Dữ liệu & Tài liệu phân tích ứng dụng gốc EVCS
-│   ├── Tramsac-EV.xapk                     # Gói ứng dụng gốc Android
-│   ├── extracted_xapk/                     # Nội dung giải nén từ xapk
-│   ├── apktool_out/                        # Tài nguyên và bytecode smali đã reverse
-│   ├── src_code/                           # Mã nguồn Java/resources trích xuất qua JADX
-│   ├── *.html, web_*.js                    # Web templates và client scripts gốc
-│   ├── auth_state.json, verify_otp.py      # Session dump & script test OTP
-│   └── thuattoan.md                        # Tài liệu phân tích thuật toán CSRF / Chữ ký bảo mật
-│
-├── plans/                                  # Kế hoạch phát triển tính năng (AWF Workflows)
-│   ├── 260903-station-display-filter-persistence-and-tab-reorder/
-│   ├── 260903-nearby-charging-stations-and-multi-tier-routing/
-│   ├── 260903-station-detail-and-live-ports/
-│   ├── 260903-google-maps-api-key-guide-and-settings-ux/
-│   ├── 260903-multi-tier-routing-and-byok/
-│   └── 260903-evcs-favorites-mvp/
-│
-├── docs/                                   # Tài liệu kỹ thuật chi tiết & Hướng dẫn sử dụng
-├── .brain/                                 # Hệ thống lưu trữ ngữ cảnh vĩnh viễn (Eternal Context AWF)
-├── .gitignore                              # Quy tắc loại trừ file rác, build outputs & heavy binaries
-├── build.gradle.kts                        # Root build script
-├── settings.gradle.kts                     # Project settings
-└── README.md                               # Tài liệu tổng quan dự án
+│   │   │   │   ├── data/
+│   │   │   │   │   ├── auth/              # FirebaseAuthManager, AuthService, FakeAuthService
+│   │   │   │   │   ├── model/             # Data DTOs, StationModels, ConnectorModels
+│   │   │   │   │   ├── repository/        # FirestoreFavoritesRepository, EvcsTelemetryRepository
+│   │   │   │   │   ├── storage/           # Encrypted Preferences, Local Favorites
+│   │   │   │   │   └── telemetry/         # REST Telemetry Data Source
+│   │   │   │   ├── domain/                # AuthModels, Routing Engines, Location Providers
+│   │   │   │   ├── ui/
+│   │   │   │   │   ├── components/        # NativeStationDetailSheet, PhotoViewer, ProfileHeader
+│   │   │   │   │   ├── screens/           # FavoritesScreen, NearbyScreen, SettingsScreen
+│   │   │   │   │   ├── theme/             # Material3 Emerald Color Scheme, Typography
+│   │   │   │   │   └── viewmodel/         # FavoritesViewModel, NearbyViewModel, DetailCoordinator
+│   │   │   │   └── util/                  # VinFastCdnUrlDecoder, StationSanitizer
+│   │   │   └── res/                       # Drawable, Values (Colors, Strings)
+│   │   └── test/                          # JVM Unit Test Suites (100% Pass)
+│   └── build.gradle.kts                   # Module Gradle configuration
+├── plans/                                 # Tài liệu kế hoạch & Milestone kiến trúc (AWF)
+├── .brain/                                # Eternal Memory System (brain.json, session.json)
+├── build.gradle.kts                       # Root Gradle
+└── README.md                              # Tài liệu dự án
 ```
 
 ---
 
 ## 🚀 Hướng Dẫn Cài Đặt & Chạy (Getting Started)
 
-### 1. Yêu cầu môi trường:
+### 1. Yêu cầu hệ thống:
 - **JDK:** OpenJDK 17 trở lên.
-- **Android SDK:** Hỗ trợ compile SDK 34 (`Android 14`).
-- **Thiết bị:** Thiết bị Android thật (bật USB Debugging) hoặc Android Emulator chạy Android 8.0 (API 26) trở lên.
+- **Android SDK:** API Level 34 (Android 14) / Min SDK 26 (Android 8.0).
+- **Thiết bị:** Thiết bị Android thật (bật USB Debugging) hoặc Android Emulator.
 
 ### 2. Biên dịch & Chạy kiểm thử:
 ```bash
-# Cấp quyền thực thi cho gradle wrapper (nếu cần)
+# Cấp quyền thực thi cho Gradle
 chmod +x gradlew
 
-# Chạy toàn bộ Unit Test trên JVM
+# Chạy toàn bộ Unit Tests
 ./gradlew test
 
-# Biên dịch APK Debug
+# Biên dịch Debug APK
 ./gradlew assembleDebug
 ```
-File APK kết quả sẽ nằm tại: `app/build/outputs/apk/debug/app-debug.apk`.
+File APK kết quả được tạo tại: `app/build/outputs/apk/debug/app-debug.apk`.
 
-### 3. Cài đặt trực tiếp lên thiết bị Android qua ADB:
+### 3. Cài đặt trực tiếp lên điện thoại qua ADB:
 ```bash
-# Kiểm tra thiết bị đã kết nối
-adb devices
-
-# Cài đặt APK
+# Cài đặt APK vào thiết bị
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # Khởi chạy ứng dụng
-adb shell am start -n com.evplus.app/com.evcs.favorites.MainActivity
+adb shell am start -n com.evcs.favorites/.MainActivity
 ```
 
 ---
 
-## 🗺️ Cơ Chế Định Tuyến Đa Tầng (3-Tier Multi-Engine Routing)
+## 🔒 Bảo Mật & Quyền Riêng Tư
 
-Để tối ưu hóa trải nghiệm dẫn đường cho tài xế xe điện, ứng dụng thiết kế cơ chế điều phối định tuyến 3 tầng:
-
-1. **Tier 1 - Google Routes API v2 (BYOK - Bring Your Own Key):**
-   - Cung cấp thời gian di chuyển (ETA) và tình trạng kẹt xe thời gian thực (Live Traffic).
-   - Người dùng có thể tự nhập Google Cloud API Key cá nhân trong màn hình cài đặt mà không bị chia sẻ ra ngoài.
-2. **Tier 2 - OSRM Table Service (Open Source Routing Machine):**
-   - Tính toán khoảng cách lái xe thực tế qua hệ thống đường sá hoàn toàn miễn phí, chất lượng cao.
-3. **Tier 3 - Haversine Baseline (Offline 100%):**
-   - Tính toán khoảng cách đường thẳng ngay lập tức (0ms) khi chưa có kết nối mạng hoặc chưa nhận diện được tuyến đường.
-
----
-
-## 🔒 Bảo Mật & An Toàn Thông Tin
-
-- **Không lưu mật khẩu tĩnh:** Đăng nhập sử dụng cơ chế Email OTP 6 chữ số có giới hạn thời gian thực thi.
-- **Mã hóa phần cứng AES-256 GCM:** Cookie phiên đăng nhập (`evcs`, `PHPSESSID`) và các tùy chọn bảo mật được lưu trong `EncryptedSharedPreferences` quản lý bởi Android KeyStore.
-- **Không gửi telemetry bên thứ ba:** Mọi dữ liệu về tọa độ vị trí người dùng chỉ được sử dụng cục bộ trên máy để tính toán khoảng cách đến trạm sạc.
+- **Local-First & Không thu thập dữ liệu trái phép**: Tọa độ GPS chỉ được dùng trên máy để tính cự ly đến trạm sạc gần nhất.
+- **Mã hóa phần cứng AES-256 GCM**: Khóa API và cấu hình được bảo vệ bằng Android KeyStore.
+- **Xác thực an toàn Google Credential Manager**: Không lưu giữ mật khẩu người dùng ở client.
 
 ---
 
 ## 📄 Bản Quyền & Miễn Trừ Trách Nhiệm
 
-- Dự án được phát triển phục vụ mục đích học tập, nghiên cứu kỹ thuật và nâng cao trải nghiệm cho cộng đồng sử dụng xe điện.
-- Toàn bộ thương hiệu và API backend thuộc về đơn vị cung cấp dịch vụ sạc tương ứng.
+- Dự án được phát triển phi thương mại nhằm phục vụ cộng đồng người dùng xe điện và học tập nghiên cứu kiến trúc Android Modern Architecture.
+- Toàn bộ thương hiệu, biểu tượng và API dịch vụ thuộc quyền sở hữu của các đơn vị cung cấp tương ứng.
