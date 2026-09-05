@@ -95,6 +95,11 @@ fun FavoritesScreen(
     modifier: Modifier = Modifier
 ) {
     var showRoutingSettings by remember { mutableStateOf(false) }
+
+    val memoizedNavigateClick = remember(onNavigateClick) { onNavigateClick }
+    val memoizedRemoveFavoriteClick = remember(onRemoveFavoriteClick) { onRemoveFavoriteClick }
+    val memoizedStationClick = remember(onStationClick) { onStationClick }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -148,7 +153,7 @@ fun FavoritesScreen(
                         )
                     }
 
-                    // Pull / trigger refresh button
+                    // Refresh action
                     IconButton(onClick = onRefresh) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
@@ -203,9 +208,9 @@ fun FavoritesScreen(
                         FavoritesListContent(
                             stations = uiState.stations,
                             isRefreshing = uiState.isRefreshing,
-                            onNavigateClick = onNavigateClick,
-                            onRemoveFavoriteClick = onRemoveFavoriteClick,
-                            onStationClick = onStationClick,
+                            onNavigateClick = memoizedNavigateClick,
+                            onRemoveFavoriteClick = memoizedRemoveFavoriteClick,
+                            onStationClick = memoizedStationClick,
                             onRefresh = onRefresh,
                             authUser = authUser,
                             onSignInClick = onSignInClick,
@@ -218,9 +223,9 @@ fun FavoritesScreen(
                         FavoritesListContent(
                             stations = emptyList(),
                             isRefreshing = false,
-                            onNavigateClick = onNavigateClick,
-                            onRemoveFavoriteClick = onRemoveFavoriteClick,
-                            onStationClick = onStationClick,
+                            onNavigateClick = memoizedNavigateClick,
+                            onRemoveFavoriteClick = memoizedRemoveFavoriteClick,
+                            onStationClick = memoizedStationClick,
                             onRefresh = onRefresh,
                             authUser = authUser,
                             onSignInClick = onSignInClick,
@@ -319,7 +324,8 @@ private fun FavoritesListContent(
             ) {
                 items(
                     items = stations,
-                    key = { it.id }
+                    key = { it.id },
+                    contentType = { "station_card" }
                 ) { station ->
                     StationCard(
                         station = station,

@@ -71,6 +71,17 @@ class AuthEngine(
             encodeDefaults = true
         }
 
+        private val CSRF_PRIMARY_REGEX = Regex("""window\.EVCS_REWARD\s*=\s*\{[^}]*csrf\s*:\s*["']([^"']+)["']""")
+        private val CSRF_FALLBACK_REGEX = Regex("""csrf\s*:\s*["']([a-fA-F0-9]{16,64})["']""")
+
+        internal fun extractCsrfToken(html: String): String? {
+            val match = CSRF_PRIMARY_REGEX.find(html)
+            if (match != null) {
+                return match.groupValues[1]
+            }
+            return CSRF_FALLBACK_REGEX.find(html)?.groupValues?.get(1)
+        }
+
         private fun defaultClient(): OkHttpClient {
             return AppOkHttpClientProvider.getSharedClient().newBuilder()
                 .connectTimeout(15, TimeUnit.SECONDS)
@@ -294,13 +305,6 @@ class AuthEngine(
     /**
      * Extracts CSRF token from EVCS_REWARD script in HTML response.
      */
-    internal fun extractCsrfToken(html: String): String? {
-        val primaryRegex = Regex("""window\.EVCS_REWARD\s*=\s*\{[^}]*csrf\s*:\s*["']([^"']+)["']""")
-        val match = primaryRegex.find(html)
-        if (match != null) {
-            return match.groupValues[1]
-        }
-        val fallbackRegex = Regex("""csrf\s*:\s*["']([a-fA-F0-9]{16,64})["']""")
-        return fallbackRegex.find(html)?.groupValues?.get(1)
-    }
+    internal fun extractCsrfToken(html: String): String? =
+        Companion.extractCsrfToken(html)
 }

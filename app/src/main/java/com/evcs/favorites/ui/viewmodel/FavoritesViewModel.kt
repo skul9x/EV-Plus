@@ -49,7 +49,7 @@ class FavoritesViewModel(
     private val routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
     telemetryRepository: EvcsTelemetryRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
+    private val defaultDispatcher: CoroutineDispatcher = ioDispatcher
 ) : ViewModel() {
 
     val authState: StateFlow<AuthState> = authService?.authState ?: MutableStateFlow(AuthState.Unauthenticated)
@@ -132,19 +132,15 @@ class FavoritesViewModel(
         get() = pendingEmail.ifBlank { authEngine.sessionManager.userEmail.orEmpty() }
 
     init {
-        viewModelScope.launch(ioDispatcher) {
+        favoritesLoadJob = viewModelScope.launch(ioDispatcher) {
             if (repository.firestoreFavoritesRepository != null) {
-                withContext(dispatcher) {
-                    favoritesLoadJob = fetchFavorites()
-                }
+                doFetchFavorites()
             } else {
                 val loggedIn = authEngine.checkLoggedInAsync(ioDispatcher)
-                withContext(dispatcher) {
-                    if (loggedIn) {
-                        favoritesLoadJob = fetchFavorites()
-                    } else {
-                        _uiState.value = FavoritesUiState.LoggedOut
-                    }
+                if (loggedIn) {
+                    doFetchFavorites()
+                } else {
+                    _uiState.value = FavoritesUiState.LoggedOut
                 }
             }
         }
@@ -279,6 +275,55 @@ class FavoritesViewModel(
     }
 
     /**
+     * Core favorites fetching and station distance sorting logic.
+     */
+    suspend fun doFetchFavorites() {
+        _uiState.value = FavoritesUiState.Loading
+        try {
+            val coords = locationService?.latestCoordinates ?: currentCoordinates
+            val userLat = coords?.first
+            val userLon = coords?.second
+            if (coords != null) {
+                currentCoordinates = coords
+            }
+
+            val result = repository.getFavorites(userLat, userLon)
+            if (result.isSuccess) {
+                val stations = result.getOrThrow()
+
+                // Step 1: Immediate 0ms Haversine sort
+                val step1Stations = if (userLat != null && userLon != null) {
+                    withContext(defaultDispatcher) {
+                        DistanceCalculator.sortByDistance(stations, userLat, userLon)
+                    }
+                } else {
+                    stations
+                }
+
+                _uiState.value = FavoritesUiState.Success(
+                    stations = step1Stations,
+                    selectedStationForDetail = _selectedStationForDetail.value
+                )
+
+                // Step 2: Trigger async coordinator routing if GPS coordinates exist
+                if (userLat != null && userLon != null) {
+                    executeRoutingPipeline(
+                        stations = step1Stations,
+                        userLat = userLat,
+                        userLon = userLon,
+                        forceRefresh = false
+                    )
+                }
+            } else {
+                val errorMsg = result.exceptionOrNull()?.message ?: "Không thể tải danh sách trạm sạc yêu thích"
+                _uiState.value = FavoritesUiState.Error(errorMsg)
+            }
+        } catch (e: Exception) {
+            _uiState.value = FavoritesUiState.Error(e.message ?: "Đã xảy ra lỗi không mong muốn")
+        }
+    }
+
+    /**
      * Loads user's favorite stations from the EVCS repository.
      *
      * Implements 2-step hybrid pipeline:
@@ -288,51 +333,8 @@ class FavoritesViewModel(
     fun fetchFavorites(): Job {
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
-        _uiState.value = FavoritesUiState.Loading
-
         val job = viewModelScope.launch(dispatcher) {
-            try {
-                val coords = locationService?.latestCoordinates ?: currentCoordinates
-                val userLat = coords?.first
-                val userLon = coords?.second
-                if (coords != null) {
-                    currentCoordinates = coords
-                }
-
-                val result = repository.getFavorites(userLat, userLon)
-                if (result.isSuccess) {
-                    val stations = result.getOrThrow()
-
-                    // Step 1: Immediate 0ms Haversine sort
-                    val step1Stations = if (userLat != null && userLon != null) {
-                        withContext(defaultDispatcher) {
-                            DistanceCalculator.sortByDistance(stations, userLat, userLon)
-                        }
-                    } else {
-                        stations
-                    }
-
-                    _uiState.value = FavoritesUiState.Success(
-                        stations = step1Stations,
-                        selectedStationForDetail = _selectedStationForDetail.value
-                    )
-
-                    // Step 2: Trigger async coordinator routing if GPS coordinates exist
-                    if (userLat != null && userLon != null) {
-                        executeRoutingPipeline(
-                            stations = step1Stations,
-                            userLat = userLat,
-                            userLon = userLon,
-                            forceRefresh = false
-                        )
-                    }
-                } else {
-                    val errorMsg = result.exceptionOrNull()?.message ?: "Không thể tải danh sách trạm sạc yêu thích"
-                    _uiState.value = FavoritesUiState.Error(errorMsg)
-                }
-            } catch (e: Exception) {
-                _uiState.value = FavoritesUiState.Error(e.message ?: "Đã xảy ra lỗi không mong muốn")
-            }
+            doFetchFavorites()
         }
         favoritesLoadJob = job
         return job
@@ -699,6 +701,7 @@ class FavoritesViewModel(
      * Logs out user, clears session credentials, cancels background routing, and resets UI state.
      */
     fun logout(activityContext: android.content.Context? = null) {
+        favoritesLoadJob?.cancel()
         routingJob?.cancel()
         invalidateRoutingCache()
         authEngine.logout()
@@ -738,6 +741,7 @@ class FavoritesViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        favoritesLoadJob?.cancel()
         routingJob?.cancel()
         stationDetailCoordinator.dismissStationDetail()
     }
@@ -757,7 +761,7 @@ class FavoritesViewModel(
             routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
             telemetryRepository: EvcsTelemetryRepository? = null,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-            defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
+            defaultDispatcher: CoroutineDispatcher = ioDispatcher
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {

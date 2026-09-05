@@ -113,6 +113,64 @@ fun NearbyScreen(
     var showRoutingSettings by remember { mutableStateOf(false) }
     var showLoginRequiredDialog by remember { mutableStateOf(false) }
 
+    val onNavigateClick: (Station) -> Unit = remember(context) {
+        { station: Station ->
+            MapNavigator.navigate(
+                context = context,
+                latitude = station.latitude,
+                longitude = station.longitude,
+                stationName = station.name
+            )
+        }
+    }
+    val onFavoriteClick: (Station) -> Unit = remember(viewModel) {
+        { station: Station ->
+            viewModel.toggleFavorite(station)
+            Unit
+        }
+    }
+    val onStationClick: (Station) -> Unit = remember(viewModel) {
+        { station: Station ->
+            viewModel.selectStationForDetail(station)
+        }
+    }
+    val onClearFilters: () -> Unit = remember(viewModel) {
+        {
+            viewModel.clearSmartFilter()
+            Unit
+        }
+    }
+    val onCustomFilterClick: () -> Unit = remember(viewModel) {
+        {
+            viewModel.applyCustomFilter()
+            Unit
+        }
+    }
+    val onDcFilterClick: () -> Unit = remember(viewModel) {
+        {
+            viewModel.enterDcMode()
+            Unit
+        }
+    }
+    val onAcFilterClick: () -> Unit = remember(viewModel) {
+        {
+            viewModel.toggleAcFilter()
+            Unit
+        }
+    }
+    val onSelectDcTier: (DcWattageTier) -> Unit = remember(viewModel) {
+        { tier: DcWattageTier ->
+            viewModel.selectDcTier(tier)
+            Unit
+        }
+    }
+    val onBackFromDc: () -> Unit = remember(viewModel) {
+        {
+            viewModel.exitDcMode()
+            Unit
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -279,12 +337,12 @@ fun NearbyScreen(
                                     )
                                 )
                             },
-                            onCustomFilterClick = { viewModel.applyCustomFilter() },
-                            onDcFilterClick = { viewModel.enterDcMode() },
-                            onAcFilterClick = { viewModel.toggleAcFilter() },
-                            onSelectDcTier = { viewModel.selectDcTier(it) },
-                            onBackFromDc = { viewModel.exitDcMode() },
-                            onClearFilters = { viewModel.clearSmartFilter() }
+                            onCustomFilterClick = onCustomFilterClick,
+                            onDcFilterClick = onDcFilterClick,
+                            onAcFilterClick = onAcFilterClick,
+                            onSelectDcTier = onSelectDcTier,
+                            onBackFromDc = onBackFromDc,
+                            onClearFilters = onClearFilters
                         )
                     }
 
@@ -297,24 +355,15 @@ fun NearbyScreen(
                     uiState.hasSearched -> {
                         NearbyResultContent(
                             uiState = uiState,
-                            onCustomFilterClick = { viewModel.applyCustomFilter() },
-                            onDcFilterClick = { viewModel.enterDcMode() },
-                            onAcFilterClick = { viewModel.toggleAcFilter() },
-                            onSelectDcTier = { viewModel.selectDcTier(it) },
-                            onBackFromDc = { viewModel.exitDcMode() },
-                            onClearFilters = { viewModel.clearSmartFilter() },
-                            onFavoriteClick = { viewModel.toggleFavorite(it) },
-                            onNavigateClick = { station ->
-                                MapNavigator.navigate(
-                                    context = context,
-                                    latitude = station.latitude,
-                                    longitude = station.longitude,
-                                    stationName = station.name
-                                )
-                            },
-                            onStationClick = { station ->
-                                viewModel.selectStationForDetail(station)
-                            }
+                            onCustomFilterClick = onCustomFilterClick,
+                            onDcFilterClick = onDcFilterClick,
+                            onAcFilterClick = onAcFilterClick,
+                            onSelectDcTier = onSelectDcTier,
+                            onBackFromDc = onBackFromDc,
+                            onClearFilters = onClearFilters,
+                            onFavoriteClick = onFavoriteClick,
+                            onNavigateClick = onNavigateClick,
+                            onStationClick = onStationClick
                         )
                     }
                 }
@@ -329,17 +378,8 @@ fun NearbyScreen(
                 onDismiss = { viewModel.dismissStationDetail() },
                 onRefresh = { viewModel.refreshStationDetail() },
                 isFavorite = isCurrentStationFavorite,
-                onNavigate = { station ->
-                    MapNavigator.navigate(
-                        context = context,
-                        latitude = station.latitude,
-                        longitude = station.longitude,
-                        stationName = station.name
-                    )
-                },
-                onToggleFavorite = { station ->
-                    viewModel.toggleFavorite(station)
-                }
+                onNavigate = onNavigateClick,
+                onToggleFavorite = onFavoriteClick
             )
         }
 
@@ -636,7 +676,8 @@ private fun NearbyResultContent(
             ) {
                 items(
                     items = uiState.top10DisplayStations,
-                    key = { it.id }
+                    key = { it.id },
+                    contentType = { "station_card" }
                 ) { station ->
                     StationCard(
                         station = station,

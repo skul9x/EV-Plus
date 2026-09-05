@@ -34,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -327,6 +328,7 @@ fun StationCard(
 /**
  * Visual model describing the ETA / distance journey badge for a station.
  */
+@Immutable
 data class JourneyBadgeInfo(
     val text: String,
     val contentColor: Color,
@@ -339,6 +341,7 @@ data class JourneyBadgeInfo(
     val backgroundColor: Color get() = containerColor
 }
 
+@Immutable
 private data class TrafficBadgeDetails(
     val label: String,
     val color: Color,
@@ -598,6 +601,7 @@ fun WattageChip(
 /**
  * Resolved representation of status badge appearance and semantic meaning.
  */
+@Immutable
 data class StatusBadgeModel(
     val label: String,
     val dotColor: Color,

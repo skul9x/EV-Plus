@@ -1197,11 +1197,15 @@ fun StationPhotoCarousel(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
+            val context = LocalContext.current
+            val imageRequest = remember(images[page]) {
+                ImageRequest.Builder(context)
                     .data(images[page])
                     .crossfade(true)
-                    .build(),
+                    .build()
+            }
+            AsyncImage(
+                model = imageRequest,
                 contentDescription = "Station photo ${page + 1}",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

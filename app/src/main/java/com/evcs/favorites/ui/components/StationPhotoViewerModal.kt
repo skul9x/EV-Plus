@@ -334,11 +334,15 @@ private fun ZoomablePhotoItem(
                 },
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
+            val context = LocalContext.current
+            val imageRequest = remember(imageUrl) {
+                ImageRequest.Builder(context)
                     .data(imageUrl)
                     .crossfade(true)
-                    .build(),
+                    .build()
+            }
+            AsyncImage(
+                model = imageRequest,
                 contentDescription = "Station photo",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier

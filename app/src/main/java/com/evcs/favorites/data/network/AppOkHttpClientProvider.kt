@@ -25,21 +25,52 @@ object AppOkHttpClientProvider {
         maxRequestsPerHost = 10
     }
 
-    private val baseClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectionPool(connectionPool)
-            .dispatcher(dispatcher)
-            .build()
-    }
+    @Volatile
+    private var httpCache: okhttp3.Cache? = null
+
+    @Volatile
+    private var baseClient: OkHttpClient? = null
 
     @Volatile
     private var testClient: OkHttpClient? = null
 
     /**
+     * Configures and installs a persistent HTTP disk cache on the shared OkHttpClient base.
+     */
+    @Synchronized
+    fun installDiskCache(cacheDir: java.io.File, maxSizeBytes: Long = 20L * 1024 * 1024) {
+        if (httpCache == null) {
+            httpCache = okhttp3.Cache(cacheDir, maxSizeBytes)
+            // Rebuild base client if already initialized, or allow lazy initialization
+            rebuildBaseClientWithCache(httpCache)
+        }
+    }
+
+    private fun rebuildBaseClientWithCache(cache: okhttp3.Cache?) {
+        val builder = OkHttpClient.Builder()
+            .connectionPool(connectionPool)
+            .dispatcher(dispatcher)
+        if (cache != null) {
+            builder.cache(cache)
+        }
+        baseClient = builder.build()
+    }
+
+    /**
      * Returns the shared base [OkHttpClient] instance (or test override if set).
      */
     fun getSharedClient(): OkHttpClient {
-        return testClient ?: baseClient
+        return testClient ?: baseClient ?: synchronized(this) {
+            baseClient ?: OkHttpClient.Builder()
+                .connectionPool(connectionPool)
+                .dispatcher(dispatcher)
+                .apply {
+                    if (httpCache != null) {
+                        cache(httpCache)
+                    }
+                }
+                .build().also { baseClient = it }
+        }
     }
 
     /**
@@ -62,5 +93,16 @@ object AppOkHttpClientProvider {
      */
     fun reset() {
         testClient = null
+    }
+
+    /**
+     * Resets any test client override and cleans up the HTTP disk cache for unit tests.
+     */
+    @Synchronized
+    fun resetForTesting() {
+        testClient = null
+        runCatching { httpCache?.close() }
+        httpCache = null
+        baseClient = null
     }
 }

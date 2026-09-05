@@ -67,33 +67,48 @@ object Station24hStatsCalculator {
             b.max = maxOf(b.max, count)
         }
 
-        data class HourAgg(val hour: Int, val max: Int, val avg: Double)
+        class HourAccumulator {
+            var sum: Long = 0L
+            var cnt: Int = 0
+            var max: Int = 0
+            var hasData: Boolean = false
 
-        val hourAggs = (0..23).mapNotNull { h ->
-            val matchingBuckets = buckets.filter { (key, _) ->
-                (((key % 24L) + 24L) % 24L).toInt() == h
-            }.values
+            fun add(bucket: Bucket) {
+                hasData = true
+                sum += bucket.sum
+                cnt += bucket.cnt
+                if (bucket.max > max) max = bucket.max
+            }
 
-            if (matchingBuckets.isEmpty()) {
-                null
-            } else {
-                val totalSum = matchingBuckets.sumOf { it.sum }
-                val totalCnt = matchingBuckets.sumOf { it.cnt }
-                val maxVal = matchingBuckets.maxOf { it.max }
-                val avgVal = if (totalCnt > 0) totalSum.toDouble() / totalCnt else 0.0
-                HourAgg(hour = h, max = maxVal, avg = avgVal)
+            val avg: Double
+                get() = if (cnt > 0) sum.toDouble() / cnt else 0.0
+        }
+
+        val acc = Array(24) { HourAccumulator() }
+        for ((key, bucket) in buckets) {
+            val h = (((key % 24L) + 24L) % 24L).toInt()
+            acc[h].add(bucket)
+        }
+
+        var bestHour = -1
+        var bestMax = -1
+        var bestAvg = -1.0
+
+        for (h in 0..23) {
+            val a = acc[h]
+            if (!a.hasData || a.max <= 0) continue
+            if (a.max > bestMax || (a.max == bestMax && a.avg > bestAvg)) {
+                bestHour = h
+                bestMax = a.max
+                bestAvg = a.avg
             }
         }
 
-        if (hourAggs.isEmpty() || hourAggs.all { it.max <= 0 }) {
+        if (bestHour == -1) {
             return "-"
         }
 
-        val best = hourAggs.maxWithOrNull(
-            compareBy<HourAgg> { it.max }.thenBy { it.avg }
-        ) ?: return "-"
-
-        val nextH = (best.hour + 1) % 24
-        return "${best.hour}-${nextH}h"
+        val nextH = (bestHour + 1) % 24
+        return "$bestHour-${nextH}h"
     }
 }

@@ -21,6 +21,7 @@ object StationTelemetryParser {
     private val SVG_REGEX = Regex("""<svg[\s\S]*?</svg>""", RegexOption.IGNORE_CASE)
     private val HTML_TAG_REGEX = Regex("""<[^>]+>""")
     private val WHITESPACE_REGEX = Regex("""\s+""")
+    private val TICKER_DIV_REGEX = Regex("""<div[^>]*class=["']([^"']+)["'][^>]*>""")
 
     private val KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
     private val MULTIPLIER_BEFORE_REGEX = Regex("""(\d+)\s*(?:x|\*)\s*(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
@@ -113,7 +114,7 @@ object StationTelemetryParser {
         if (tickerHtml.contains("amd-ticker amd-locked") || tickerHtml.contains(PROMOTIONAL_UPSELL_TEXT, ignoreCase = true)) {
             return true
         }
-        val tickerDivMatch = Regex("""<div[^>]*class=["']([^"']+)["'][^>]*>""").find(tickerHtml)
+        val tickerDivMatch = TICKER_DIV_REGEX.find(tickerHtml)
         if (tickerDivMatch != null) {
             val classes = tickerDivMatch.groupValues[1].split(" ")
             if (classes.contains("amd-locked")) {

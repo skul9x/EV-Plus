@@ -1,5 +1,7 @@
 package com.evcs.favorites
 
+import com.evcs.favorites.data.model.Station
+
 import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -211,24 +213,35 @@ fun FavoritesApp(
                     val authUser = (authState as? com.evcs.favorites.domain.model.AuthState.Authenticated)?.user ?: viewModel.currentUser
                     val activity = context as? ComponentActivity
 
-                    FavoritesScreen(
-                        uiState = uiState,
-                        onRefresh = { viewModel.refresh() },
-                        onLogout = { viewModel.logout(activity) },
-                        onNavigateClick = { station ->
+                    val onNavigate: (Station) -> Unit = remember(context) {
+                        { station: Station ->
                             MapNavigator.navigate(
                                 context = context,
                                 latitude = station.latitude,
                                 longitude = station.longitude,
                                 stationName = station.name
                             )
-                        },
-                        onRemoveFavoriteClick = { station ->
+                        }
+                    }
+                    val onRemoveFavorite: (Station) -> Unit = remember(viewModel) {
+                        { station: Station ->
                             viewModel.removeFavorite(station.id)
-                        },
-                        onStationClick = { station ->
+                            Unit
+                        }
+                    }
+                    val onStationClick: (Station) -> Unit = remember(viewModel) {
+                        { station: Station ->
                             viewModel.selectStationForDetail(station)
-                        },
+                        }
+                    }
+
+                    FavoritesScreen(
+                        uiState = uiState,
+                        onRefresh = { viewModel.refresh() },
+                        onLogout = { viewModel.logout(activity) },
+                        onNavigateClick = onNavigate,
+                        onRemoveFavoriteClick = onRemoveFavorite,
+                        onStationClick = onStationClick,
                         selectedStationForDetail = selectedStation,
                         onDismissDetail = {
                             viewModel.dismissStationDetail()

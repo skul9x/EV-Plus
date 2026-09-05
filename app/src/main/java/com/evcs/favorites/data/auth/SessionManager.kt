@@ -215,6 +215,21 @@ class SessionManager(
         const val KEY_DEVICE_ID = "evcs_did"
         const val KEY_USER_EMAIL = "user_email"
 
+        private val EVCS_COOKIE_REGEX = Regex("""(?:^|;\s*)evcs=([^;]+)""")
+        private val PHPSESSID_COOKIE_REGEX = Regex("""(?:^|;\s*)PHPSESSID=([^;]+)""")
+        private val COOKIE_REGEX_CACHE = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
+        fun extractCookieValue(headerOrCookie: String, name: String): String? {
+            val regex = when (name) {
+                KEY_AUTH_COOKIE -> EVCS_COOKIE_REGEX
+                KEY_PHP_SESSION -> PHPSESSID_COOKIE_REGEX
+                else -> COOKIE_REGEX_CACHE.computeIfAbsent(name) {
+                    Regex("""(?:^|;\s*)$it=([^;]+)""")
+                }
+            }
+            return regex.find(headerOrCookie)?.groupValues?.get(1)?.trim()
+        }
+
         fun create(context: Context): SessionManager {
             return SessionManager(EncryptedSharedPrefsStorage.getInstance(context))
         }
@@ -359,8 +374,6 @@ class SessionManager(
         storage.clear()
     }
 
-    private fun extractCookieValue(headerOrCookie: String, name: String): String? {
-        val regex = Regex("""(?:^|;\s*)$name=([^;]+)""")
-        return regex.find(headerOrCookie)?.groupValues?.get(1)?.trim()
-    }
+    internal fun extractCookieValue(headerOrCookie: String, name: String): String? =
+        Companion.extractCookieValue(headerOrCookie, name)
 }
