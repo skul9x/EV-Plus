@@ -1,40 +1,41 @@
 # 📋 HANDOVER DOCUMENT
 
-📍 **Đang làm**: VinFast Station Fixes, Real-time GPS Refresh & Pre-Filter Selection UX  
+📍 **Đang làm**: Native Station Detail Sheet UI/UX & Performance Optimization  
 🔢 **Đến bước**: Toàn bộ 3/3 Phase đã hoàn thành 100%, Build APK & Cài đặt thành công lên thiết bị thật
 
 ---
 
 ### ✅ ĐÃ XONG:
-- **Phase 01**: VinFast Station Domain Modeling & Canonical Detail URL Builder Fix (`VinFastStationMappingAndUrlBuilderTest.kt` ✓ PASS).
-- **Phase 02**: Real-time GPS Refresh & Location Error Handling (`NearbyRealtimeGpsRefreshTest.kt` ✓ PASS).
-- **Phase 03**: Pre-Filter Selection on Initial Screen, Persistence & Immediate Execution (`NearbyPreFilterAndInitialScanTest.kt` ✓ PASS).
+- **Phase 01**: Sửa lỗi co cụt chữ nút "Chỉ đường" (`NativeStationDetailActionBarLayoutTest.kt` ✓ PASS).
+  - Cân chỉnh tỉ lệ layout weight (`1.3f : 1.0f : 0.9f`) trong `NativeStationDetailSheetHelper` giúp nhãn không bao giờ bị cắt thành `▲ .` trên màn hình hẹp (360dp).
+- **Phase 02**: Tối ưu hiệu năng recomposition & ngắt vòng lặp vô tận shimmer (`NativeStationDetailPerformanceOptimizationTest.kt` ✓ PASS).
+  - Triệt tiêu animation ngầm khi đã tải xong dữ liệu qua `shouldAnimateShimmer(isLoadingStats, stats)`, tiết kiệm pin và giữ máy mát.
+- **Phase 03**: Hiệu ứng xoay 360 độ nút Tải lại & Chống bấm spam (`NativeStationDetailRefreshFeedbackTest.kt` ✓ PASS).
+  - Thêm animation xoay tròn liên tục khi `isRefreshing == true`, đổi màu `EmeraldPrimary`, khóa nút chống tap liên thanh và bảo vệ coordinator khỏi concurrent calls.
 - **Build & Deploy**:
   - Build file APK debug: `app/build/outputs/apk/debug/app-debug.apk` ✓.
-  - Tự động gỡ bản cũ xung đột signature và cài đặt bản mới lên OnePlus 13R (`3B658D010BU00000`) qua ADB MCP ✓.
-  - Tự động khởi chạy ứng dụng `com.evcs.favorites` trên máy ✓.
+  - Cài đặt bản mới lên OnePlus 13R (`3B658D010BU00000`) qua ADB MCP ✓.
+  - Tự động mở ứng dụng `com.evcs.favorites/.MainActivity` trên máy ✓.
 
 ---
 
 ### ⏳ CÒN LẠI / GỢI Ý TIẾP THEO:
-- Trải nghiệm thực tế app trên đường phố:
-  - Kiểm tra độ nhạy của nút refresh GPS khi đang di chuyển.
-  - Kiểm tra tính năng chọn trước bộ lọc công suất AC/DC trên màn hình Hero trước khi bấm tìm trạm.
+- Trải nghiệm thực tế Bottom Sheet trên điện thoại:
+  - Xem thử các trạm sạc khác nhau (cả trạm đang sạc, trạm trống, trạm bảo trì).
+  - Kiểm tra độ phản hồi của nút Tải lại và tính năng chỉ đường sang Google Maps.
 
 ---
 
 ### 🔧 QUYẾT ĐỊNH QUAN TRỌNG:
-1. **Canonical URL Builder**: Chuẩn hóa pattern `/tram-sac-vinfast-${slug}-${locationId.toLowerCase()}.html`, lọc bỏ triệt để tiền tố trùng lặp `vinfast-` và mã đối tác trùng `-c.C.`.
-2. **Search API Request**: Chỉ gửi `{"latitude": ..., "longitude": ...}` (bỏ `wattageTypes`) để backend trả về toàn bộ trạm, ủy quyền bộ lọc client-side xử lý chính xác theo thời gian thực.
-3. **Realtime GPS Refresh**: Không tái sử dụng tọa độ cũ trong memory; luôn lấy GPS tươi mới, nếu mất sóng GPS sẽ báo lỗi rõ ràng để tài xế thử lại.
-4. **Pre-Filter Initial Screen UX**: Đưa `SmartFilterBar` lên màn hình ban đầu, khôi phục từ `SmartFilterPreferences` và lưu ngay khi đổi chế độ; tự động áp dụng ngay sau khi quét GPS.
+1. **Layout Weight 1.3f**: Ưu tiên không gian cho nút CTA chính "Chỉ đường" để text không bị co dúm.
+2. **Conditional Shimmer Gating**: Chỉ chạy `rememberInfiniteTransition` khi thực sự chưa có dữ liệu (`stats == null`), không chạy nền vô ích.
+3. **Rotation & Anti-Spam UX**: Khóa tương tác nút Tải lại trong 1.5s - 2.5s khi đang fetch telemetry, báo hiệu bằng icon xoay 360 độ.
 
 ---
 
 ### 📁 FILES QUAN TRỌNG:
-- `app/src/main/java/com/evcs/favorites/util/StationUrlBuilder.kt` (Xây dựng canonical URL chuẩn)
-- `app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt` (GPS refresh & SmartFilter pipeline)
-- `app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt` (Hero screen UI với SmartFilterBar)
-- `plans/260905-1400-vinfast-station-fixes-prefilter-and-gps-refresh/plan.md` (Plan chi tiết)
-- `CHANGELOG.md` (Lịch sử thay đổi)
-- `.brain/brain.json` & `.brain/session.json` (Bộ nhớ AWF)
+- `app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt` (Giao diện Bottom Sheet)
+- `app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt` (Điều phối telemetry & refresh)
+- `plans/260905-1545-native-sheet-ux-and-performance-fixes/plan.md` (Kế hoạch milestone đã hoàn thành)
+- `CHANGELOG.md` (Lịch sử phiên bản)
+- `.brain/brain.json` & `.brain/session.json` (Bộ nhớ vĩnh viễn AWF)

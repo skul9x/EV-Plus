@@ -2,7 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2026-09-05] - VinFast Station Fixes, Realtime GPS Refresh, Pre-Filter UX & Hardware Deployment
+## [2026-09-05] - Native Station Detail Sheet UI/UX & Performance Optimization
+
+### Added
+- **Primary CTA Button Truncation Fix & Action Bar Layout Alignment (Phase 01)**:
+  - Adjusted button weighting in quick action row (`primaryNav: 1.3f`, `favorite: 1.0f`, `share: 0.9f`) ensuring the primary "Chỉ đường" navigation button displays its complete unclipped label on screens down to 360dp width.
+  - Added pure Kotlin helper `NativeStationDetailSheetHelper` for computing action row layout allocations, favorite button specs, and navigation/share intent specs.
+  - Added `NativeStationDetailActionBarLayoutTest.kt` (100% PASS).
+- **Infinite Shimmer Animation Gating & Recomposition Performance Optimization (Phase 02)**:
+  - Implemented `shouldAnimateShimmer(isLoadingStats, stats)` in `NativeStationDetailSheetHelper` to conditionally run `rememberInfiniteTransition` only during active initial data loading (`stats == null`).
+  - Completely halted background GPU/CPU ticker recomposition loops when 24h stats are populated or on error states, saving battery and eliminating unnecessary UI redraws.
+  - Added `NativeStationDetailPerformanceOptimizationTest.kt` (100% PASS).
+- **Refresh Rotation Animation, Live Sync Tint & Rapid Tap Prevention (Phase 03)**:
+  - Bound the refresh button icon rotation to `uiState.isRefreshing` with continuous 360-degree linear rotation animation and clean reset to 0 degrees when idle.
+  - Added live synchronization visual tint (`EmeraldPrimary`) and accessibility description ("Đang tải lại") during data fetch.
+  - Prevented duplicate multi-tap spamming (`enabled = !uiState.isRefreshing`) and guarded `StationDetailCoordinator.refreshStationDetail()` against concurrent calls.
+  - Adhered to Material 3 accessible touch targets (48dp touch bounds with 36dp visual bounds).
+  - Added `NativeStationDetailRefreshFeedbackTest.kt` (100% PASS).
+- **Hardware Deployment**:
+  - Built fresh `app-debug.apk` and installed to connected OnePlus device (`3B658D010BU00000`) via ADB MCP server, launching the app for immediate verification.
 
 ### Added
 - **VinFast Canonical Detail URL & Domain Modeling (Phase 01)**:

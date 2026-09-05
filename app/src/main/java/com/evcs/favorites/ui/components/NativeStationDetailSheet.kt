@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -62,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,6 +121,39 @@ data class ShareIntentSpec(
 )
 
 /**
+ * Model representing resolved visual styling and text for the Favorite action button.
+ */
+data class FavoriteButtonSpec(
+    val label: String,
+    val contentDescription: String,
+    val isFavorite: Boolean,
+    val containerColor: Color,
+    val contentColor: Color
+)
+
+/**
+ * Model representing computed horizontal width allocation across the quick action row buttons.
+ */
+data class ActionRowLayoutAllocation(
+    val availableRowWidthDp: Float,
+    val primaryNavWidthDp: Float,
+    val favoriteWidthDp: Float,
+    val shareWidthDp: Float,
+    val primaryProportion: Float
+)
+
+/**
+ * Model representing resolved state, styling, and accessibility for the reload button.
+ */
+data class RefreshButtonSpec(
+    val isRefreshing: Boolean,
+    val isEnabled: Boolean,
+    val tint: Color,
+    val contentDescription: String,
+    val rotationDurationMs: Int = 1000
+)
+
+/**
  * Pure Kotlin helper providing formatting, intent generation, and badge resolution logic
  * decoupled from Android framework dependencies for 100% JVM unit testability.
  */
@@ -127,6 +162,76 @@ object NativeStationDetailSheetHelper {
     const val ACTION_VIEW = "android.intent.action.VIEW"
     const val ACTION_SEND = "android.intent.action.SEND"
     const val GOOGLE_MAPS_PACKAGE = "com.google.android.apps.maps"
+
+    const val LABEL_NAVIGATE = "Chỉ đường"
+    const val LABEL_FAVORITE = "Yêu thích"
+    const val LABEL_SAVED = "Đã lưu"
+    const val LABEL_SHARE = "Chia sẻ"
+    const val DESC_UNFAVORITE = "Bỏ yêu thích"
+
+    const val PRIMARY_NAV_WEIGHT = 1.3f
+    const val SECONDARY_FAVORITE_WEIGHT = 1.0f
+    const val SECONDARY_SHARE_WEIGHT = 0.9f
+
+    /**
+     * Resolves styling and text for the Favorite/Saved action button.
+     */
+    fun resolveFavoriteButtonSpec(
+        isFavorite: Boolean,
+        surfaceVariant: Color = Color(0xFFE7E0EC),
+        onSurfaceVariant: Color = Color(0xFF49454F)
+    ): FavoriteButtonSpec {
+        return if (isFavorite) {
+            FavoriteButtonSpec(
+                label = LABEL_SAVED,
+                contentDescription = DESC_UNFAVORITE,
+                isFavorite = true,
+                containerColor = EmeraldContainerDark,
+                contentColor = EmeraldPrimaryLight
+            )
+        } else {
+            FavoriteButtonSpec(
+                label = LABEL_FAVORITE,
+                contentDescription = LABEL_FAVORITE,
+                isFavorite = false,
+                containerColor = surfaceVariant,
+                contentColor = onSurfaceVariant
+            )
+        }
+    }
+
+    /**
+     * Computes horizontal width allocation (in dp) for the quick action row buttons.
+     */
+    fun computeActionRowLayoutAllocation(
+        totalWidthDp: Float = 360f,
+        horizontalPaddingDp: Float = 32f,
+        spacingBetweenButtonsDp: Float = 8f,
+        primaryWeight: Float = PRIMARY_NAV_WEIGHT,
+        favoriteWeight: Float = SECONDARY_FAVORITE_WEIGHT,
+        shareWeight: Float = SECONDARY_SHARE_WEIGHT
+    ): ActionRowLayoutAllocation {
+        val totalSpacing = spacingBetweenButtonsDp * 2
+        val availableWidth = totalWidthDp - horizontalPaddingDp - totalSpacing
+        val totalWeight = primaryWeight + favoriteWeight + shareWeight
+        val primaryWidth = availableWidth * (primaryWeight / totalWeight)
+        val favoriteWidth = availableWidth * (favoriteWeight / totalWeight)
+        val shareWidth = availableWidth * (shareWeight / totalWeight)
+        return ActionRowLayoutAllocation(
+            availableRowWidthDp = availableWidth,
+            primaryNavWidthDp = primaryWidth,
+            favoriteWidthDp = favoriteWidth,
+            shareWidthDp = shareWidth,
+            primaryProportion = primaryWeight / totalWeight
+        )
+    }
+
+    /**
+     * Builds web fallback Google Maps search link.
+     */
+    fun buildGoogleMapsWebUrl(latitude: Double, longitude: Double): String {
+        return "https://www.google.com/maps/search/?api=1&query=$latitude,$longitude"
+    }
 
     /**
      * Formats distance and driving ETA string (e.g. "📍 2.4 km • 6 phút" or "📍 2.4 km").
@@ -209,6 +314,14 @@ object NativeStationDetailSheetHelper {
     }
 
     /**
+     * Determines whether shimmer loading placeholders should be active based on data loading state.
+     * When valid 24h statistics are available, shimmer is disabled to eliminate recomposition overhead.
+     */
+    fun shouldAnimateShimmer(isLoadingStats: Boolean, stats: Station24hStats?): Boolean {
+        return isLoadingStats && stats == null
+    }
+
+    /**
      * Resolves the 4 cards for the 24h Usage Statistics 2x2 grid:
      * - Card 1: Header `CAO ĐIỂM`, Large value (e.g. `9`), Footer `ô tô sạc`
      * - Card 2: Header `TRUNG BÌNH`, Large value (e.g. `4`), Footer `ô tô sạc`
@@ -219,7 +332,7 @@ object NativeStationDetailSheetHelper {
         stats: Station24hStats?,
         isLoadingStats: Boolean
     ): List<StatCardModel> {
-        val isCardLoading = isLoadingStats && stats == null
+        val isCardLoading = shouldAnimateShimmer(isLoadingStats, stats)
         return listOf(
             StatCardModel(
                 header = "CAO ĐIỂM",
@@ -248,6 +361,46 @@ object NativeStationDetailSheetHelper {
         )
     }
 
+    const val LABEL_RELOAD = "Tải lại"
+    const val LABEL_RELOADING = "Đang tải lại"
+    const val REFRESH_ROTATION_DURATION_MS = 1000
+
+    /**
+     * Resolves styling, enabled state, and accessibility description for the reload button.
+     * When refreshing:
+     * - isEnabled is false (prevents concurrent rapid taps)
+     * - tint is EmeraldPrimary (indicates live synchronization)
+     * - contentDescription is "Đang tải lại"
+     */
+    fun resolveRefreshButtonSpec(
+        isRefreshing: Boolean,
+        normalTint: Color = Color(0xFF49454F),
+        refreshingTint: Color = EmeraldPrimary
+    ): RefreshButtonSpec {
+        return RefreshButtonSpec(
+            isRefreshing = isRefreshing,
+            isEnabled = !isRefreshing,
+            tint = if (isRefreshing) refreshingTint else normalTint,
+            contentDescription = if (isRefreshing) LABEL_RELOADING else LABEL_RELOAD,
+            rotationDurationMs = REFRESH_ROTATION_DURATION_MS
+        )
+    }
+
+    /**
+     * Determines whether manual reload action is permitted.
+     */
+    fun shouldAllowRefresh(isRefreshing: Boolean): Boolean {
+        return !isRefreshing
+    }
+
+    /**
+     * Resolves the effective rotation angle: continuously animated angle when refreshing,
+     * resetting cleanly to 0f when idle.
+     */
+    fun resolveRefreshRotationAngle(isRefreshing: Boolean, animatedAngle: Float): Float {
+        return if (isRefreshing) animatedAngle else 0f
+    }
+
     /**
      * Builds standard Google Maps geo navigation URI: `geo:0,0?q=lat,lon(stationName)`.
      */
@@ -269,11 +422,12 @@ object NativeStationDetailSheetHelper {
     }
 
     /**
-     * Builds canonical share payload containing station name, address, and EVCS URL.
+     * Builds canonical share payload containing station name, address, EVCS URL, and Google Maps link.
      */
     fun buildShareText(station: Station): String {
         val detailUrl = StationUrlBuilder.buildStationDetailUrl(station)
-        return "${station.name}\n${station.address}\n$detailUrl"
+        val mapsUrl = buildGoogleMapsWebUrl(station.latitude, station.longitude)
+        return "${station.name}\n${station.address}\n$detailUrl\n$mapsUrl"
     }
 
     /**
@@ -350,11 +504,39 @@ fun NativeStationDetailSheet(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    val handleDismiss: () -> Unit = {
-        coroutineScope.launch {
-            sheetState.hide()
-        }.invokeOnCompletion {
-            onDismiss()
+    val handleDismiss: () -> Unit = remember(coroutineScope, sheetState, onDismiss) {
+        {
+            coroutineScope.launch {
+                sheetState.hide()
+            }.invokeOnCompletion {
+                onDismiss()
+            }
+        }
+    }
+
+    val handleNavigate: (Station) -> Unit = remember(onNavigate, context) {
+        { st ->
+            if (onNavigate != null) {
+                onNavigate(st)
+            } else {
+                NativeStationDetailSheetHelper.launchNavigation(context, st)
+            }
+        }
+    }
+
+    val handleToggleFavorite: (Station) -> Unit = remember(onToggleFavorite) {
+        { st ->
+            onToggleFavorite?.invoke(st)
+        }
+    }
+
+    val handleShare: (Station) -> Unit = remember(onShare, context) {
+        { st ->
+            if (onShare != null) {
+                onShare(st)
+            } else {
+                NativeStationDetailSheetHelper.launchShare(context, st)
+            }
         }
     }
 
@@ -373,23 +555,9 @@ fun NativeStationDetailSheet(
             isFavorite = isFavorite,
             onRefresh = onRefresh,
             onDismiss = handleDismiss,
-            onNavigate = { st ->
-                if (onNavigate != null) {
-                    onNavigate(st)
-                } else {
-                    NativeStationDetailSheetHelper.launchNavigation(context, st)
-                }
-            },
-            onToggleFavorite = { st ->
-                onToggleFavorite?.invoke(st)
-            },
-            onShare = { st ->
-                if (onShare != null) {
-                    onShare(st)
-                } else {
-                    NativeStationDetailSheetHelper.launchShare(context, st)
-                }
-            },
+            onNavigate = handleNavigate,
+            onToggleFavorite = handleToggleFavorite,
+            onShare = handleShare,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -422,6 +590,31 @@ fun NativeStationDetailContent(
         // ---------------------------------------------------------------------
         // 1. Top Action Bar: Station Icon + Reload + Close Buttons
         // ---------------------------------------------------------------------
+        val refreshSpec = NativeStationDetailSheetHelper.resolveRefreshButtonSpec(
+            isRefreshing = uiState.isRefreshing,
+            normalTint = MaterialTheme.colorScheme.onSurfaceVariant,
+            refreshingTint = EmeraldPrimary
+        )
+
+        val rotationAngle = if (uiState.isRefreshing) {
+            val infiniteTransition = rememberInfiniteTransition(label = "RefreshRotationTransition")
+            val angle by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(
+                        durationMillis = refreshSpec.rotationDurationMs,
+                        easing = LinearEasing
+                    ),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "RefreshRotationAngle"
+            )
+            angle
+        } else {
+            0f
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -450,24 +643,41 @@ fun NativeStationDetailContent(
             ) {
                 IconButton(
                     onClick = onRefresh,
-                    modifier = Modifier.size(36.dp)
+                    enabled = refreshSpec.isEnabled,
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Tải lại",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Box(
+                        modifier = Modifier.size(36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = refreshSpec.contentDescription,
+                            tint = refreshSpec.tint,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .graphicsLayer {
+                                    rotationZ = rotationAngle
+                                }
+                        )
+                    }
                 }
 
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Đóng",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Box(
+                        modifier = Modifier.size(36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Đóng",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -575,16 +785,21 @@ fun NativeStationDetailContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val onNavClick = remember(onNavigate, station) { { onNavigate(station) } }
+            val onFavClick = remember(onToggleFavorite, station) { { onToggleFavorite(station) } }
+            val onShareClick = remember(onShare, station) { { onShare(station) } }
+
             // Primary Pill: Chỉ đường
             Button(
-                onClick = { onNavigate(station) },
+                onClick = onNavClick,
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = EmeraldPrimary,
                     contentColor = Color.White
                 ),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                 modifier = Modifier
-                    .weight(1f, fill = false)
+                    .weight(NativeStationDetailSheetHelper.PRIMARY_NAV_WEIGHT, fill = true)
                     .wrapContentHeight()
             ) {
                 Icon(
@@ -592,9 +807,9 @@ fun NativeStationDetailContent(
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Chỉ đường",
+                    text = NativeStationDetailSheetHelper.LABEL_NAVIGATE,
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Bold
                     ),
@@ -604,24 +819,37 @@ fun NativeStationDetailContent(
             }
 
             // Secondary Pill: Yêu thích
+            val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+            val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+            val favoriteSpec = remember(isFavorite, surfaceVariant, onSurfaceVariant) {
+                NativeStationDetailSheetHelper.resolveFavoriteButtonSpec(
+                    isFavorite = isFavorite,
+                    surfaceVariant = surfaceVariant,
+                    onSurfaceVariant = onSurfaceVariant
+                )
+            }
+
             FilledTonalButton(
-                onClick = { onToggleFavorite(station) },
+                onClick = onFavClick,
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = if (isFavorite) EmeraldContainerDark else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (isFavorite) EmeraldPrimaryLight else MaterialTheme.colorScheme.onSurfaceVariant
+                    containerColor = favoriteSpec.containerColor,
+                    contentColor = favoriteSpec.contentColor
                 ),
-                modifier = Modifier.wrapContentHeight()
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                modifier = Modifier
+                    .weight(NativeStationDetailSheetHelper.SECONDARY_FAVORITE_WEIGHT, fill = true)
+                    .wrapContentHeight()
             ) {
                 Icon(
-                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = if (isFavorite) "Bỏ yêu thích" else "Yêu thích",
+                    imageVector = if (favoriteSpec.isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = favoriteSpec.contentDescription,
                     modifier = Modifier.size(18.dp),
-                    tint = if (isFavorite) EmeraldPrimaryLight else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = favoriteSpec.contentColor
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = if (isFavorite) "Đã lưu" else "Yêu thích",
+                    text = favoriteSpec.label,
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold
                     ),
@@ -632,23 +860,26 @@ fun NativeStationDetailContent(
 
             // Secondary Pill: Chia sẻ
             FilledTonalButton(
-                onClick = { onShare(station) },
+                onClick = onShareClick,
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    containerColor = surfaceVariant,
+                    contentColor = onSurfaceVariant
                 ),
-                modifier = Modifier.wrapContentHeight()
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                modifier = Modifier
+                    .weight(NativeStationDetailSheetHelper.SECONDARY_SHARE_WEIGHT, fill = true)
+                    .wrapContentHeight()
             ) {
                 Icon(
                     imageVector = Icons.Default.Share,
-                    contentDescription = "Chia sẻ",
+                    contentDescription = NativeStationDetailSheetHelper.LABEL_SHARE,
                     modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Chia sẻ",
+                    text = NativeStationDetailSheetHelper.LABEL_SHARE,
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold
                     ),
@@ -863,11 +1094,12 @@ fun LiveForecastCapsule(
 }
 
 /**
- * Individual statistic card in the 24h usage 2x2 grid.
+ * Shimmer placeholder box for [StatCard] that runs an infinite alpha pulse animation.
+ * Isolated into its own composable so that the infinite transition ticker is strictly active
+ * while [StatCardModel.isLoading] is true and cleanly disposed when loading completes.
  */
 @Composable
-fun StatCard(
-    model: StatCardModel,
+fun StatCardShimmer(
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "ShimmerTransition")
@@ -881,6 +1113,25 @@ fun StatCard(
         label = "ShimmerAlpha"
     )
 
+    Box(
+        modifier = modifier
+            .width(48.dp)
+            .height(28.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha))
+    )
+}
+
+/**
+ * Individual statistic card in the 24h usage 2x2 grid.
+ * Only instantiates shimmer animations when [model.isLoading] is true; otherwise renders
+ * static typography immediately with zero background frame loop or ticker overhead.
+ */
+@Composable
+fun StatCard(
+    model: StatCardModel,
+    modifier: Modifier = Modifier
+) {
     Card(
         modifier = modifier
             .wrapContentHeight()
@@ -909,13 +1160,7 @@ fun StatCard(
             )
 
             if (model.isLoading) {
-                Box(
-                    modifier = Modifier
-                        .width(48.dp)
-                        .height(28.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha))
-                )
+                StatCardShimmer()
             } else {
                 Text(
                     text = model.value,

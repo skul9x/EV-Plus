@@ -97,6 +97,9 @@ class StationDetailCoordinator(
      */
     fun refreshStationDetail(): Job? {
         val currentStation = _stationDetailState.value.station ?: return null
+        if (_stationDetailState.value.isRefreshing) {
+            return null
+        }
         activeJob?.cancel()
 
         _stationDetailState.update {

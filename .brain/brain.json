@@ -3,12 +3,12 @@
     "schema_version": "1.1.0",
     "awf_version": "4.0.2",
     "created_at": "2026-09-03T11:05:00+07:00",
-    "updated_at": "2026-09-05T15:30:00+07:00"
+    "updated_at": "2026-09-05T16:25:00+07:00"
   },
   "project": {
     "name": "EV+",
     "type": "Android Application (Native Jetpack Compose)",
-    "status": "Production-Ready MVP + Native Compose Station Detail Bottom Sheet (100% Decommissioned WebView), Multi-Tier Routing (Google/OSRM/Haversine), Smart Filter (AC/DC/Custom) with Initial Screen Pre-Filter, Realtime On-Demand GPS Refresh, VinFast Canonical URL Builder & Telemetry Engine"
+    "status": "Production-Ready MVP + Native Compose Station Detail Bottom Sheet (Optimized UI/UX, Performance Gating & Live Sync Animation), Multi-Tier Routing (Google/OSRM/Haversine), Smart Filter (AC/DC/Custom) with Initial Screen Pre-Filter, Realtime On-Demand GPS Refresh, VinFast Canonical URL Builder & Telemetry Engine"
   },
   "tech_stack": {
     "language": "Kotlin 1.9.23",
@@ -19,7 +19,7 @@
     "location": "Google Play Services Location (FusedLocationProviderClient)",
     "routing_engines": "Google Routes API v2, OSRM Table Service, Haversine baseline",
     "filter_persistence": "NearbyFilterPreferences & SmartFilterPreferences via SessionStorage",
-    "resilience_patterns": "Zero-Leak Native Bottom Sheet Lifecycle, SingleFlight Concurrency, Timeout Safeguards (4s), Cloudflare HTTP 429 Protection, Real-time GPS Freshness Guard",
+    "resilience_patterns": "Zero-Leak Native Bottom Sheet Lifecycle, Infinite Shimmer Gating, Refresh Debouncing & Multi-tap Prevention, SingleFlight Concurrency, Timeout Safeguards (4s), Cloudflare HTTP 429 Protection, Real-time GPS Freshness Guard",
     "build_tool": "Gradle 8.7 (Kotlin DSL)",
     "min_sdk": 26,
     "target_sdk": 34
@@ -123,6 +123,11 @@
   ],
   "features": [
     {
+      "name": "Native Station Detail Bottom Sheet UI/UX & Performance Optimization",
+      "status": "Implemented",
+      "description": "Cân chỉnh layout weight các nút hành động (Chỉ đường 1.3f không bị co chữ), gating shimmer loading chỉ chạy khi thiếu dữ liệu để tiết kiệm pin/CPU, và thêm hiệu ứng xoay 360 độ kèm chặn spam cho nút Tải lại."
+    },
+    {
       "name": "Pre-Filter Selection on Initial Screen & Immediate Execution",
       "status": "Implemented",
       "description": "Thanh SmartFilterBar hiển thị ngay ở màn hình Hero trước khi bấm tìm trạm; lưu trữ lựa chọn vào SmartFilterPreferences và tự động áp dụng ngay khi có kết quả quét GPS."
@@ -165,6 +170,9 @@
   ],
   "knowledge_items": {
     "patterns": [
+      "Infinite Shimmer Animation Gating via shouldAnimateShimmer(isLoading, data)",
+      "Continuous Rotation Animation with Clean Angle Snapping to 0 degrees when idle",
+      "Debounced Multi-tap Prevention on Interactive Reload Buttons",
       "Zero-Leak Native Jetpack Compose Modal Bottom Sheet thay thế WebView engine",
       "On-Demand Phased Pipeline với StationDetailCoordinator",
       "Socket.io History Data Stream với Strict 4s Timeout Safeguard",
@@ -174,6 +182,8 @@
       "Single Comprehensive Test Per Milestone Architecture"
     ],
     "gotchas": [
+      "rememberInfiniteTransition trong Compose nếu không được bọc điều kiện hoặc gán isLoading sẽ liên tục tick animation loop ngầm làm hao pin và nóng máy kể cả khi đã có dữ liệu.",
+      "Nút hành động trong Row ngang trên màn hình 360dp cần cấp weight tối thiểu 1.3f cho nút chính (Chỉ đường) để tránh bị hệ thống co text thành '▲ .'.",
       "Trạm sạc VinFast từ backend có slug hoặc name có thể đã chứa chữ 'vinfast', cần sanitize để tránh tạo URL dạng /tram-sac-vinfast-vinfast-...",
       "Backend /search API chỉ cần gửi {latitude, longitude}, bỏ wattageTypes để lấy toàn bộ trạm và ủy quyền cho bộ lọc client-side xử lý chính xác",
       "Khi làm mới NearbyViewModel.refresh(), không bao giờ dùng tọa độ cũ trong uiState memory vì vị trí xe đã thay đổi",

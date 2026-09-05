@@ -1,81 +1,74 @@
 {
-  "updated_at": "2026-09-05T15:30:00+07:00",
+  "updated_at": "2026-09-05T16:25:00+07:00",
   "working_on": {
-    "feature": "VinFast Station Canonical URL Builder, Real-time GPS Refresh & Pre-Filter Selection UX",
-    "task": "Hoàn tất 3 Phase của Milestone VinFast Station Fixes, Real-time GPS Refresh & Pre-Filter Selection UX, build APK debug và cài đặt qua ADB MCP lên thiết bị Android.",
+    "feature": "Native Station Detail Bottom Sheet UI/UX & Performance Optimization",
+    "task": "Hoàn tất 3 Phase của Milestone tối ưu hóa Native Station Detail Bottom Sheet: fix co chữ nút Chỉ đường, ngắt vòng lặp vô tận shimmer khi đã có data, thêm hiệu ứng xoay 360 độ kèm chặn multi-tap cho nút Tải lại. Build APK và cài đặt thành công lên thiết bị Android.",
     "status": "completed",
     "files": [
-      "app/src/main/java/com/evcs/favorites/data/model/Station.kt",
-      "app/src/main/java/com/evcs/favorites/data/api/EvcsApiClient.kt",
-      "app/src/main/java/com/evcs/favorites/util/StationUrlBuilder.kt",
-      "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
-      "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-      "app/src/test/java/com/evcs/favorites/util/VinFastStationMappingAndUrlBuilderTest.kt",
-      "app/src/test/java/com/evcs/favorites/ui/viewmodel/NearbyRealtimeGpsRefreshTest.kt",
-      "app/src/test/java/com/evcs/favorites/ui/screens/NearbyPreFilterAndInitialScanTest.kt"
+      "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+      "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
+      "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailActionBarLayoutTest.kt",
+      "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailPerformanceOptimizationTest.kt",
+      "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailRefreshFeedbackTest.kt"
     ],
     "blockers": [],
     "notes": "Toàn bộ 3 phase đã hoàn thành 100% với 3 single comprehensive tests PASS. Đã build APK và cài đặt thành công lên điện thoại OnePlus (3B658D010BU00000)."
   },
   "pending_tasks": [
     {
-      "task": "Kiểm tra thực tế tính năng Pre-Filter & GPS Refresh trên đường",
+      "task": "Trải nghiệm thực tế Bottom Sheet trên điện thoại",
       "priority": "low",
-      "notes": "Kiểm tra độ nhạy của GPS fresh refresh và trải nghiệm chọn trước bộ lọc công suất AC/DC/Custom ngay tại màn hình ban đầu."
+      "notes": "Kiểm tra nút Chỉ đường hiển thị đầy đủ, hiệu ứng xoay mượt mà khi bấm Tải lại và độ phản hồi của bảng chi tiết trạm."
     }
   ],
   "recent_changes": [
     {
-      "timestamp": "2026-09-05T15:28:00+07:00",
+      "timestamp": "2026-09-05T16:20:00+07:00",
       "type": "deployment",
       "description": "Build APK app-debug.apk và cài đặt trực tiếp vào điện thoại (3B658D010BU00000) qua ADB MCP tool, tự động mở app.",
       "files": ["app/build/outputs/apk/debug/app-debug.apk"]
     },
     {
-      "timestamp": "2026-09-05T15:26:00+07:00",
+      "timestamp": "2026-09-05T15:58:00+07:00",
       "type": "feature",
-      "description": "Hoàn tất Phase 03: Hiển thị SmartFilterBar trên NearbyInitialHeroContent trước khi tìm trạm; khôi phục bộ lọc từ SmartFilterPreferences lúc khởi động; lưu tức thì khi chọn bộ lọc; áp dụng ngay khi bấm tìm trạm.",
+      "description": "Hoàn tất Phase 03: Thêm hiệu ứng xoay 360 độ liên tục cho nút Tải lại khi uiState.isRefreshing == true, đổi màu EmeraldPrimary, chặn bấm spam khi đang refresh và bảo vệ coordinator khỏi duplicate calls.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
-        "app/src/test/java/com/evcs/favorites/ui/screens/NearbyPreFilterAndInitialScanTest.kt"
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
+        "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailRefreshFeedbackTest.kt"
       ]
     },
     {
-      "timestamp": "2026-09-05T15:21:00+07:00",
-      "type": "feature",
-      "description": "Hoàn tất Phase 02: Nâng cấp NearbyViewModel.refresh() luôn lấy GPS tươi mới thời gian thực từ LocationService.getFreshLocation(), báo lỗi rõ ràng nếu không lấy được GPS.",
+      "timestamp": "2026-09-05T15:53:00+07:00",
+      "type": "performance",
+      "description": "Hoàn tất Phase 02: Tối ưu hiệu năng recomposition và triệt tiêu vòng lặp vô tận của rememberInfiniteTransition trong StatCard bằng cách chỉ kích hoạt shimmer khi isLoadingStats == true && stats == null.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
-        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
-        "app/src/test/java/com/evcs/favorites/ui/viewmodel/NearbyRealtimeGpsRefreshTest.kt"
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+        "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailPerformanceOptimizationTest.kt"
       ]
     },
     {
-      "timestamp": "2026-09-05T15:17:00+07:00",
+      "timestamp": "2026-09-05T15:50:00+07:00",
       "type": "bugfix",
-      "description": "Hoàn tất Phase 01: Chuẩn hoá canonical URL cho trạm VinFast trong StationUrlBuilder, fix lỗi 404 và trùng lặp tiền tố vinfast-, thêm trường evse vào Station model.",
+      "description": "Hoàn tất Phase 01: Sửa lỗi co dúm chữ nút Chỉ đường trên màn hình 360dp bằng cách cân chỉnh layout weight (1.3f cho Chỉ đường, 1.0f cho Yêu thích, 0.9f cho Chia sẻ) trong NativeStationDetailSheetHelper.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/data/model/Station.kt",
-        "app/src/main/java/com/evcs/favorites/data/api/EvcsApiClient.kt",
-        "app/src/main/java/com/evcs/favorites/util/StationUrlBuilder.kt",
-        "app/src/test/java/com/evcs/favorites/util/VinFastStationMappingAndUrlBuilderTest.kt"
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+        "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailActionBarLayoutTest.kt"
       ]
     }
   ],
   "decisions_made": [
     {
-      "decision": "Hiển thị SmartFilterBar ngay trên Hero screen ban đầu",
-      "reason": "Cho phép người dùng chọn bộ lọc mong muốn (AC, DC tier, Custom) trước khi quét GPS, lưu thói quen vào preferences và áp dụng lọc ngay lập tức sau khi quét."
+      "decision": "Điều chỉnh tỉ lệ phân bổ nút hành động nhanh (1.3f : 1.0f : 0.9f)",
+      "reason": "Đảm bảo nút Chỉ đường (CTA chính) luôn hiển thị đầy đủ nhãn không bao giờ bị cắt ngắn thành '▲ .' trên mọi kích thước màn hình."
     },
     {
-      "decision": "Lấy GPS fresh tức thì khi refresh thay vì dùng tọa độ cũ trong memory",
-      "reason": "Đảm bảo tính chính xác về vị trí khi tài xế đang di chuyển trên đường."
+      "decision": "Gating điều kiện chạy rememberInfiniteTransition theo shouldAnimateShimmer(isLoadingStats, stats)",
+      "reason": "Dừng hoàn toàn ticker loop của animation khi đã có dữ liệu thống kê, giúp máy mát và tiết kiệm pin tối đa."
     },
     {
-      "decision": "Chuẩn hóa canonical URL builder cho trạm sạc VinFast theo pattern /tram-sac-vinfast-{slug}-{locationId}.html",
-      "reason": "Giải quyết dứt điểm lỗi HTTP 404 khi mở chi tiết trạm và loại bỏ trùng lặp tiền tố."
+      "decision": "Khóa tương tác nút Tải lại và tạo hiệu ứng xoay 360 độ khi isRefreshing == true",
+      "reason": "Cung cấp phản hồi trực quan rõ ràng cho tài xế và ngăn chặn nghẽn mạng do bấm spam liên tiếp."
     }
   ]
 }
