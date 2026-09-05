@@ -1,68 +1,40 @@
-# Handover Document - Milestone: Native Station Detail Bottom Sheet
+# 📋 HANDOVER DOCUMENT
 
-📍 **Dự án**: EV+ (Android Jetpack Compose)  
-🔢 **Trạng thái**: Hoàn tất 100% Milestone Native Station Detail Bottom Sheet (5/5 Phases)  
-📅 **Cập nhật**: 2026-09-05 02:40:00 (GMT+7)  
-
----
-
-## ✅ ĐÃ XONG TOÀN DIỆN (5/5 PHASES)
-
-1. **Phase 01: Domain Telemetry and 24h Stats Models**
-   - Tạo các domain models: `StationTelemetry`, `StationPortStatus`, `StationRating`, `Station24hStats`, `StationAccessTokens`.
-   - Bóc tách phân phối cổng bận theo công suất kW (`busyKw`) và làm sạch ticker dự báo HTML (`cleanForecast`).
-   - Test: `StationTelemetryModelsAndParserTest.kt` (100% PASS).
-
-2. **Phase 02: EvcsTelemetryRepository & 24h Stats Engine**
-   - Tạo `EvcsTelemetryRepository` và `EvcsTelemetryDataSource` thực hiện 3-step handshake:
-     1. Post `{station-slug}.html` lấy ephemeral tokens (`chargeToken`, `apiToken`) và community rating (`avg`, `count`).
-     2. Post `/charging` lấy real-time busy count per kW và forecast ticker.
-     3. Socket.io WebSocket tới `www2.evcs.vn` lấy `history_data` 24h với timeout 4s.
-   - Xây dựng `Station24hStatsCalculator` tính toán chuẩn công thức: Cao điểm (Peak), Trung bình (Mean), Giờ cao điểm (Rush Hour UTC+7), Tỉ lệ lấp đầy (Fill Rate).
-   - Test: `EvcsTelemetryRepositoryAndStatsEngineTest.kt` (100% PASS).
-
-3. **Phase 03: ViewModel On-Demand Telemetry Pipeline**
-   - Xây dựng `StationDetailCoordinator` điều phối pipeline 2 giai đoạn:
-     - Mở tức thì (0ms) với static power ports.
-     - Stage 1: Tokens + Rating + Live Ports.
-     - Stage 2: 24h Stats.
-   - Tích hợp vào `FavoritesViewModel` và `NearbyViewModel`.
-   - Tự động hủy toàn bộ coroutine jobs khi đóng bottom sheet.
-   - Test: `StationDetailViewModelPipelineTest.kt` (100% PASS).
-
-4. **Phase 04: Native Compose Bottom Sheet UI**
-   - Xây dựng `NativeStationDetailSheet.kt` 100% Jetpack Compose (Material 3):
-     - Header trạm (Tên tối đa 3 dòng, địa chỉ, rating cộng đồng, cự ly/ETA lái xe).
-     - Row hành động nhanh: Nút "Chỉ đường" (mở Google Maps navigation), "Yêu thích", "Chia sẻ".
-     - Badge danh sách cổng sạc theo từng kW với chấm màu trạng thái.
-     - Capsule dự báo sạc sạch (ẩn khi locked hoặc null).
-     - Lưới 2x2 hiển thị 4 chỉ số thống kê 24h kèm hiệu ứng shimmer loading.
-     - Không cố định chiều cao, hỗ trợ cuộn tự nhiên chống text clipping.
-   - Test: `NativeStationDetailSheetUiTest.kt` (100% PASS).
-
-5. **Phase 05: Screen Integration & Legacy WebView Decoupling**
-   - Tích hợp vào `MainActivity.kt`, `FavoritesScreen.kt`, `NearbyScreen.kt`.
-   - Xóa bỏ vĩnh viễn `StationDetailModal.kt` và các file CSS WebView.
-   - Giải quyết triệt để lỗi rò rỉ bộ nhớ `PERF-MEM-02` (15-45MB RAM/lần xem).
-   - Cập nhật các legacy unit tests và xây dựng test tích hợp toàn diện: `NativeStationDetailIntegrationTest.kt` (100% PASS).
-   - Build và cài đặt APK thành công lên thiết bị thật.
+📍 **Đang làm**: VinFast Station Fixes, Real-time GPS Refresh & Pre-Filter Selection UX  
+🔢 **Đến bước**: Toàn bộ 3/3 Phase đã hoàn thành 100%, Build APK & Cài đặt thành công lên thiết bị thật
 
 ---
 
-## 🔧 QUYẾT ĐỊNH QUAN TRỌNG
-
-1. **Khử bỏ hoàn toàn WebView**:
-   - WebView nhúng gây giật lag, tốn 300KB+ data web, xung đột cử chỉ vuốt và rò rỉ RAM nghiêm trọng. Thay bằng 100% Native Compose giúp mở sheet dưới 50ms và tiêu thụ RAM cực thấp.
-2. **Quản lý vòng đời qua Coordinator**:
-   - Mọi kết nối mạng và Socket.io 24h history được gắn với lifecycle của bottom sheet và tự động hủy bỏ ngay khi người dùng đóng modal.
-3. **Tính toán chuẩn UTC+7**:
-   - Phân tích giờ cao điểm dựa trên timezone Việt Nam `(timestamp + 25,200,000ms)` đồng bộ tuyệt đối với logic của EVCS gốc.
+### ✅ ĐÃ XONG:
+- **Phase 01**: VinFast Station Domain Modeling & Canonical Detail URL Builder Fix (`VinFastStationMappingAndUrlBuilderTest.kt` ✓ PASS).
+- **Phase 02**: Real-time GPS Refresh & Location Error Handling (`NearbyRealtimeGpsRefreshTest.kt` ✓ PASS).
+- **Phase 03**: Pre-Filter Selection on Initial Screen, Persistence & Immediate Execution (`NearbyPreFilterAndInitialScanTest.kt` ✓ PASS).
+- **Build & Deploy**:
+  - Build file APK debug: `app/build/outputs/apk/debug/app-debug.apk` ✓.
+  - Tự động gỡ bản cũ xung đột signature và cài đặt bản mới lên OnePlus 13R (`3B658D010BU00000`) qua ADB MCP ✓.
+  - Tự động khởi chạy ứng dụng `com.evcs.favorites` trên máy ✓.
 
 ---
 
-## 📁 FILES QUAN TRỌNG
-- `plans/260905-0115-native-station-detail-bottom-sheet/plan.md`: Master Plan toàn bộ milestone.
-- `app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt`: Giao diện Native Bottom Sheet.
-- `app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt`: Bộ điều phối lifecycle on-demand.
-- `app/src/main/java/com/evcs/favorites/data/repository/EvcsTelemetryRepository.kt`: Repository xử lý API tokens và Socket.io history.
-- `.brain/brain.json` & `.brain/session.json`: Bộ nhớ ngữ cảnh vĩnh cửu.
+### ⏳ CÒN LẠI / GỢI Ý TIẾP THEO:
+- Trải nghiệm thực tế app trên đường phố:
+  - Kiểm tra độ nhạy của nút refresh GPS khi đang di chuyển.
+  - Kiểm tra tính năng chọn trước bộ lọc công suất AC/DC trên màn hình Hero trước khi bấm tìm trạm.
+
+---
+
+### 🔧 QUYẾT ĐỊNH QUAN TRỌNG:
+1. **Canonical URL Builder**: Chuẩn hóa pattern `/tram-sac-vinfast-${slug}-${locationId.toLowerCase()}.html`, lọc bỏ triệt để tiền tố trùng lặp `vinfast-` và mã đối tác trùng `-c.C.`.
+2. **Search API Request**: Chỉ gửi `{"latitude": ..., "longitude": ...}` (bỏ `wattageTypes`) để backend trả về toàn bộ trạm, ủy quyền bộ lọc client-side xử lý chính xác theo thời gian thực.
+3. **Realtime GPS Refresh**: Không tái sử dụng tọa độ cũ trong memory; luôn lấy GPS tươi mới, nếu mất sóng GPS sẽ báo lỗi rõ ràng để tài xế thử lại.
+4. **Pre-Filter Initial Screen UX**: Đưa `SmartFilterBar` lên màn hình ban đầu, khôi phục từ `SmartFilterPreferences` và lưu ngay khi đổi chế độ; tự động áp dụng ngay sau khi quét GPS.
+
+---
+
+### 📁 FILES QUAN TRỌNG:
+- `app/src/main/java/com/evcs/favorites/util/StationUrlBuilder.kt` (Xây dựng canonical URL chuẩn)
+- `app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt` (GPS refresh & SmartFilter pipeline)
+- `app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt` (Hero screen UI với SmartFilterBar)
+- `plans/260905-1400-vinfast-station-fixes-prefilter-and-gps-refresh/plan.md` (Plan chi tiết)
+- `CHANGELOG.md` (Lịch sử thay đổi)
+- `.brain/brain.json` & `.brain/session.json` (Bộ nhớ AWF)

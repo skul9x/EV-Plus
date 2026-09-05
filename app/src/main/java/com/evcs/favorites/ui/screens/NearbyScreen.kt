@@ -270,6 +270,7 @@ fun NearbyScreen(
                     // 1. Initial State (before search)
                     !uiState.hasSearched && !uiState.isLocating && !uiState.isSearching -> {
                         NearbyInitialHeroContent(
+                            uiState = uiState,
                             onScanClick = {
                                 permissionLauncher.launch(
                                     arrayOf(
@@ -277,7 +278,13 @@ fun NearbyScreen(
                                         Manifest.permission.ACCESS_COARSE_LOCATION
                                     )
                                 )
-                            }
+                            },
+                            onCustomFilterClick = { viewModel.applyCustomFilter() },
+                            onDcFilterClick = { viewModel.enterDcMode() },
+                            onAcFilterClick = { viewModel.toggleAcFilter() },
+                            onSelectDcTier = { viewModel.selectDcTier(it) },
+                            onBackFromDc = { viewModel.exitDcMode() },
+                            onClearFilters = { viewModel.clearSmartFilter() }
                         )
                     }
 
@@ -385,84 +392,110 @@ fun NearbyScreen(
  */
 @Composable
 private fun NearbyInitialHeroContent(
+    uiState: NearbyUiState,
     onScanClick: () -> Unit,
+    onCustomFilterClick: () -> Unit,
+    onDcFilterClick: () -> Unit,
+    onAcFilterClick: () -> Unit,
+    onSelectDcTier: (DcWattageTier) -> Unit,
+    onBackFromDc: () -> Unit,
+    onClearFilters: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        modifier = modifier.fillMaxSize()
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(110.dp)
-                .clip(CircleShape)
-                .background(EmeraldContainerDark.copy(alpha = 0.6f))
-        ) {
-            Icon(
-                imageVector = AppIcons.NearMe,
-                contentDescription = null,
-                tint = EmeraldPrimary,
-                modifier = Modifier.size(56.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Text(
-            text = "Tìm trạm sạc quanh đây",
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp
-            ),
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center
+        // Smart Filter Bar with 3-button selector & animated DC sub-filter
+        SmartFilterBar(
+            activeFilterMode = uiState.activeFilterMode,
+            isDcSubFilterVisible = uiState.isDcSubFilterVisible,
+            selectedDcTier = uiState.selectedDcTier,
+            savedCustomConfig = uiState.savedCustomConfig,
+            onCustomClick = onCustomFilterClick,
+            onDcClick = onDcFilterClick,
+            onAcClick = onAcFilterClick,
+            onSelectDcTier = onSelectDcTier,
+            onBackFromDc = onBackFromDc,
+            onClearFilter = onClearFilters,
+            modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Text(
-            text = "Quét các trạm sạc VinFast gần bạn nhất còn cổng trống với khoảng cách và thời gian lái xe thực tế.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Button(
-            onClick = onScanClick,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = EmeraldPrimary,
-                contentColor = Color.White
-            ),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 6.dp,
-                pressedElevation = 10.dp
-            ),
-            shape = RoundedCornerShape(14.dp),
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp)
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = AppIcons.NearMe,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = "Nhấn để tìm trạm quanh đây",
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(110.dp)
+                    .clip(CircleShape)
+                    .background(EmeraldContainerDark.copy(alpha = 0.6f))
+            ) {
+                Icon(
+                    imageVector = AppIcons.NearMe,
+                    contentDescription = null,
+                    tint = EmeraldPrimary,
+                    modifier = Modifier.size(56.dp)
                 )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Text(
+                text = "Tìm trạm sạc quanh đây",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Quét các trạm sạc VinFast gần bạn nhất còn cổng trống với khoảng cách và thời gian lái xe thực tế.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(
+                onClick = onScanClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldPrimary,
+                    contentColor = Color.White
+                ),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 10.dp
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                Icon(
+                    imageVector = AppIcons.NearMe,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Nhấn để tìm trạm quanh đây",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                )
+            }
         }
     }
 }

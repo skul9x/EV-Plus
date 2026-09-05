@@ -8,6 +8,7 @@ import com.evcs.favorites.data.model.SaveFavoritesRequest
 import com.evcs.favorites.data.model.SearchRequest
 import com.evcs.favorites.data.model.SearchResponse
 import com.evcs.favorites.data.model.SearchStationRaw
+import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.util.StationUrlBuilder
 import com.evcs.favorites.data.logging.DebugLoggingInterceptor
 import com.evcs.favorites.data.network.AppOkHttpClientProvider
@@ -332,15 +333,13 @@ open class EvcsApiClient(
     suspend fun searchStations(
         latitude: Double,
         longitude: Double,
-        wattageTypes: List<String> = listOf("FAST", "SUPER_FAST"),
         token: String = DEFAULT_SEARCH_TOKEN
     ): Result<List<SearchStationRaw>> = withContext(Dispatchers.IO) {
         try {
             val url = "$baseUrl/search?t=$token"
             val payload = SearchRequest(
                 latitude = latitude,
-                longitude = longitude,
-                wattageTypes = wattageTypes
+                longitude = longitude
             )
             val jsonString = json.encodeToString(payload)
             val timestamp = System.currentTimeMillis().toString()
@@ -395,14 +394,16 @@ open class EvcsApiClient(
      *
      * @param stationName Name of the charging station.
      * @param locationId Unique station identifier.
+     * @param evse Station provider/operator name (default "VinFast").
      * @return Result containing raw HTML string if successful, or failure exception.
      */
     open suspend fun fetchStationHtml(
         stationName: String,
-        locationId: String
+        locationId: String,
+        evse: String = "VinFast"
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val url = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl)
+            val url = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl, evse)
             val requestBuilder = Request.Builder()
                 .url(url)
                 .get()
@@ -442,17 +443,25 @@ open class EvcsApiClient(
     }
 
     /**
+     * Overload for domain [Station] model.
+     */
+    open suspend fun fetchStationHtml(station: Station): Result<String> =
+        fetchStationHtml(station.name, station.id, station.evse)
+
+    /**
      * Fetches station detail HTML page and resolves its GPS coordinates.
      *
      * @param stationName Name of the charging station.
      * @param locationId Unique station identifier.
+     * @param evse Station provider/operator name (default "VinFast").
      * @return Result containing Pair(latitude, longitude) if resolved, or null/failure.
      */
     suspend fun fetchStationCoordinates(
         stationName: String,
-        locationId: String
+        locationId: String,
+        evse: String = "VinFast"
     ): Result<Pair<Double, Double>?> {
-        val htmlResult = fetchStationHtml(stationName, locationId)
+        val htmlResult = fetchStationHtml(stationName, locationId, evse)
         if (htmlResult.isFailure) {
             return Result.failure(htmlResult.exceptionOrNull()!!)
         }
@@ -465,9 +474,10 @@ open class EvcsApiClient(
      */
     suspend fun fetchStationDetailMetadata(
         stationName: String,
-        locationId: String
+        locationId: String,
+        evse: String = "VinFast"
     ): Result<StationDetailMetadata?> {
-        val htmlResult = fetchStationHtml(stationName, locationId)
+        val htmlResult = fetchStationHtml(stationName, locationId, evse)
         if (htmlResult.isFailure) {
             return Result.failure(htmlResult.exceptionOrNull()!!)
         }

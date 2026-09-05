@@ -447,7 +447,8 @@ open class EvcsRepository(
                 image = fav.image ?: search.media?.firstOrNull(),
                 isPublic = search.isPublic ?: true,
                 isFreeParking = search.isFreeParking ?: true,
-                workingTimeDescription = search.workingTimeDescription ?: "24/7"
+                workingTimeDescription = search.workingTimeDescription ?: "24/7",
+                evse = search.evse ?: "VinFast"
             )
         } else {
             // Station outside search radius or search failed - graceful fallback
@@ -662,7 +663,8 @@ fun SearchStationRaw.toDomainStation(
         isPublic = isPublic ?: true,
         isFreeParking = isFreeParking ?: true,
         workingTimeDescription = workingTimeDescription ?: "24/7",
-        distanceKm = dist
+        distanceKm = dist,
+        evse = evse ?: "VinFast"
     )
 }
 

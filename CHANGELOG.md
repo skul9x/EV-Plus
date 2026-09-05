@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-05] - VinFast Station Fixes, Realtime GPS Refresh, Pre-Filter UX & Hardware Deployment
+
+### Added
+- **VinFast Canonical Detail URL & Domain Modeling (Phase 01)**:
+  - Added `evse: String = "VinFast"` field to `Station` domain model, mapped directly from API raw response.
+  - Upgraded `StationUrlBuilder.kt` with canonical URL builder resolving 404s for VinFast stations, preventing duplicate provider prefixes (`tram-sac-vinfast-vinfast-...`) and duplicate `-c.C.` partner prefixes.
+  - Streamlined `SearchRequest` payload to send only coordinates, letting backend return all stations while delegating precise wattage filtering to client-side `NearbyStationFilter`.
+  - Added `VinFastStationMappingAndUrlBuilderTest.kt` (100% PASS).
+- **Real-Time GPS Refresh with Failure Notification (Phase 02)**:
+  - Updated `NearbyViewModel.refresh()` to unconditionally fetch fresh real-time GPS coordinates via `LocationService.getFreshLocation()`.
+  - Added user-facing error notification when GPS cannot be acquired, preventing silent fallback to stale cached locations.
+  - Added `NearbyRealtimeGpsRefreshTest.kt` (100% PASS).
+- **Pre-Filter Selection on Initial Screen, Persistence & Immediate Execution (Phase 03)**:
+  - Prominently integrated `SmartFilterBar` directly at the top of `NearbyInitialHeroContent` before the user performs a search.
+  - Enabled cold-start restoration of `activeFilterMode`, `selectedDcTier`, and `savedCustomConfig` from `SmartFilterPreferences`.
+  - Enabled interactive pre-filtering (AC, DC power tiers, Custom config) with immediate persistence and automatic execution upon first scan.
+  - Added `NearbyPreFilterAndInitialScanTest.kt` (100% PASS).
+- **Hardware Deployment**:
+  - Built fresh `app-debug.apk` and deployed to connected OnePlus device (`3B658D010BU00000`) via ADB MCP server, handling signature mismatch and launching the app.
+
 ## [2026-09-05] - 100% Native Jetpack Compose Station Detail Bottom Sheet & Legacy WebView Decoupling
 
 ### Added

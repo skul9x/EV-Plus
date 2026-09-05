@@ -48,7 +48,12 @@ object StationUrlBuilder {
     /**
      * Constructs the canonical station detail URL for a station by name and location ID.
      */
-    fun buildStationDetailUrl(name: String, locationId: String, baseUrl: String = BASE_URL): String {
+    fun buildStationDetailUrl(
+        name: String,
+        locationId: String,
+        baseUrl: String = BASE_URL,
+        evse: String? = null
+    ): String {
         val sanitizedName = StationNameSanitizer.sanitize(name)
         val slug = slugify(sanitizedName)
         val cleanLocId = locationId.trim()
@@ -59,17 +64,53 @@ object StationUrlBuilder {
         if (normalizedSlug == "tram-sac") {
             normalizedSlug = ""
         }
-        val prefix = if (normalizedSlug.isNotEmpty()) "$baseUrl/tram-sac-$normalizedSlug" else "$baseUrl/tram-sac"
-        return if (normalizedSlug.startsWith("vinfast")) {
+
+        val isVinFast = evse?.equals("VinFast", ignoreCase = true) ?: normalizedSlug.startsWith("vinfast")
+
+        return if (isVinFast) {
+            var cleanVinFastSlug = normalizedSlug
+            while (cleanVinFastSlug.startsWith("vinfast-")) {
+                cleanVinFastSlug = cleanVinFastSlug.removePrefix("vinfast-")
+            }
+            if (cleanVinFastSlug == "vinfast") {
+                cleanVinFastSlug = ""
+            }
+            val prefix = if (cleanVinFastSlug.isNotEmpty()) {
+                "$baseUrl/tram-sac-vinfast-$cleanVinFastSlug"
+            } else {
+                "$baseUrl/tram-sac-vinfast"
+            }
             "$prefix-${cleanLocId.lowercase()}.html"
         } else {
-            val encodedId = try {
-                URLEncoder.encode(cleanLocId, StandardCharsets.UTF_8.name())
-                    .replace("+", "%20")
-            } catch (e: Exception) {
-                cleanLocId
+            val prefix = if (!evse.isNullOrBlank()) {
+                val providerSlug = slugify(evse).ifBlank { "partner" }
+                var cleanSlug = normalizedSlug
+                while (cleanSlug.startsWith("$providerSlug-")) {
+                    cleanSlug = cleanSlug.removePrefix("$providerSlug-")
+                }
+                if (cleanSlug == providerSlug) {
+                    cleanSlug = ""
+                }
+                if (cleanSlug.isNotEmpty()) {
+                    "$baseUrl/tram-sac-$providerSlug-$cleanSlug"
+                } else {
+                    "$baseUrl/tram-sac-$providerSlug"
+                }
+            } else {
+                if (normalizedSlug.isNotEmpty()) "$baseUrl/tram-sac-$normalizedSlug" else "$baseUrl/tram-sac"
             }
-            "$prefix-c.$encodedId.html"
+
+            val cleanPartnerId = if (cleanLocId.startsWith("c.", ignoreCase = true)) {
+                cleanLocId.substring(2).lowercase()
+            } else {
+                try {
+                    URLEncoder.encode(cleanLocId, StandardCharsets.UTF_8.name())
+                        .replace("+", "%20")
+                } catch (e: Exception) {
+                    cleanLocId
+                }
+            }
+            "$prefix-c.$cleanPartnerId.html"
         }
     }
 
@@ -77,7 +118,7 @@ object StationUrlBuilder {
      * Overload for domain [Station] model.
      */
     fun buildStationDetailUrl(station: Station, baseUrl: String = BASE_URL): String {
-        return buildStationDetailUrl(station.name, station.id, baseUrl)
+        return buildStationDetailUrl(station.name, station.id, baseUrl, station.evse)
     }
 
     /**

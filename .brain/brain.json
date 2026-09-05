@@ -3,12 +3,12 @@
     "schema_version": "1.1.0",
     "awf_version": "4.0.2",
     "created_at": "2026-09-03T11:05:00+07:00",
-    "updated_at": "2026-09-05T02:40:00+07:00"
+    "updated_at": "2026-09-05T15:30:00+07:00"
   },
   "project": {
     "name": "EV+",
     "type": "Android Application (Native Jetpack Compose)",
-    "status": "Production-Ready MVP + Native Compose Station Detail Bottom Sheet (100% Decommissioned WebView), Multi-Tier Routing (Google/OSRM/Haversine), Smart Filter (AC/DC/Custom), On-Demand Realtime Telemetry & 24h Usage Statistics Engine"
+    "status": "Production-Ready MVP + Native Compose Station Detail Bottom Sheet (100% Decommissioned WebView), Multi-Tier Routing (Google/OSRM/Haversine), Smart Filter (AC/DC/Custom) with Initial Screen Pre-Filter, Realtime On-Demand GPS Refresh, VinFast Canonical URL Builder & Telemetry Engine"
   },
   "tech_stack": {
     "language": "Kotlin 1.9.23",
@@ -19,7 +19,7 @@
     "location": "Google Play Services Location (FusedLocationProviderClient)",
     "routing_engines": "Google Routes API v2, OSRM Table Service, Haversine baseline",
     "filter_persistence": "NearbyFilterPreferences & SmartFilterPreferences via SessionStorage",
-    "resilience_patterns": "Zero-Leak Native Bottom Sheet Lifecycle, SingleFlight Concurrency, Timeout Safeguards (4s), Cloudflare HTTP 429 Protection",
+    "resilience_patterns": "Zero-Leak Native Bottom Sheet Lifecycle, SingleFlight Concurrency, Timeout Safeguards (4s), Cloudflare HTTP 429 Protection, Real-time GPS Freshness Guard",
     "build_tool": "Gradle 8.7 (Kotlin DSL)",
     "min_sdk": 26,
     "target_sdk": 34
@@ -71,7 +71,7 @@
       "path": "POST /search?t=eepe5dp9zpipl102",
       "method": "POST",
       "security": "HMAC-SHA256 signature (Timestamp, Nonce, AppSecret)",
-      "purpose": "Tìm kiếm trạm sạc xung quanh tọa độ GPS và làm giàu trạng thái cổng sạc/trụ khả dụng theo thời gian thực"
+      "purpose": "Tìm kiếm trạm sạc xung quanh tọa độ GPS và làm giàu trạng thái cổng sạc/trụ khả dụng theo thời gian thực (payload chỉ gồm lat/lng để backend trả đủ trạm AC & DC)"
     },
     {
       "path": "POST https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix",
@@ -88,12 +88,12 @@
       "purpose": "Tính toán ma trận khoảng cách đường bộ và thời gian di chuyển dự kiến miễn phí không cần API key"
     },
     {
-      "path": "POST /{station-slug}.html",
+      "path": "POST /{station-slug}.html (hoặc /tram-sac-vinfast-{slug}-{locationId}.html)",
       "method": "POST",
       "headers": {
         "X-Partial": "user"
       },
-      "purpose": "Bắt tay lấy chargeToken, apiToken, rating cộng đồng (avg, count) cho Native Station Detail Bottom Sheet"
+      "purpose": "Bắt tay lấy chargeToken, apiToken, rating cộng đồng (avg, count) cho Native Station Detail Bottom Sheet (canonical URL đã chuẩn hóa chống 404)"
     },
     {
       "path": "POST /charging",
@@ -122,6 +122,21 @@
     }
   ],
   "features": [
+    {
+      "name": "Pre-Filter Selection on Initial Screen & Immediate Execution",
+      "status": "Implemented",
+      "description": "Thanh SmartFilterBar hiển thị ngay ở màn hình Hero trước khi bấm tìm trạm; lưu trữ lựa chọn vào SmartFilterPreferences và tự động áp dụng ngay khi có kết quả quét GPS."
+    },
+    {
+      "name": "Real-time On-Demand GPS Refresh",
+      "status": "Implemented",
+      "description": "NearbyViewModel.refresh() luôn yêu cầu tọa độ GPS tươi mới thời gian thực từ LocationService.getFreshLocation(), thông báo lỗi rõ ràng nếu không lấy được tín hiệu GPS thay vì tái sử dụng vị trí cũ."
+    },
+    {
+      "name": "VinFast Canonical Detail URL Builder",
+      "status": "Implemented",
+      "description": "StationUrlBuilder chuẩn hóa pattern /tram-sac-vinfast-{slug}-{locationId}.html, loại bỏ trùng lặp tiền tố vinfast-, fix triệt để lỗi HTTP 404 khi mở chi tiết trạm VinFast."
+    },
     {
       "name": "100% Native Jetpack Compose Station Detail Bottom Sheet",
       "status": "Implemented",
@@ -153,10 +168,15 @@
       "Zero-Leak Native Jetpack Compose Modal Bottom Sheet thay thế WebView engine",
       "On-Demand Phased Pipeline với StationDetailCoordinator",
       "Socket.io History Data Stream với Strict 4s Timeout Safeguard",
-      "Production Calculation Formulas chuẩn từ EVCS JS engine (Peak, Mean, Mode Hour UTC+7, Fill Rate)",
+      "Canonical URL Building for VinFast Stations with prefix sanitation",
+      "Fresh Location Acquisition Pattern via LocationService.getFreshLocation()",
+      "Pre-filter Initial Screen UX with Cold-Start Restoration & Immediate Search Execution",
       "Single Comprehensive Test Per Milestone Architecture"
     ],
     "gotchas": [
+      "Trạm sạc VinFast từ backend có slug hoặc name có thể đã chứa chữ 'vinfast', cần sanitize để tránh tạo URL dạng /tram-sac-vinfast-vinfast-...",
+      "Backend /search API chỉ cần gửi {latitude, longitude}, bỏ wattageTypes để lấy toàn bộ trạm và ủy quyền cho bộ lọc client-side xử lý chính xác",
+      "Khi làm mới NearbyViewModel.refresh(), không bao giờ dùng tọa độ cũ trong uiState memory vì vị trí xe đã thay đổi",
       "WebView trong ModalBottomSheet gây rò rỉ 15-45MB RAM do Chromium engine không tự giải phóng native memory khi composable unmount. Thay bằng 100% Native Compose giải quyết triệt để.",
       "Giờ cao điểm phải được quy đổi chuẩn theo múi giờ Việt Nam UTC+7 (timestamp + 25,200,000ms) trước khi gom nhóm 24h.",
       "Ticker dự báo có chứa banner quảng cáo amd-locked nếu không có phiên sạc thực tế; cần lọc sạch và trả về cleanForecast = null."

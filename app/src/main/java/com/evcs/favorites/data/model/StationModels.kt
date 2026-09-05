@@ -133,8 +133,7 @@ data class SearchResponse(
 @Serializable
 data class SearchRequest(
     val latitude: Double,
-    val longitude: Double,
-    val wattageTypes: List<String> = listOf("FAST", "SUPER_FAST")
+    val longitude: Double
 )
 
 /**
@@ -184,7 +183,8 @@ data class Station(
     val isFreeParking: Boolean = true,
     val workingTimeDescription: String = "24/7",
     val distanceKm: Double? = null,
-    val drivingMetrics: DrivingMetrics? = null
+    val drivingMetrics: DrivingMetrics? = null,
+    val evse: String = "VinFast"
 ) {
     /**
      * True if verified real-time telemetry metrics are available for this station.

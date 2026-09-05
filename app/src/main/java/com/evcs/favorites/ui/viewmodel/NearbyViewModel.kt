@@ -350,6 +350,8 @@ class NearbyViewModel(
                 selectedWattages = emptySet()
             )
         }
+        smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.DC)
+        smartFilterPrefs.saveSelectedDcTier(null)
         if (_uiState.value.rawStations.isNotEmpty()) {
             triggerFilterPipeline()
         }
@@ -526,52 +528,78 @@ class NearbyViewModel(
 
     /**
      * Refreshes nearby stations.
-     * Re-scans using existing GPS coordinates if valid; otherwise re-requests fresh location.
+     * Always re-acquires fresh real-time GPS coordinates via [locationService.getFreshLocation]
+     * rather than reusing stale in-memory coordinates. If location cannot be determined,
+     * updates error message requesting GPS check and retry.
      */
     fun refresh(): Job {
-        val lat = _uiState.value.userLatitude
-        val lon = _uiState.value.userLongitude
+        scanJob?.cancel()
+        routingJob?.cancel()
+        routingDebounceJob?.cancel()
 
-        return if (lat != null && lon != null && (lat != 0.0 || lon != 0.0)) {
-            scanJob?.cancel()
-            routingJob?.cancel()
-            routingDebounceJob?.cancel()
-            val job = viewModelScope.launch(dispatcher) {
-                _uiState.update { it.copy(isSearching = true, errorMessage = null) }
+        val job = viewModelScope.launch(dispatcher) {
+            if (!locationService.hasLocationPermission()) {
+                _events.send(NearbyUiEvent.RequestLocationPermission)
+                return@launch
+            }
 
-                val searchResult = repository.searchNearbyVinFast(lat, lon)
-                if (searchResult.isFailure) {
-                    _uiState.update {
-                        it.copy(
-                            isSearching = false,
-                            errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
-                        )
-                    }
-                    return@launch
-                }
+            _uiState.update { it.copy(isLocating = true, errorMessage = null) }
 
-                val raw = searchResult.getOrThrow()
+            val location = locationService.getFreshLocation()
+            if (location == null) {
                 _uiState.update {
                     it.copy(
-                        rawStations = raw,
-                        hasSearched = true,
-                        isSearching = false
+                        isLocating = false,
+                        isSearching = false,
+                        errorMessage = "Không thể lấy vị trí hiện tại. Vui lòng kiểm tra GPS và thử lại."
                     )
                 }
+                return@launch
+            }
 
-                executeFilterAndRoutingPipeline(
-                    rawStations = raw,
-                    userLat = lat,
-                    userLon = lon,
-                    selectedWattages = _uiState.value.selectedWattages,
-                    debounce = false
+            val newLat = location.latitude
+            val newLon = location.longitude
+
+            _uiState.update {
+                it.copy(
+                    userLatitude = newLat,
+                    userLongitude = newLon,
+                    isLocating = false,
+                    isSearching = true,
+                    errorMessage = null
                 )
             }
-            scanJob = job
-            job
-        } else {
-            scanNearbyStations()
+
+            val searchResult = repository.searchNearbyVinFast(newLat, newLon)
+            if (searchResult.isFailure) {
+                _uiState.update {
+                    it.copy(
+                        isSearching = false,
+                        errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
+                    )
+                }
+                return@launch
+            }
+
+            val raw = searchResult.getOrThrow()
+            _uiState.update {
+                it.copy(
+                    rawStations = raw,
+                    hasSearched = true,
+                    isSearching = false
+                )
+            }
+
+            executeFilterAndRoutingPipeline(
+                rawStations = raw,
+                userLat = newLat,
+                userLon = newLon,
+                selectedWattages = _uiState.value.selectedWattages,
+                debounce = false
+            )
         }
+        scanJob = job
+        return job
     }
 
     /**
