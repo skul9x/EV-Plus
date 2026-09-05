@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.evcs.favorites.data.auth.AuthEngine
 import com.evcs.favorites.data.auth.InMemorySessionStorage
 import com.evcs.favorites.data.cache.BoundedLruMap
+import com.evcs.favorites.data.auth.AuthService
+import com.evcs.favorites.domain.model.AuthState
+import com.evcs.favorites.domain.model.AuthUser
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.data.routing.DrivingMetrics
@@ -39,6 +42,7 @@ import kotlin.math.roundToLong
 class FavoritesViewModel(
     private val repository: EvcsRepository,
     private val authEngine: AuthEngine,
+    val authService: AuthService? = null,
     private val locationService: LocationService? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val routingPreferencesManager: RoutingPreferencesManager? = null,
@@ -47,6 +51,9 @@ class FavoritesViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
+
+    val authState: StateFlow<AuthState> = authService?.authState ?: MutableStateFlow(AuthState.Unauthenticated)
+    val currentUser: AuthUser? get() = authService?.currentUser
 
     private val telemetryRepo: EvcsTelemetryRepository = telemetryRepository ?: EvcsTelemetryRepository(
         dataSource = EvcsTelemetryDataSource(sessionManager = authEngine.sessionManager, ioDispatcher = ioDispatcher),
@@ -126,12 +133,18 @@ class FavoritesViewModel(
 
     init {
         viewModelScope.launch(ioDispatcher) {
-            val loggedIn = authEngine.checkLoggedInAsync(ioDispatcher)
-            withContext(dispatcher) {
-                if (loggedIn) {
+            if (repository.firestoreFavoritesRepository != null) {
+                withContext(dispatcher) {
                     favoritesLoadJob = fetchFavorites()
-                } else {
-                    _uiState.value = FavoritesUiState.LoggedOut
+                }
+            } else {
+                val loggedIn = authEngine.checkLoggedInAsync(ioDispatcher)
+                withContext(dispatcher) {
+                    if (loggedIn) {
+                        favoritesLoadJob = fetchFavorites()
+                    } else {
+                        _uiState.value = FavoritesUiState.LoggedOut
+                    }
                 }
             }
         }
@@ -685,16 +698,23 @@ class FavoritesViewModel(
     /**
      * Logs out user, clears session credentials, cancels background routing, and resets UI state.
      */
-    fun logout() {
+    fun logout(activityContext: android.content.Context? = null) {
         routingJob?.cancel()
         invalidateRoutingCache()
         authEngine.logout()
+        if (authService != null) {
+            viewModelScope.launch {
+                authService.signOut(activityContext)
+            }
+        }
         pendingEmail = ""
         _selectedStationForDetail.value = null
         stationDetailCoordinator.dismissStationDetail()
         currentCoordinates = null
         lastProcessedCoordinates = null
-        _uiState.value = FavoritesUiState.LoggedOut
+        if (repository.firestoreFavoritesRepository == null) {
+            _uiState.value = FavoritesUiState.LoggedOut
+        }
     }
 
     private fun sortStations(stations: List<Station>): List<Station> {
@@ -731,6 +751,7 @@ class FavoritesViewModel(
         fun provideFactory(
             repository: EvcsRepository,
             authEngine: AuthEngine,
+            authService: AuthService? = null,
             locationService: LocationService? = null,
             routingPreferencesManager: RoutingPreferencesManager? = null,
             routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
@@ -743,6 +764,7 @@ class FavoritesViewModel(
                 return FavoritesViewModel(
                     repository = repository,
                     authEngine = authEngine,
+                    authService = authService,
                     locationService = locationService,
                     dispatcher = Dispatchers.Main,
                     routingPreferencesManager = routingPreferencesManager,

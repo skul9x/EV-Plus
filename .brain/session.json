@@ -1,74 +1,99 @@
 {
-  "updated_at": "2026-09-05T16:25:00+07:00",
+  "updated_at": "2026-09-05T18:37:00+07:00",
   "working_on": {
-    "feature": "Native Station Detail Bottom Sheet UI/UX & Performance Optimization",
-    "task": "Hoàn tất 3 Phase của Milestone tối ưu hóa Native Station Detail Bottom Sheet: fix co chữ nút Chỉ đường, ngắt vòng lặp vô tận shimmer khi đã có data, thêm hiệu ứng xoay 360 độ kèm chặn multi-tap cho nút Tải lại. Build APK và cài đặt thành công lên thiết bị Android.",
+    "feature": "Station Photo Gallery & Firebase Firestore Favorites Migration",
+    "task": "Completed all 4 phases (Socket.io removal, Photo Gallery, Firebase Auth, Local-First Firestore Favorites Sync)",
     "status": "completed",
     "files": [
-      "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-      "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
-      "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailActionBarLayoutTest.kt",
-      "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailPerformanceOptimizationTest.kt",
-      "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailRefreshFeedbackTest.kt"
+      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/plan.md",
+      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-01-socketio-removal-and-detail-speedup.md",
+      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-02-station-photo-gallery-and-lightbox.md",
+      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-03-firebase-auth-and-google-signin.md",
+      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-04-firestore-favorites-sync-and-localfirst.md"
     ],
     "blockers": [],
-    "notes": "Toàn bộ 3 phase đã hoàn thành 100% với 3 single comprehensive tests PASS. Đã build APK và cài đặt thành công lên điện thoại OnePlus (3B658D010BU00000)."
+    "notes": "All 4 phases verified with single file-based test suites (100% PASS), debug APK compiled, installed, and launched on OnePlus device."
   },
-  "pending_tasks": [
-    {
-      "task": "Trải nghiệm thực tế Bottom Sheet trên điện thoại",
-      "priority": "low",
-      "notes": "Kiểm tra nút Chỉ đường hiển thị đầy đủ, hiệu ứng xoay mượt mà khi bấm Tải lại và độ phản hồi của bảng chi tiết trạm."
-    }
-  ],
+  "pending_tasks": [],
   "recent_changes": [
     {
-      "timestamp": "2026-09-05T16:20:00+07:00",
-      "type": "deployment",
-      "description": "Build APK app-debug.apk và cài đặt trực tiếp vào điện thoại (3B658D010BU00000) qua ADB MCP tool, tự động mở app.",
-      "files": ["app/build/outputs/apk/debug/app-debug.apk"]
-    },
-    {
-      "timestamp": "2026-09-05T15:58:00+07:00",
+      "timestamp": "2026-09-05T18:35:00+07:00",
       "type": "feature",
-      "description": "Hoàn tất Phase 03: Thêm hiệu ứng xoay 360 độ liên tục cho nút Tải lại khi uiState.isRefreshing == true, đổi màu EmeraldPrimary, chặn bấm spam khi đang refresh và bảo vệ coordinator khỏi duplicate calls.",
+      "description": "Completed Phase 04: Local-First Firestore Favorites Sync, Profile header with Google Sign-In, and full-app guest-ready favorites persistence",
       "files": [
-        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
-        "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailRefreshFeedbackTest.kt"
+        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesDataSource.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/FavoritesProfileHeader.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
+        "app/src/main/java/com/evcs/favorites/ui/favorites/FavoritesScreen.kt",
+        "app/src/main/java/com/evcs/favorites/ui/favorites/FavoritesViewModel.kt",
+        "app/src/main/java/com/evcs/favorites/ui/nearby/NearbyViewModel.kt",
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/test/java/com/evcs/favorites/data/repository/LocalFirstFirestoreFavoritesSyncTest.kt"
       ]
     },
     {
-      "timestamp": "2026-09-05T15:53:00+07:00",
-      "type": "performance",
-      "description": "Hoàn tất Phase 02: Tối ưu hiệu năng recomposition và triệt tiêu vòng lặp vô tận của rememberInfiniteTransition trong StatCard bằng cách chỉ kích hoạt shimmer khi isLoadingStats == true && stats == null.",
+      "timestamp": "2026-09-05T18:15:00+07:00",
+      "type": "feature",
+      "description": "Completed Phase 03: Firebase Auth & Google 1-Tap Credential Manager with unified AuthState Flow",
       "files": [
-        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailPerformanceOptimizationTest.kt"
+        "app/src/main/java/com/evcs/favorites/data/auth/AuthEngine.kt",
+        "app/src/main/java/com/evcs/favorites/data/auth/FirebaseAuthManager.kt",
+        "app/src/test/java/com/evcs/favorites/data/auth/FirebaseAuthFlowTest.kt"
       ]
     },
     {
-      "timestamp": "2026-09-05T15:50:00+07:00",
-      "type": "bugfix",
-      "description": "Hoàn tất Phase 01: Sửa lỗi co dúm chữ nút Chỉ đường trên màn hình 360dp bằng cách cân chỉnh layout weight (1.3f cho Chỉ đường, 1.0f cho Yêu thích, 0.9f cho Chia sẻ) trong NativeStationDetailSheetHelper.",
+      "timestamp": "2026-09-05T17:55:00+07:00",
+      "type": "feature",
+      "description": "Completed Phase 02: Station Photo Gallery & Full-Screen Lightbox Zoom Viewer with direct VinFast CDN base64 decoding",
       "files": [
-        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "app/src/test/java/com/evcs/favorites/ui/components/NativeStationDetailActionBarLayoutTest.kt"
+        "app/src/main/java/com/evcs/favorites/ui/detail/StationMediaUrlDecoder.kt",
+        "app/src/main/java/com/evcs/favorites/ui/detail/StationPhotoGallery.kt",
+        "app/src/main/java/com/evcs/favorites/ui/detail/StationPhotoLightboxModal.kt",
+        "app/src/main/java/com/evcs/favorites/ui/detail/NativeStationDetailSheet.kt",
+        "app/src/test/java/com/evcs/favorites/ui/detail/StationPhotoGalleryAndLightboxTest.kt"
       ]
+    },
+    {
+      "timestamp": "2026-09-05T17:40:00+07:00",
+      "type": "refactor",
+      "description": "Completed Phase 01: Socket.io Removal & Detail Loading Speedup (eliminated 4s Stage 2 timeout)",
+      "files": [
+        "app/build.gradle.kts",
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsTelemetryRepository.kt",
+        "app/src/main/java/com/evcs/favorites/ui/detail/StationDetailCoordinator.kt",
+        "app/src/test/java/com/evcs/favorites/ui/detail/SocketIoRemovalAndDetailSpeedupTest.kt"
+      ]
+    }
+  ],
+  "errors_encountered": [
+    {
+      "error": "Icons.Default.CloudSync and CloudDone missing in standard Material icons artifact",
+      "solution": "Replaced with AppIcons.EvStation for zero additional dependency footprint",
+      "resolved": true
+    },
+    {
+      "error": "Flow collection under StandardTestDispatcher required scheduler advancement",
+      "solution": "Used UnconfinedTestDispatcher(testScheduler) for immediate emission assertions in tests",
+      "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Điều chỉnh tỉ lệ phân bổ nút hành động nhanh (1.3f : 1.0f : 0.9f)",
-      "reason": "Đảm bảo nút Chỉ đường (CTA chính) luôn hiển thị đầy đủ nhãn không bao giờ bị cắt ngắn thành '▲ .' trên mọi kích thước màn hình."
+      "decision": "Remove Socket.io completely",
+      "reason": "Stage 2 socket telemetry takes 4s timeout without providing vital real-time data"
     },
     {
-      "decision": "Gating điều kiện chạy rememberInfiniteTransition theo shouldAnimateShimmer(isLoadingStats, stats)",
-      "reason": "Dừng hoàn toàn ticker loop của animation khi đã có dữ liệu thống kê, giúp máy mát và tiết kiệm pin tối đa."
+      "decision": "Decode VinFast S3 URLs directly",
+      "reason": "Bypasses evcs.vn 403 Cloudflare block and delivers 0ms cached images"
     },
     {
-      "decision": "Khóa tương tác nút Tải lại và tạo hiệu ứng xoay 360 độ khi isRefreshing == true",
-      "reason": "Cung cấp phản hồi trực quan rõ ràng cho tài xế và ngăn chặn nghẽn mạng do bấm spam liên tiếp."
+      "decision": "Use Firestore Map data structure for favorites",
+      "reason": "Atomic additions/deletions without array byte-mismatch issues"
+    },
+    {
+      "decision": "Local-First with 3-Way Conflict Resolution",
+      "reason": "Instant 0ms offline startup, silent auto-merge on login without data loss"
     }
   ]
 }

@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-05] - Station Photo Gallery, Firebase Auth & Local-First Firestore Favorites Sync
+
+### Added
+- **Phase 01: Socket.io Removal & Detail Loading Speedup**:
+  - Completely decommissioned `socket.io-client` dependency and Stage 2 telemetry loop.
+  - Eliminated the 4-second artificial timeout, accelerating native station detail sheet rendering to under 100ms.
+  - Added unit test `SocketIoRemovalAndDetailSpeedupTest.kt` (100% PASS).
+- **Phase 02: Station Photo Gallery & Full-Screen Lightbox Zoom Viewer**:
+  - Implemented `StationMediaUrlDecoder` with double Base64 VinFast CDN decoder, bypassing Cloudflare 403 blocks on `evcs.vn/media`.
+  - Added horizontal photo carousel `StationPhotoGallery` with smooth scroll indicators.
+  - Built full-screen lightbox `StationPhotoLightboxModal` with gestures (pinch-to-zoom up to 4x, double-tap zoom, swipe-to-dismiss).
+  - Added unit test `StationPhotoGalleryAndLightboxTest.kt` (100% PASS).
+- **Phase 03: Firebase Auth & Google Sign-In Integration**:
+  - Integrated Firebase Auth and AndroidX Credential Manager (`googleid`).
+  - Added seamless anonymous authentication fallback and 1-tap Google Sign-In flow with unified `AuthState` reactive stream.
+  - Added unit test `FirebaseAuthFlowTest.kt` (100% PASS).
+- **Phase 04: Local-First Firestore Favorites Sync & Profile UI Integration**:
+  - Created `FirestoreFavoritesDataSource` using atomic single-document Map structure at `/users/{userId}/userdata/favorites`.
+  - Implemented `FirestoreFavoritesRepository` offering 0ms Local-First offline capability and 4-branch login sync arbitration with 3 conflict resolution strategies (`MERGE`, `PREFER_CLOUD`, `PREFER_LOCAL`).
+  - Integrated `FavoritesProfileHeader` composable with guest login prompt and authenticated user profile banner.
+  - Decoupled `FavoritesScreen` and `NearbyScreen` from legacy email OTP login gates, enabling instant guest favorites persistence.
+  - Added unit test `LocalFirstFirestoreFavoritesSyncTest.kt` (100% PASS).
+- **Hardware Deployment**:
+  - Built debug APK `app-debug.apk` and installed to connected OnePlus device (`3B658D010BU00000`) via ADB MCP server.
+
 ## [2026-09-05] - Native Station Detail Sheet UI/UX & Performance Optimization
 
 ### Added

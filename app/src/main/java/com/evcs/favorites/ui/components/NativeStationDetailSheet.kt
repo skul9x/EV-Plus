@@ -10,8 +10,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,8 +24,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -57,18 +63,23 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.Station24hStats
 import com.evcs.favorites.domain.StationPortStatus
@@ -224,6 +235,20 @@ object NativeStationDetailSheetHelper {
             shareWidthDp = shareWidth,
             primaryProportion = primaryWeight / totalWeight
         )
+    }
+
+    /**
+     * Formats indicator pill string for photo carousel (e.g. "1 / 3").
+     */
+    fun formatCarouselIndicator(currentPage: Int, totalCount: Int): String {
+        return if (totalCount > 0) "${currentPage + 1} / $totalCount" else "0 / 0"
+    }
+
+    /**
+     * Determines if station photo carousel should be displayed (non-empty images).
+     */
+    fun shouldShowCarousel(images: List<String>): Boolean {
+        return images.isNotEmpty()
     }
 
     /**
@@ -683,6 +708,26 @@ fun NativeStationDetailContent(
         }
 
         // ---------------------------------------------------------------------
+        // 1.5. Photo Carousel (Auto-collapses to zero height when empty)
+        // ---------------------------------------------------------------------
+        var activeLightboxIndex by remember { mutableStateOf<Int?>(null) }
+
+        if (activeLightboxIndex != null && station.images.isNotEmpty()) {
+            StationPhotoViewerModal(
+                images = station.images,
+                initialIndex = activeLightboxIndex ?: 0,
+                onDismiss = { activeLightboxIndex = null }
+            )
+        }
+
+        if (NativeStationDetailSheetHelper.shouldShowCarousel(station.images)) {
+            StationPhotoCarousel(
+                images = station.images,
+                onImageClick = { index -> activeLightboxIndex = index }
+            )
+        }
+
+        // ---------------------------------------------------------------------
         // 2. Station Header: Name & Address
         // ---------------------------------------------------------------------
         Column(
@@ -939,65 +984,6 @@ fun NativeStationDetailContent(
                 modifier = Modifier.fillMaxWidth()
             )
         }
-
-        // ---------------------------------------------------------------------
-        // 7. 24h Usage Statistics 2x2 Grid (Native Cards, NO Chart Drawing)
-        // ---------------------------------------------------------------------
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Thống kê sử dụng 24h",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            val statCards = remember(uiState.stats24h, uiState.isLoadingStats) {
-                NativeStationDetailSheetHelper.resolveStatsGrid(
-                    uiState.stats24h,
-                    uiState.isLoadingStats
-                )
-            }
-
-            if (statCards.size >= 4) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    StatCard(
-                        model = statCards[0],
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatCard(
-                        model = statCards[1],
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    StatCard(
-                        model = statCards[2],
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatCard(
-                        model = statCards[3],
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1181,6 +1167,89 @@ fun StatCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+    }
+}
+
+/**
+ * 16:9 responsive station photo carousel with rounded corners, horizontal paging,
+ * dot indicators, and indicator pill badge.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun StationPhotoCarousel(
+    images: List<String>,
+    onImageClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (images.isEmpty()) return
+
+    val pagerState = rememberPagerState { images.size }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(images[page])
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Station photo ${page + 1}",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { onImageClick(page) }
+            )
+        }
+
+        // Indicator pill badge & dot indicators at bottom right
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color.Black.copy(alpha = 0.6f),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                if (images.size in 2..5) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        repeat(images.size) { dotIndex ->
+                            Box(
+                                modifier = Modifier
+                                    .size(if (dotIndex == pagerState.currentPage) 6.dp else 4.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (dotIndex == pagerState.currentPage) Color.White else Color.White.copy(alpha = 0.5f)
+                                    )
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = NativeStationDetailSheetHelper.formatCarouselIndicator(pagerState.currentPage, images.size),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 11.sp
+                    )
+                )
+            }
         }
     }
 }

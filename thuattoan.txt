@@ -1,0 +1,92 @@
+# THUẬT TOÁN ĐỒNG BỘ FAVORITES: LOCAL-FIRST KẾT HỢP FIREBASE FIRESTORE
+
+---
+
+## 1. MÔ HÌNH DỮ LIỆU (DATA MODEL & FIRESTORE SCHEMA)
+
+### 1.1. Cấu trúc phần tử
+Mỗi mục yêu thích gồm:
+- `id`: Chuỗi định danh duy nhất của đối tượng.
+- `added_at`: Số nguyên Unix timestamp ghi nhận thời điểm thêm.
+
+### 1.2. Phân vùng lưu trữ
+- **Tập dữ liệu Local ($L$):** Lưu trữ trong bộ nhớ máy (dưới dạng mảng các đối tượng).
+- **Tập dữ liệu Cloud ($C$):** Lưu trên Firebase Firestore.
+  - **Quy tắc Firestore tối ưu chi phí (Free Tier):** Gom toàn bộ danh sách vào **1 Document duy nhất** ứng với mỗi tài khoản để mỗi lần đồng bộ chỉ tốn đúng 1 lượt Read / 1 lượt Write.
+  - **Đường dẫn Document:** `/users/{userId}/userdata/favorites`
+  - **Cấu trúc trường trong Document:**
+    - `items`: Mảng chứa các đối tượng `[ { id, added_at }, ... ]`
+    - `updated_at`: Thời điểm cập nhật Cloud gần nhất.
+
+---
+
+## 2. THUẬT TOÁN ĐỒNG BỘ KHI ĐĂNG NHẬP (LOGIN SYNC PIPELINE)
+
+### Bước 1: Thu thập trạng thái
+1. Đọc danh sách $L$ từ bộ nhớ máy.
+2. Gửi yêu cầu `DocumentReference.get()` đến Firestore tại đường dẫn của `userId` vừa đăng nhập:
+   - Nếu Document chưa tồn tại: Gán $C = \emptyset$.
+   - Nếu Document tồn tại: Trích xuất mảng `items` gán vào tập $C$.
+
+### Bước 2: Ma trận quyết định (Decision Matrix)
+- **Nhánh 1 ($L = \emptyset$ VÀ $C = \emptyset$):**
+  - Không có dữ liệu ở cả hai nguồn -> Dừng tiến trình, không ghi gì cả.
+
+- **Nhánh 2 ($L \neq \emptyset$ VÀ $C = \emptyset$):**
+  - Người dùng có dữ liệu offline nhưng tài khoản Cloud mới tinh.
+  - **Hành động (Auto-Upload):**
+    1. Gọi Firestore `set()` đẩy toàn bộ danh sách $L$ lên Cloud.
+    2. Giữ nguyên $L$ trong máy.
+
+- **Nhánh 3 ($L = \emptyset$ VÀ $C \neq \emptyset$):**
+  - Máy chưa có gì, tài khoản Cloud đã lưu dữ liệu trước đó.
+  - **Hành động (Auto-Download):**
+    1. Ghi đè toàn bộ danh sách $C$ vào bộ nhớ máy ($L \leftarrow C$).
+
+- **Nhánh 4 ($L \neq \emptyset$ VÀ $C \neq \emptyset$):**
+  - Xung đột dữ liệu hai bên.
+  - **Hành động:** Tạm dừng luồng tự động, hiển thị bảng chọn cho người dùng với 3 chiến lược giải quyết.
+
+---
+
+## 3. THUẬT TOÁN XỬ LÝ 3 CHIẾN LƯỢC XUNG ĐỘT
+
+### Chiến lược 1: Gộp dữ liệu (Merge - Khuyến nghị mặc định)
+1. Khởi tạo một Bảng băm (Hash Map): `MergedMap` với Khóa là `id`, Giá trị là `added_at`.
+2. Đưa toàn bộ các phần tử thuộc $L$ vào `MergedMap`.
+3. Duyệt qua từng phần tử của $C$:
+   - Nếu `id` chưa có trong `MergedMap`: Thêm mới vào `MergedMap`.
+   - Nếu `id` đã tồn tại: So sánh thời gian và giữ lại giá trị nhỏ hơn `MIN(MergedMap[id], C.added_at)` (ưu tiên mốc thời gian lưu sớm nhất).
+4. Chuyển đổi `MergedMap` thành danh sách hợp nhất $M$.
+5. **Ghi phân tán hai chiều:**
+   - Ghi đè $M$ vào bộ nhớ máy.
+   - Gọi Firestore `set( { "items": M, "updated_at": NOW } )` để ghi đè mảng hợp nhất lên Cloud.
+
+### Chiến lược 2: Ưu tiên Cloud (Ghi đè Cloud -> Máy)
+1. Xóa toàn bộ tập $L$ trong bộ nhớ máy.
+2. Lưu tập $C$ từ Firestore vào bộ nhớ máy.
+3. Giữ nguyên dữ liệu trên Firestore.
+
+### Chiến lược 3: Ưu tiên Máy (Ghi đè Máy -> Cloud)
+1. Giữ nguyên tập $L$ trong bộ nhớ máy.
+2. Gọi Firestore `set( { "items": L, "updated_at": NOW } )` để xóa toàn bộ mảng cũ trên Cloud và thay thế bằng $L$.
+
+---
+
+## 4. THUẬT TOÁN TRONG QUÁ TRÌNH SỬ DỤNG (RUNTIME CRUD)
+
+### Khi người dùng bấm Thêm Favorite (`item`):
+1. **Nếu chưa đăng nhập:**
+   - Thêm `item` vào tập $L$ ở bộ nhớ máy.
+2. **Nếu đã đăng nhập:**
+   - **Bước 1 (Optimistic Update):** Thêm `item` vào bộ nhớ máy $L$ trước để giao diện cập nhật ngay lập tức.
+   - **Bước 2 (Sync Cloud):** Gọi lệnh cập nhật Firestore bằng thao tác mảng:
+     - `update( "items", FieldValue.arrayUnion(item) )`
+     - *(Nếu Document chưa tồn tại thì fallback về `set()` để khởi tạo)*.
+
+### Khi người dùng bấm Bỏ Favorite (`item_id`):
+1. **Nếu chưa đăng nhập:**
+   - Xóa phần tử khớp `item_id` khỏi tập $L$ ở bộ nhớ máy.
+2. **Nếu đã đăng nhập:**
+   - **Bước 1:** Xóa phần tử khỏi bộ nhớ máy $L$ trước.
+   - **Bước 2:** Gọi Firestore `update( "items", FieldValue.arrayRemove(target_item) )` để gỡ phần tử khỏi Cloud.

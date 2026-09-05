@@ -5,18 +5,13 @@ import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource
-import com.evcs.favorites.data.telemetry.SocketClient
-import com.evcs.favorites.data.telemetry.SocketClientFactory
 import com.evcs.favorites.domain.Station24hStatsCalculator
-import io.socket.client.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -300,71 +295,17 @@ class EvcsTelemetryRepositoryAndStatsEngineTest {
     }
 
     // =========================================================================
-    // 3. Socket.io Protocol & Parsing via FakeSocketClient
+    // 3. Deprecated 24h History & Stats Stubs
     // =========================================================================
 
-    private class FakeSocketClient(
-        private val onConnectBehavior: (FakeSocketClient) -> Unit = {}
-    ) : SocketClient {
-        private val listeners = mutableMapOf<String, MutableList<(Array<*>) -> Unit>>()
-        val emittedEvents = mutableListOf<Pair<String, List<Any?>>>()
-        var isConnected = false
-        var isDisconnected = false
-
-        override fun on(event: String, listener: (Array<*>) -> Unit): SocketClient {
-            listeners.getOrPut(event) { mutableListOf() }.add(listener)
-            return this
-        }
-
-        override fun emit(event: String, vararg args: Any?): SocketClient {
-            emittedEvents.add(Pair(event, args.toList()))
-            return this
-        }
-
-        override fun connect(): SocketClient {
-            isConnected = true
-            onConnectBehavior(this)
-            return this
-        }
-
-        override fun disconnect(): SocketClient {
-            isConnected = false
-            isDisconnected = true
-            return this
-        }
-
-        override fun off(): SocketClient {
-            listeners.clear()
-            return this
-        }
-
-        fun trigger(event: String, vararg args: Any?) {
-            listeners[event]?.forEach { it(args) }
-        }
-    }
-
     @Test
-    fun fetch24hHistory_subscribesAndParsesSocketHistoryData() = runTest(testDispatcher) {
-        var fakeClientRef: FakeSocketClient? = null
-        val socketFactory = SocketClientFactory { _, _ ->
-            FakeSocketClient { client ->
-                fakeClientRef = client
-                // Trigger connect
-                client.trigger(io.socket.client.Socket.EVENT_CONNECT)
-
-                // Verify client emitted subscribe and history
-                val historyPayload = JSONArray().apply {
-                    put(JSONArray().put(1725444000000L).put(4))
-                    put(JSONArray().put(1725447600000L).put(6))
-                }
-                client.trigger("history_data", historyPayload)
-            }
-        }
-
+    fun fetch24hHistory_stub_returnsEmptyList() = runTest(testDispatcher) {
+        val baseUrl = mockWebServer.url("/").toString().removeSuffix("/")
         val dataSource = EvcsTelemetryDataSource(
             sessionManager = testSessionManager,
             client = okHttpClient,
-            socketFactory = socketFactory,
+            baseUrl = baseUrl,
+            socketBaseUrl = baseUrl,
             ioDispatcher = testDispatcher
         )
         val repository = EvcsTelemetryRepository(dataSource, ioDispatcher = testDispatcher)
@@ -372,45 +313,32 @@ class EvcsTelemetryRepositoryAndStatsEngineTest {
         val result = repository.fetch24hHistory("station_test", "api_token_test")
         assertTrue(result.isSuccess)
         val points = result.getOrThrow()
-        assertEquals(2, points.size)
-        assertEquals(Pair(1725444000000L, 4), points[0])
-        assertEquals(Pair(1725447600000L, 6), points[1])
-
-        // Verify subscribe and history emit
-        val fakeClient = fakeClientRef!!
-        assertTrue(fakeClient.emittedEvents.any { it.first == "subscribe" && it.second.contains("station_test") })
-        assertTrue(fakeClient.emittedEvents.any { it.first == "history" })
-        assertTrue(fakeClient.isDisconnected) // Immediate disconnect after receiving data
+        assertTrue(points.isEmpty())
     }
 
     @Test
-    fun fetch24hStats_gracefulFallback_returnsNullOnSocketErrorOrTimeout() = runTest(testDispatcher) {
-        val failingSocketFactory = SocketClientFactory { _, _ ->
-            FakeSocketClient { client ->
-                client.trigger(io.socket.client.Socket.EVENT_CONNECT_ERROR, "Simulated connection refused")
-            }
-        }
-
+    fun fetch24hStats_stub_returnsNull() = runTest(testDispatcher) {
+        val baseUrl = mockWebServer.url("/").toString().removeSuffix("/")
         val dataSource = EvcsTelemetryDataSource(
             sessionManager = testSessionManager,
             client = okHttpClient,
-            socketFactory = failingSocketFactory,
+            baseUrl = baseUrl,
+            socketBaseUrl = baseUrl,
             ioDispatcher = testDispatcher
         )
         val repository = EvcsTelemetryRepository(dataSource, ioDispatcher = testDispatcher)
 
-        // Must succeed with null stats instead of throwing or crashing
-        val statsResult = repository.fetch24hStats("st_timeout", "token_abc", totalPorts = 8)
+        val statsResult = repository.fetch24hStats("st_test", "token_abc", totalPorts = 8)
         assertTrue(statsResult.isSuccess)
         assertNull(statsResult.getOrNull())
     }
 
     // =========================================================================
-    // 4. End-to-End Snapshot Orchestration
+    // 4. End-to-End Streamlined HTTP Snapshot Orchestration
     // =========================================================================
 
     @Test
-    fun fetchStationTelemetrySnapshot_orchestratesTokensChargingAndStats() = runTest(testDispatcher) {
+    fun fetchStationTelemetrySnapshot_orchestratesTokensAndChargingWithoutSocket() = runTest(testDispatcher) {
         // Enqueue 1: Token handshake
         val tokensJson = """
             {
@@ -430,24 +358,12 @@ class EvcsTelemetryRepositoryAndStatsEngineTest {
         """.trimIndent()
         mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(chargingJson))
 
-        val socketFactory = SocketClientFactory { _, _ ->
-            FakeSocketClient { client ->
-                client.trigger(io.socket.client.Socket.EVENT_CONNECT)
-                val jsonArr = JSONArray().apply {
-                    put(JSONArray().put(1725444000000L).put(3))
-                    put(JSONArray().put(1725447600000L).put(5))
-                }
-                client.trigger("history_data", jsonArr)
-            }
-        }
-
         val baseUrl = mockWebServer.url("/").toString().removeSuffix("/")
         val dataSource = EvcsTelemetryDataSource(
             sessionManager = testSessionManager,
             client = okHttpClient,
             baseUrl = baseUrl,
             socketBaseUrl = baseUrl,
-            socketFactory = socketFactory,
             ioDispatcher = testDispatcher
         )
         val repository = EvcsTelemetryRepository(dataSource, ioDispatcher = testDispatcher)
@@ -491,10 +407,7 @@ class EvcsTelemetryRepositoryAndStatsEngineTest {
         assertEquals(2, port60.availablePorts)  // 4 total - 2 busy = 2 available
         assertEquals(4, port60.totalPorts)
 
-        // 4. 24h Stats
-        assertNotNull(snapshot.stats24h)
-        assertEquals(5, snapshot.stats24h!!.peakUsage)
-        assertEquals(4, snapshot.stats24h!!.avgUsage) // average (3 + 5) / 2 = 4
-        assertEquals(67, snapshot.stats24h!!.fillRate) // 4 / 6 * 100 = 66.6% -> 67%
+        // 4. 24h Stats are null (Zero socket overhead)
+        assertNull(snapshot.stats24h)
     }
 }

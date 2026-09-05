@@ -62,6 +62,9 @@ import com.evcs.favorites.ui.theme.EmeraldContainerDark
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 import com.evcs.favorites.ui.theme.StatusOffline
 
+import com.evcs.favorites.domain.model.AuthUser
+import com.evcs.favorites.ui.components.FavoritesProfileHeader
+
 /**
  * Main Favorites Screen presenting the list of saved EV charging stations
  * with live availability metrics, sync status, and responsive layout.
@@ -85,6 +88,10 @@ fun FavoritesScreen(
     routingSettings: RoutingSettings = RoutingSettings(),
     onSaveRoutingSettings: (RoutingSettings) -> Unit = {},
     onValidateGoogleApiKey: (suspend (String) -> Result<Boolean>)? = null,
+    authUser: AuthUser? = null,
+    onSignInClick: () -> Unit = {},
+    onSignOutClick: () -> Unit = onLogout,
+    isSyncing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showRoutingSettings by remember { mutableStateOf(false) }
@@ -199,11 +206,29 @@ fun FavoritesScreen(
                             onNavigateClick = onNavigateClick,
                             onRemoveFavoriteClick = onRemoveFavoriteClick,
                             onStationClick = onStationClick,
-                            onRefresh = onRefresh
+                            onRefresh = onRefresh,
+                            authUser = authUser,
+                            onSignInClick = onSignInClick,
+                            onSignOutClick = onSignOutClick,
+                            isSyncing = isSyncing
                         )
                     }
 
-                    is FavoritesUiState.LoggedOut,
+                    is FavoritesUiState.LoggedOut -> {
+                        FavoritesListContent(
+                            stations = emptyList(),
+                            isRefreshing = false,
+                            onNavigateClick = onNavigateClick,
+                            onRemoveFavoriteClick = onRemoveFavoriteClick,
+                            onStationClick = onStationClick,
+                            onRefresh = onRefresh,
+                            authUser = authUser,
+                            onSignInClick = onSignInClick,
+                            onSignOutClick = onSignOutClick,
+                            isSyncing = isSyncing
+                        )
+                    }
+
                     is FavoritesUiState.RequestingOtp,
                     is FavoritesUiState.VerifyingOtp -> {
                         // Handled at navigation/host level
@@ -259,6 +284,10 @@ private fun FavoritesListContent(
     onRemoveFavoriteClick: (Station) -> Unit,
     onStationClick: (Station) -> Unit,
     onRefresh: () -> Unit,
+    authUser: AuthUser? = null,
+    onSignInClick: () -> Unit = {},
+    onSignOutClick: () -> Unit = {},
+    isSyncing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -272,6 +301,13 @@ private fun FavoritesListContent(
                 modifier = Modifier.fillMaxWidth()
             )
         }
+
+        FavoritesProfileHeader(
+            authUser = authUser,
+            onSignInClick = onSignInClick,
+            onSignOutClick = onSignOutClick,
+            isSyncing = isSyncing
+        )
 
         if (stations.isEmpty()) {
             EmptyFavoritesContent(onRefresh = onRefresh)

@@ -68,12 +68,22 @@ class MainActivity : ComponentActivity() {
 
     private val sessionManager by lazy { SessionManager.create(applicationContext) }
     private val apiClient by lazy { EvcsApiClient(sessionManager) }
+    private val authService by lazy { com.evcs.favorites.data.auth.FirebaseAuthManager() }
+    private val firestoreDataSource by lazy { com.evcs.favorites.data.repository.FirestoreFavoritesDataSource.create() }
+    val firestoreFavoritesRepository by lazy {
+        com.evcs.favorites.data.repository.FirestoreFavoritesRepository(
+            remoteDataSource = firestoreDataSource,
+            localStorage = PlainSharedPrefsStorage.getInstance(applicationContext),
+            authService = authService
+        )
+    }
     private val repository by lazy {
         EvcsRepository(
             apiClient = apiClient,
             cacheStorage = PlainSharedPrefsStorage.getInstance(applicationContext),
             legacyStorage = EncryptedSharedPrefsStorage.getInstance(applicationContext),
-            autoResolveCoordinates = true
+            autoResolveCoordinates = true,
+            firestoreFavoritesRepository = firestoreFavoritesRepository
         )
     }
     private val authEngine by lazy { AuthEngine(sessionManager) }
@@ -91,6 +101,7 @@ class MainActivity : ComponentActivity() {
         FavoritesViewModel.provideFactory(
             repository = repository,
             authEngine = authEngine,
+            authService = authService,
             locationService = locationService,
             routingPreferencesManager = routingPreferencesManager,
             telemetryRepository = telemetryRepository
@@ -194,50 +205,58 @@ fun FavoritesApp(
         ) {
             when (currentTab) {
                 AppTab.FAVORITES -> {
-                    if (!isLoggedIn) {
-                        LoginScreen(
-                            uiState = uiState,
-                            initialEmail = viewModel.email,
-                            onRequestOtp = { email -> viewModel.requestOtp(email) },
-                            onVerifyOtp = { otp -> viewModel.verifyOtp(otp) },
-                            onBackToEmail = { viewModel.backToEmailInput() }
-                        )
-                    } else {
-                        val selectedStation by viewModel.selectedStationForDetail.collectAsStateWithLifecycle()
-                        val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
+                    val selectedStation by viewModel.selectedStationForDetail.collectAsStateWithLifecycle()
+                    val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
+                    val authState by viewModel.authState.collectAsStateWithLifecycle()
+                    val authUser = (authState as? com.evcs.favorites.domain.model.AuthState.Authenticated)?.user ?: viewModel.currentUser
+                    val activity = context as? ComponentActivity
 
-                        FavoritesScreen(
-                            uiState = uiState,
-                            onRefresh = { viewModel.refresh() },
-                            onLogout = { viewModel.logout() },
-                            onNavigateClick = { station ->
-                                MapNavigator.navigate(
-                                    context = context,
-                                    latitude = station.latitude,
-                                    longitude = station.longitude,
-                                    stationName = station.name
-                                )
-                            },
-                            onRemoveFavoriteClick = { station ->
-                                viewModel.removeFavorite(station.id)
-                            },
-                            onStationClick = { station ->
-                                viewModel.selectStationForDetail(station)
-                            },
-                            selectedStationForDetail = selectedStation,
-                            onDismissDetail = {
-                                viewModel.dismissStationDetail()
-                            },
-                            stationDetailState = stationDetailState,
-                            onRefreshDetail = {
-                                viewModel.refreshStationDetail()
-                            },
-                            cookieHeader = viewModel.getCookieHeader(),
-                            routingSettings = routingSettings,
-                            onSaveRoutingSettings = { viewModel.updateRoutingSettings(it) },
-                            onValidateGoogleApiKey = { viewModel.validateGoogleApiKey(it) }
-                        )
-                    }
+                    FavoritesScreen(
+                        uiState = uiState,
+                        onRefresh = { viewModel.refresh() },
+                        onLogout = { viewModel.logout(activity) },
+                        onNavigateClick = { station ->
+                            MapNavigator.navigate(
+                                context = context,
+                                latitude = station.latitude,
+                                longitude = station.longitude,
+                                stationName = station.name
+                            )
+                        },
+                        onRemoveFavoriteClick = { station ->
+                            viewModel.removeFavorite(station.id)
+                        },
+                        onStationClick = { station ->
+                            viewModel.selectStationForDetail(station)
+                        },
+                        selectedStationForDetail = selectedStation,
+                        onDismissDetail = {
+                            viewModel.dismissStationDetail()
+                        },
+                        stationDetailState = stationDetailState,
+                        onRefreshDetail = {
+                            viewModel.refreshStationDetail()
+                        },
+                        cookieHeader = viewModel.getCookieHeader(),
+                        routingSettings = routingSettings,
+                        onSaveRoutingSettings = { viewModel.updateRoutingSettings(it) },
+                        onValidateGoogleApiKey = { viewModel.validateGoogleApiKey(it) },
+                        authUser = authUser,
+                        onSignInClick = {
+                            activity?.let { act ->
+                                act.lifecycleScope.launch {
+                                    viewModel.authService?.signInWithGoogle(act)
+                                }
+                            }
+                        },
+                        onSignOutClick = {
+                            activity?.let { act ->
+                                act.lifecycleScope.launch {
+                                    viewModel.authService?.signOut(act)
+                                }
+                            }
+                        }
+                    )
                 }
 
                 AppTab.NEARBY -> {

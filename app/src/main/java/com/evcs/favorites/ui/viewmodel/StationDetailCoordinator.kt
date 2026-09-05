@@ -10,22 +10,19 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Coordinator orchestrating the on-demand EVCS station detail telemetry pipeline.
  *
  * Provides:
  * - Instant bottom sheet opening (0ms) with static ports.
- * - Stage 1 (~200ms): Token handshake, live charging ports, ticker sanitization, community rating.
- * - Stage 2 (~500-1200ms): Socket.io 24h history and usage statistics with 4s timeout.
+ * - Fast HTTP Stage 1 (~150-200ms): Token handshake, live charging ports, ticker sanitization, community rating.
  * - Stage 3: Fire-and-forget sync ping.
  * - Clean lifecycle cancellation upon sheet dismissal with zero background overhead.
  */
@@ -34,7 +31,7 @@ class StationDetailCoordinator(
     private val telemetryRepository: EvcsTelemetryRepository,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
-    private val statsTimeoutMs: Long = 4000L
+    @Suppress("UNUSED_PARAMETER") statsTimeoutMs: Long = 4000L
 ) {
 
     private val _stationDetailState = MutableStateFlow(StationDetailUiState())
@@ -93,7 +90,7 @@ class StationDetailCoordinator(
     }
 
     /**
-     * Manually triggers refresh of live charging telemetry and 24h usage statistics.
+     * Manually triggers refresh of live charging telemetry.
      */
     fun refreshStationDetail(): Job? {
         val currentStation = _stationDetailState.value.station ?: return null
@@ -119,7 +116,7 @@ class StationDetailCoordinator(
     }
 
     /**
-     * Dismisses the detail sheet, cancelling any active network/socket jobs and resetting state.
+     * Dismisses the detail sheet, cancelling any active network jobs and resetting state.
      */
     fun dismissStationDetail() {
         activeJob?.cancel()
@@ -152,86 +149,53 @@ class StationDetailCoordinator(
                 it.copy(rating = tokens.rating)
             }
 
-            // Concurrently execute Stage 1b (Live Charging) and Stage 2 (24h Stats)
-            coroutineScope {
-                // Stage 1b: Live Charging Telemetry (~200ms)
-                launch {
-                    try {
-                        val chargingResult = withContext(ioDispatcher) {
-                            telemetryRepository.fetchLiveCharging(station.id, tokens.chargeToken)
-                        }
-                        if (chargingResult.isSuccess) {
-                            val telemetry = chargingResult.getOrThrow()
-                            val livePorts = if (station.powers.isNotEmpty()) {
-                                StationTelemetryParser.derivePortStatuses(station.powers, telemetry.busyByKw)
-                            } else {
-                                StationTelemetryParser.derivePortStatuses(station.connectors, telemetry.busyByKw)
-                            }
-                            _stationDetailState.update {
-                                it.copy(
-                                    isLoadingTelemetry = false,
-                                    telemetry = telemetry,
-                                    cleanForecast = telemetry.cleanForecast,
-                                    portStatuses = livePorts
-                                )
-                            }
+            // Stage 1b: Live Charging Telemetry (~150-200ms)
+            try {
+                val chargingResult = withContext(ioDispatcher) {
+                    telemetryRepository.fetchLiveCharging(station.id, tokens.chargeToken)
+                }
+                if (chargingResult.isSuccess) {
+                    val telemetry = chargingResult.getOrThrow()
+                    val livePorts = if (station.powers.isNotEmpty()) {
+                        StationTelemetryParser.derivePortStatuses(station.powers, telemetry.busyByKw)
+                    } else {
+                        StationTelemetryParser.derivePortStatuses(station.connectors, telemetry.busyByKw)
+                    }
+                    _stationDetailState.update {
+                        it.copy(
+                            isLoadingTelemetry = false,
+                            isLoadingStats = false,
+                            telemetry = telemetry,
+                            cleanForecast = telemetry.cleanForecast,
+                            portStatuses = livePorts
+                        )
+                    }
 
-                            // Stage 3: Telemetry Ping fire-and-forget
-                            val totalBusy = livePorts.sumOf { it.busyCount }
-                            this@StationDetailCoordinator.coroutineScope.launch(ioDispatcher) {
-                                try {
-                                    telemetryRepository.sendTelemetryUpdate(station.id, tokens.apiToken, totalBusy)
-                                } catch (_: Exception) {
-                                    // Ignored: fire-and-forget
-                                }
-                            }
-                        } else {
-                            _stationDetailState.update {
-                                it.copy(isLoadingTelemetry = false)
-                            }
+                    // Stage 3: Telemetry Ping fire-and-forget
+                    val totalBusy = livePorts.sumOf { it.busyCount }
+                    coroutineScope.launch(ioDispatcher) {
+                        try {
+                            telemetryRepository.sendTelemetryUpdate(station.id, tokens.apiToken, totalBusy)
+                        } catch (_: Exception) {
+                            // Ignored: fire-and-forget
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        _stationDetailState.update {
-                            it.copy(isLoadingTelemetry = false)
-                        }
+                    }
+                } else {
+                    _stationDetailState.update {
+                        it.copy(
+                            isLoadingTelemetry = false,
+                            isLoadingStats = false
+                        )
                     }
                 }
-
-                // Stage 2: 24h Usage Stats (~500-1200ms) with timeout
-                launch {
-                    try {
-                        val stats = withTimeoutOrNull(statsTimeoutMs) {
-                            val historyResult = withContext(ioDispatcher) {
-                                telemetryRepository.fetch24hHistory(station.id, tokens.apiToken)
-                            }
-                            if (historyResult.isSuccess) {
-                                val points = historyResult.getOrNull().orEmpty()
-                                val totalPorts = if (station.totalPlugs > 0) {
-                                    station.totalPlugs
-                                } else {
-                                    val currentPorts = _stationDetailState.value.portStatuses
-                                    if (currentPorts.isNotEmpty()) currentPorts.sumOf { it.totalPorts } else 1
-                                }
-                                telemetryRepository.calculate24hStats(points, totalPorts)
-                            } else {
-                                null
-                            }
-                        }
-                        _stationDetailState.update {
-                            it.copy(
-                                isLoadingStats = false,
-                                stats24h = stats
-                            )
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        _stationDetailState.update {
-                            it.copy(isLoadingStats = false)
-                        }
-                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _stationDetailState.update {
+                    it.copy(
+                        isLoadingTelemetry = false,
+                        isLoadingStats = false
+                    )
                 }
             }
         } catch (e: CancellationException) {

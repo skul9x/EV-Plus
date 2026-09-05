@@ -13,7 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Composite telemetry snapshot containing tokens, live status, derived ports, and 24h statistics.
+ * Composite telemetry snapshot containing tokens, live status, derived ports, and optional 24h statistics.
  */
 data class StationDetailTelemetrySnapshot(
     val tokens: StationAccessTokens,
@@ -50,13 +50,15 @@ open class EvcsTelemetryRepository(
     }
 
     /**
-     * Step 3: Fetches 24-hour time-series history points via Socket.io.
+     * Step 3: Deprecated stub for 24-hour time-series history points.
+     * Retained for test suite compilation safety; always returns success with empty list.
      */
+    @Deprecated("Removed Socket.io 24h history in favor of fast HTTP telemetry")
     open suspend fun fetch24hHistory(
         stationId: String,
         apiToken: String
     ): Result<List<Pair<Long, Int>>> {
-        return dataSource.fetch24hHistory(stationId, apiToken)
+        return Result.success(emptyList())
     }
 
     /**
@@ -70,24 +72,16 @@ open class EvcsTelemetryRepository(
     }
 
     /**
-     * Fetches 24h history and calculates statistics.
-     * Enforces graceful degradation: if Socket.io times out or errors, returns success with null
-     * stats to ensure port availability and charging details remain responsive.
+     * Deprecated stub for 24h stats calculation.
+     * Retained for test suite compilation safety; always returns success with null.
      */
+    @Deprecated("Removed Socket.io 24h history stats in favor of fast HTTP telemetry")
     open suspend fun fetch24hStats(
         stationId: String,
         apiToken: String,
         totalPorts: Int
     ): Result<Station24hStats?> = withContext(ioDispatcher) {
-        val historyResult = dataSource.fetch24hHistory(stationId, apiToken)
-        if (historyResult.isSuccess) {
-            val points = historyResult.getOrNull().orEmpty()
-            val stats = statsCalculator.calculate(points, totalPorts)
-            Result.success(stats)
-        } else {
-            // Graceful fallback: return null stats without failing or crashing
-            Result.success(null)
-        }
+        Result.success(null)
     }
 
     /**
@@ -102,8 +96,8 @@ open class EvcsTelemetryRepository(
     }
 
     /**
-     * Orchestrates token retrieval, live charging telemetry, port status derivation,
-     * and 24h statistics calculation into a unified snapshot.
+     * Orchestrates token retrieval, live charging telemetry, and port status derivation
+     * into a unified snapshot with zero Socket.io overhead.
      */
     open suspend fun fetchStationTelemetrySnapshot(
         station: Station,
@@ -128,15 +122,12 @@ open class EvcsTelemetryRepository(
                 StationTelemetryParser.derivePortStatuses(station.connectors, telemetry.busyByKw)
             }
 
-            val effectiveTotalPorts = if (totalPorts > 0) totalPorts else portStatuses.sumOf { it.totalPorts }
-            val stats24h = fetch24hStats(station.id, tokens.apiToken, effectiveTotalPorts).getOrNull()
-
             Result.success(
                 StationDetailTelemetrySnapshot(
                     tokens = tokens,
                     telemetry = telemetry,
                     portStatuses = portStatuses,
-                    stats24h = stats24h
+                    stats24h = null
                 )
             )
         } catch (e: Exception) {

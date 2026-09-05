@@ -10,6 +10,7 @@ import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.util.SingleFlight
 import com.evcs.favorites.util.StationNameSanitizer
+import com.evcs.favorites.util.VinFastCdnUrlDecoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +57,8 @@ open class EvcsRepository(
     private val delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
-    private val eagerLoadCache: Boolean = false
+    private val eagerLoadCache: Boolean = false,
+    val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null
 ) {
 
     val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
@@ -99,10 +101,10 @@ open class EvcsRepository(
     }
 
     private val _favoritesState = MutableStateFlow<List<Station>>(emptyList())
-    val favoritesState: StateFlow<List<Station>> = _favoritesState.asStateFlow()
+    val favoritesState: StateFlow<List<Station>> = firestoreFavoritesRepository?.favoritesState ?: _favoritesState.asStateFlow()
 
     private val _favoriteIdsState = MutableStateFlow<Set<String>>(emptySet())
-    val favoriteIdsState: StateFlow<Set<String>> = _favoriteIdsState.asStateFlow()
+    val favoriteIdsState: StateFlow<Set<String>> = firestoreFavoritesRepository?.favoriteIdsState ?: _favoriteIdsState.asStateFlow()
 
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
@@ -198,6 +200,9 @@ open class EvcsRepository(
      * Retrieves cached favorites list from persistent storage if available.
      */
     fun getCachedFavorites(): List<Station> {
+        if (firestoreFavoritesRepository != null) {
+            return firestoreFavoritesRepository.getCachedFavorites()
+        }
         var rawJson = cacheStorage?.getString(KEY_OFFLINE_FAVORITES)
         if (rawJson == null && legacyStorage != null) {
             val legacyJson = legacyStorage.getString(KEY_OFFLINE_FAVORITES)
@@ -251,6 +256,17 @@ open class EvcsRepository(
         userLon: Double? = null,
         autoResolveUnknownCoordinates: Boolean = autoResolveCoordinates
     ): Result<List<Station>> {
+        if (firestoreFavoritesRepository != null) {
+            val cached = firestoreFavoritesRepository.favoritesState.value.ifEmpty {
+                firestoreFavoritesRepository.getCachedFavorites()
+            }
+            val enriched = if (userLat != null && userLon != null) {
+                DistanceCalculator.attachDistances(cached, userLat, userLon)
+            } else {
+                cached
+            }
+            return Result.success(enriched)
+        }
         val flightKey = "favorites_${userLat ?: 0.0}_${userLon ?: 0.0}_$autoResolveUnknownCoordinates"
         return singleFlight.execute(flightKey) {
             getFavoritesInternal(userLat, userLon, autoResolveUnknownCoordinates)
@@ -431,6 +447,10 @@ open class EvcsRepository(
             val domainPowers = search.evsePowers.map { it.toDomainPowerPort() }
             val availablePlugs = domainPowers.sumOf { it.availablePlugs }
             val totalPlugs = domainPowers.sumOf { it.totalPlugs }
+            val decodedImages = VinFastCdnUrlDecoder.decodeList(search.media)
+            val fallbackFavImages = fav.image?.let { listOf(it) } ?: emptyList()
+            val resolvedImages = if (decodedImages.isNotEmpty()) decodedImages else fallbackFavImages
+            val resolvedImage = decodedImages.firstOrNull() ?: fav.image
 
             Station(
                 id = fav.locationId,
@@ -444,7 +464,8 @@ open class EvcsRepository(
                 powers = domainPowers,
                 totalAvailablePlugs = availablePlugs,
                 totalPlugs = totalPlugs,
-                image = fav.image ?: search.media?.firstOrNull(),
+                images = resolvedImages,
+                image = resolvedImage,
                 isPublic = search.isPublic ?: true,
                 isFreeParking = search.isFreeParking ?: true,
                 workingTimeDescription = search.workingTimeDescription ?: "24/7",
@@ -453,6 +474,7 @@ open class EvcsRepository(
         } else {
             // Station outside search radius or search failed - graceful fallback
             val fallbackPowers = parseConnectorsToPowers(fav.connectors)
+            val fallbackFavImages = fav.image?.let { listOf(it) } ?: emptyList()
             Station(
                 id = fav.locationId,
                 name = StationNameSanitizer.sanitize(fav.name),
@@ -465,6 +487,7 @@ open class EvcsRepository(
                 powers = fallbackPowers,
                 totalAvailablePlugs = 0,
                 totalPlugs = fallbackPowers.sumOf { it.totalPlugs },
+                images = fallbackFavImages,
                 image = fav.image
             )
         }
@@ -476,6 +499,9 @@ open class EvcsRepository(
      * Rolls back in-memory state and persistent storage if cloud sync fails.
      */
     open suspend fun addFavoriteStation(station: Station): Result<Unit> = withContext(ioDispatcher) {
+        if (firestoreFavoritesRepository != null) {
+            return@withContext firestoreFavoritesRepository.addFavoriteStation(station)
+        }
         val previousFavorites = _favoritesState.value
         val previousIds = _favoriteIdsState.value
         try {
@@ -516,6 +542,9 @@ open class EvcsRepository(
      * Rolls back in-memory state and persistent storage if cloud sync fails.
      */
     open suspend fun removeFavoriteStation(locationId: String): Result<Unit> = withContext(ioDispatcher) {
+        if (firestoreFavoritesRepository != null) {
+            return@withContext firestoreFavoritesRepository.removeFavoriteStation(locationId)
+        }
         val previousFavorites = _favoritesState.value
         val previousIds = _favoriteIdsState.value
         try {
@@ -647,6 +676,8 @@ fun SearchStationRaw.toDomainStation(
         distance
     }
 
+    val decodedImages = VinFastCdnUrlDecoder.decodeList(media)
+
     return Station(
         id = effectiveLocationId,
         name = StationNameSanitizer.sanitize(stationName),
@@ -659,7 +690,8 @@ fun SearchStationRaw.toDomainStation(
         powers = domainPowers,
         totalAvailablePlugs = availablePlugs,
         totalPlugs = totalPlugs,
-        image = media?.firstOrNull(),
+        images = decodedImages,
+        image = decodedImages.firstOrNull(),
         isPublic = isPublic ?: true,
         isFreeParking = isFreeParking ?: true,
         workingTimeDescription = workingTimeDescription ?: "24/7",

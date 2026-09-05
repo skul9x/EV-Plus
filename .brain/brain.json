@@ -1,195 +1,56 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "awf_version": "4.0.2",
-    "created_at": "2026-09-03T11:05:00+07:00",
-    "updated_at": "2026-09-05T16:25:00+07:00"
+    "awf_version": "4.0.2"
   },
   "project": {
-    "name": "EV+",
-    "type": "Android Application (Native Jetpack Compose)",
-    "status": "Production-Ready MVP + Native Compose Station Detail Bottom Sheet (Optimized UI/UX, Performance Gating & Live Sync Animation), Multi-Tier Routing (Google/OSRM/Haversine), Smart Filter (AC/DC/Custom) with Initial Screen Pre-Filter, Realtime On-Demand GPS Refresh, VinFast Canonical URL Builder & Telemetry Engine"
+    "name": "EV-Plus",
+    "type": "Android App",
+    "status": "In Progress"
   },
   "tech_stack": {
-    "language": "Kotlin 1.9.23",
-    "ui_framework": "Jetpack Compose (Material 3)",
-    "architecture": "MVVM + Clean Architecture / Repository Pattern",
-    "networking": "OkHttp 4.12.0 + Kotlinx Serialization JSON 1.6.3 + Socket.io Engine for 24h History Stats",
-    "security": "Jetpack Security Crypto (EncryptedSharedPreferences)",
-    "location": "Google Play Services Location (FusedLocationProviderClient)",
-    "routing_engines": "Google Routes API v2, OSRM Table Service, Haversine baseline",
-    "filter_persistence": "NearbyFilterPreferences & SmartFilterPreferences via SessionStorage",
-    "resilience_patterns": "Zero-Leak Native Bottom Sheet Lifecycle, Infinite Shimmer Gating, Refresh Debouncing & Multi-tap Prevention, SingleFlight Concurrency, Timeout Safeguards (4s), Cloudflare HTTP 429 Protection, Real-time GPS Freshness Guard",
-    "build_tool": "Gradle 8.7 (Kotlin DSL)",
-    "min_sdk": 26,
-    "target_sdk": 34
+    "frontend": {
+      "language": "Kotlin",
+      "ui_framework": "Jetpack Compose",
+      "image_loader": "Coil Compose 2.6.0",
+      "auth_library": "AndroidX Credentials / Google ID"
+    },
+    "backend": {
+      "service": "Firebase (Firestore + Auth)",
+      "telemetry_source": "EVCS Public API (REST, direct VinFast CDN)"
+    },
+    "database": {
+      "cloud": "Cloud Firestore (users/{userId}/userdata/favorites)",
+      "local": "Local-First SharedPreferences / JSON Cache"
+    }
   },
-  "api_endpoints": [
-    {
-      "path": "POST /reward.html",
-      "method": "POST",
-      "headers": {
-        "X-Partial": "reward"
-      },
-      "purpose": "Trích xuất token CSRF ban đầu và PHPSESSID từ script window.EVCS_REWARD"
-    },
-    {
-      "path": "POST /reward.html (action: send_otp)",
-      "method": "POST",
-      "headers": {
-        "Content-Type": "application/json"
-      },
-      "purpose": "Gửi OTP 6 chữ số qua email (không kèm header X-Partial để nhận JSON phản hồi)"
-    },
-    {
-      "path": "POST /reward.html (action: verify_otp)",
-      "method": "POST",
-      "headers": {
-        "Content-Type": "application/json"
-      },
-      "purpose": "Xác thực OTP, server trả về cookie đăng nhập dài hạn evcs (1 năm)"
-    },
-    {
-      "path": "POST /favorite.html (fetch)",
-      "method": "POST",
-      "headers": {
-        "X-Partial": "fav",
-        "Cookie": "PHPSESSID=...; evcs=...; evcs_did=..."
-      },
-      "purpose": "Lấy danh sách trạm sạc yêu thích dạng JSON của người dùng"
-    },
-    {
-      "path": "POST /favorite.html (action: save)",
-      "method": "POST",
-      "headers": {
-        "Content-Type": "application/json",
-        "Cookie": "PHPSESSID=..."
-      },
-      "purpose": "Lưu và đồng bộ danh sách trạm yêu thích 2 chiều lên cloud EVCS"
-    },
-    {
-      "path": "POST /search?t=eepe5dp9zpipl102",
-      "method": "POST",
-      "security": "HMAC-SHA256 signature (Timestamp, Nonce, AppSecret)",
-      "purpose": "Tìm kiếm trạm sạc xung quanh tọa độ GPS và làm giàu trạng thái cổng sạc/trụ khả dụng theo thời gian thực (payload chỉ gồm lat/lng để backend trả đủ trạm AC & DC)"
-    },
-    {
-      "path": "POST https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix",
-      "method": "POST",
-      "headers": {
-        "X-Goog-Api-Key": "...",
-        "X-Goog-FieldMask": "originIndex,destinationIndex,status,condition,distanceMeters,duration,staticDuration"
-      },
-      "purpose": "Tính ma trận khoảng cách và thời gian lái xe thực tế kèm live traffic condition (Google Routes API v2)"
-    },
-    {
-      "path": "GET https://router.project-osrm.org/table/v1/driving/{coords}",
-      "method": "GET",
-      "purpose": "Tính toán ma trận khoảng cách đường bộ và thời gian di chuyển dự kiến miễn phí không cần API key"
-    },
-    {
-      "path": "POST /{station-slug}.html (hoặc /tram-sac-vinfast-{slug}-{locationId}.html)",
-      "method": "POST",
-      "headers": {
-        "X-Partial": "user"
-      },
-      "purpose": "Bắt tay lấy chargeToken, apiToken, rating cộng đồng (avg, count) cho Native Station Detail Bottom Sheet (canonical URL đã chuẩn hóa chống 404)"
-    },
-    {
-      "path": "POST /charging",
-      "method": "POST",
-      "headers": {
-        "Content-Type": "application/json",
-        "x-t": "chargeToken"
-      },
-      "purpose": "Lấy live telemetry số xe đang sạc phân bổ theo từng nhóm công suất (busyKw) và HTML forecast ticker"
-    },
-    {
-      "path": "WSS https://www2.evcs.vn/ (Socket.io)",
-      "method": "SOCKET_IO",
-      "auth": {
-        "t": "apiToken"
-      },
-      "purpose": "Lấy lịch sử sạc 24h (history_data) để tính toán 4 chỉ số: Cao điểm, Trung bình, Giờ cao điểm và Tỉ lệ lấp đầy"
-    },
-    {
-      "path": "POST https://www2.evcs.vn/update",
-      "method": "POST",
-      "headers": {
-        "x-t": "apiToken"
-      },
-      "purpose": "Gửi telemetry ping cập nhật tổng số xe bận (fire-and-forget)"
-    }
-  ],
+  "database_schema": {
+    "summary": "Cloud Firestore stores user favorites under /users/{userId}/userdata/favorites as a map of station IDs to timestamps.",
+    "tables": [
+      {
+        "name": "favorites",
+        "path": "users/{userId}/userdata/favorites",
+        "fields": [
+          "favorites (Map<String, Long>)",
+          "updated_at (Timestamp/Long)"
+        ]
+      }
+    ],
+    "relationships_explained": "Each user owns exactly one favorites document at /users/{userId}/userdata/favorites."
+  },
   "features": [
-    {
-      "name": "Native Station Detail Bottom Sheet UI/UX & Performance Optimization",
-      "status": "Implemented",
-      "description": "Cân chỉnh layout weight các nút hành động (Chỉ đường 1.3f không bị co chữ), gating shimmer loading chỉ chạy khi thiếu dữ liệu để tiết kiệm pin/CPU, và thêm hiệu ứng xoay 360 độ kèm chặn spam cho nút Tải lại."
-    },
-    {
-      "name": "Pre-Filter Selection on Initial Screen & Immediate Execution",
-      "status": "Implemented",
-      "description": "Thanh SmartFilterBar hiển thị ngay ở màn hình Hero trước khi bấm tìm trạm; lưu trữ lựa chọn vào SmartFilterPreferences và tự động áp dụng ngay khi có kết quả quét GPS."
-    },
-    {
-      "name": "Real-time On-Demand GPS Refresh",
-      "status": "Implemented",
-      "description": "NearbyViewModel.refresh() luôn yêu cầu tọa độ GPS tươi mới thời gian thực từ LocationService.getFreshLocation(), thông báo lỗi rõ ràng nếu không lấy được tín hiệu GPS thay vì tái sử dụng vị trí cũ."
-    },
-    {
-      "name": "VinFast Canonical Detail URL Builder",
-      "status": "Implemented",
-      "description": "StationUrlBuilder chuẩn hóa pattern /tram-sac-vinfast-{slug}-{locationId}.html, loại bỏ trùng lặp tiền tố vinfast-, fix triệt để lỗi HTTP 404 khi mở chi tiết trạm VinFast."
-    },
-    {
-      "name": "100% Native Jetpack Compose Station Detail Bottom Sheet",
-      "status": "Implemented",
-      "description": "Mở tức thì <50ms, bóc tách hoàn toàn và xóa bỏ WebView (StationDetailModal.kt), giải quyết vĩnh viễn rò rỉ RAM (PERF-MEM-02). Hiển thị Badge công suất trụ trực quan, rating cộng đồng, dự báo sạc sạch và lưới 2x2 thống kê 24h."
-    },
-    {
-      "name": "On-Demand Telemetry & 24h Statistics Pipeline",
-      "status": "Implemented",
-      "description": "Điều phối đa tầng qua StationDetailCoordinator: Stage 1 (Token + Live Ports + Clean Forecast) và Stage 2 (Socket.io 24h History với 4s timeout), hủy bỏ tức thì khi đóng modal."
-    },
-    {
-      "name": "Smart Filter (All, AC, DC Fast, DC Super, Custom kW)",
-      "status": "Implemented",
-      "description": "Thanh filter nhanh ngang kèm modal tùy biến dải công suất min-max kW, lưu trữ bền vững qua SmartFilterPreferences."
-    },
-    {
-      "name": "Multi-Tier Routing Engine (Google Routes, OSRM, Haversine)",
-      "status": "Implemented",
-      "description": "Tính toán cự ly/thời gian lái xe thực tế, tự động chuyển đổi OSRM -> Google -> Haversine khi có sự cố, cấu hình trong Settings."
-    },
-    {
-      "name": "Authentication & 2-Way Favorite Sync",
-      "status": "Implemented",
-      "description": "Đăng nhập OTP qua email, mã hóa cookie session, tải và đồng bộ danh sách trạm yêu thích 2 chiều với EVCS."
-    }
+    "Native Station Detail Bottom Sheet with VinFast S3 Photo Carousel and Lightbox Zoom",
+    "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In",
+    "Direct CDN Media URL Decoding (Bypassing Cloudflare HTTP 403)"
   ],
   "knowledge_items": {
     "patterns": [
-      "Infinite Shimmer Animation Gating via shouldAnimateShimmer(isLoading, data)",
-      "Continuous Rotation Animation with Clean Angle Snapping to 0 degrees when idle",
-      "Debounced Multi-tap Prevention on Interactive Reload Buttons",
-      "Zero-Leak Native Jetpack Compose Modal Bottom Sheet thay thế WebView engine",
-      "On-Demand Phased Pipeline với StationDetailCoordinator",
-      "Socket.io History Data Stream với Strict 4s Timeout Safeguard",
-      "Canonical URL Building for VinFast Stations with prefix sanitation",
-      "Fresh Location Acquisition Pattern via LocationService.getFreshLocation()",
-      "Pre-filter Initial Screen UX with Cold-Start Restoration & Immediate Search Execution",
-      "Single Comprehensive Test Per Milestone Architecture"
+      "VinFast CDN media double base64 URL decoding to bypass evcs.vn 403",
+      "Firestore Map structure favorites.[stationId] for atomic add/delete"
     ],
     "gotchas": [
-      "rememberInfiniteTransition trong Compose nếu không được bọc điều kiện hoặc gán isLoading sẽ liên tục tick animation loop ngầm làm hao pin và nóng máy kể cả khi đã có dữ liệu.",
-      "Nút hành động trong Row ngang trên màn hình 360dp cần cấp weight tối thiểu 1.3f cho nút chính (Chỉ đường) để tránh bị hệ thống co text thành '▲ .'.",
-      "Trạm sạc VinFast từ backend có slug hoặc name có thể đã chứa chữ 'vinfast', cần sanitize để tránh tạo URL dạng /tram-sac-vinfast-vinfast-...",
-      "Backend /search API chỉ cần gửi {latitude, longitude}, bỏ wattageTypes để lấy toàn bộ trạm và ủy quyền cho bộ lọc client-side xử lý chính xác",
-      "Khi làm mới NearbyViewModel.refresh(), không bao giờ dùng tọa độ cũ trong uiState memory vì vị trí xe đã thay đổi",
-      "WebView trong ModalBottomSheet gây rò rỉ 15-45MB RAM do Chromium engine không tự giải phóng native memory khi composable unmount. Thay bằng 100% Native Compose giải quyết triệt để.",
-      "Giờ cao điểm phải được quy đổi chuẩn theo múi giờ Việt Nam UTC+7 (timestamp + 25,200,000ms) trước khi gom nhóm 24h.",
-      "Ticker dự báo có chứa banner quảng cáo amd-locked nếu không có phiên sạc thực tế; cần lọc sạch và trả về cleanForecast = null."
+      "evcs.vn /media endpoint blocks requests with Cloudflare 403; decode double base64 to cpo-prod-s3.vinfastauto.com direct URL instead",
+      "FieldValue.arrayRemove requires exact byte match; use Map updates instead"
     ]
   }
 }

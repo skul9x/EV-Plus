@@ -178,7 +178,9 @@ data class Station(
     val powers: List<PowerPort> = emptyList(),
     val totalAvailablePlugs: Int = 0,
     val totalPlugs: Int = 0,
-    val image: String? = null,
+    val images: List<String> = emptyList(),
+    val image: String? = images.firstOrNull(),
+    val addedAt: Long = 0L,
     val isPublic: Boolean = true,
     val isFreeParking: Boolean = true,
     val workingTimeDescription: String = "24/7",
@@ -186,6 +188,12 @@ data class Station(
     val drivingMetrics: DrivingMetrics? = null,
     val evse: String = "VinFast"
 ) {
+    /**
+     * Primary image URL, prioritizing the first photo in [images], falling back to legacy [image].
+     */
+    val effectiveImage: String?
+        get() = images.firstOrNull() ?: image
+
     /**
      * True if verified real-time telemetry metrics are available for this station.
      */

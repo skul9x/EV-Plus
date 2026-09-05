@@ -125,7 +125,7 @@ adb devices
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # Khởi chạy ứng dụng
-adb shell am start -n com.evcs.favorites/.MainActivity
+adb shell am start -n com.evplus.app/com.evcs.favorites.MainActivity
 ```
 
 ---

@@ -477,7 +477,7 @@ class NearbyViewModel(
      * - If authenticated, toggles favorite via [EvcsRepository] and emits [NearbyUiEvent.ShowToast].
      */
     fun toggleFavorite(station: Station): Job {
-        if (!sessionManager.hasAuthCookie()) {
+        if (repository.firestoreFavoritesRepository == null && !sessionManager.hasAuthCookie()) {
             return viewModelScope.launch(dispatcher) {
                 _events.send(NearbyUiEvent.ShowLoginRequired(station.name))
             }
