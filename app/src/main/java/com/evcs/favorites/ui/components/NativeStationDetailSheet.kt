@@ -88,6 +88,7 @@ import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.Station24hStats
 import com.evcs.favorites.domain.StationPortStatus
 import com.evcs.favorites.domain.StationRating
+import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.navigation.MapIntentSpec
 import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.ui.theme.AppIcons
@@ -153,6 +154,14 @@ data class FavoriteButtonSpec(
 data class FocusModeActivationSpec(
     val serviceIntentSpec: FocusServiceIntentSpec,
     val navigationIntentSpec: MapIntentSpec
+)
+
+/**
+ * Layout specification for row 1 primary action buttons (Navigation & Focus Mode).
+ */
+data class PrimaryActionLayoutSpec(
+    val showFocusMode: Boolean,
+    val isNavigateFullWidth: Boolean
 )
 
 /**
@@ -237,6 +246,31 @@ object NativeStationDetailSheetHelper {
     const val PRIMARY_NAV_WEIGHT = 1.3f
     const val SECONDARY_FAVORITE_WEIGHT = 1.0f
     const val SECONDARY_SHARE_WEIGHT = 0.9f
+
+    /**
+     * Determines whether a station has at least one DC charging port capable of fast charging.
+     */
+    fun hasDcCharging(station: Station): Boolean {
+        return station.powers.any { it.isDc() }
+    }
+
+    /**
+     * Determines whether Focus Mode button should be visible for the given station.
+     */
+    fun shouldShowFocusModeButton(station: Station): Boolean {
+        return hasDcCharging(station)
+    }
+
+    /**
+     * Resolves the primary action button layout spec (Chỉ đường and ⚡ Focus Mode).
+     */
+    fun resolvePrimaryActionLayout(station: Station): PrimaryActionLayoutSpec {
+        val hasDc = hasDcCharging(station)
+        return PrimaryActionLayoutSpec(
+            showFocusMode = hasDc,
+            isNavigateFullWidth = !hasDc
+        )
+    }
 
     /**
      * Resolves styling and text for the Favorite/Saved action button.
@@ -947,6 +981,9 @@ fun NativeStationDetailContent(
         }
         val onFavClick = remember(onToggleFavorite, station) { { onToggleFavorite(station) } }
         val onShareClick = remember(onShare, station) { { onShare(station) } }
+        val hasDcCharging = remember(station.powers) {
+            NativeStationDetailSheetHelper.hasDcCharging(station)
+        }
 
         // Primary Navigation Actions: Chỉ đường & ⚡ Focus Mode
         Row(
@@ -965,9 +1002,15 @@ fun NativeStationDetailContent(
                     contentColor = Color.White
                 ),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                modifier = Modifier
-                    .weight(1f, fill = true)
-                    .wrapContentHeight()
+                modifier = if (hasDcCharging) {
+                    Modifier
+                        .weight(1f, fill = true)
+                        .wrapContentHeight()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                }
             ) {
                 Icon(
                     imageVector = AppIcons.Navigation,
@@ -985,34 +1028,36 @@ fun NativeStationDetailContent(
                 )
             }
 
-            // Primary Pill: ⚡ Focus Mode (Adjacent to Chỉ đường)
-            Button(
-                onClick = onFocusClick,
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = EmeraldContainerDark,
-                    contentColor = EmeraldPrimaryLight
-                ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                modifier = Modifier
-                    .weight(1f, fill = true)
-                    .wrapContentHeight()
-            ) {
-                Icon(
-                    imageVector = AppIcons.Bolt,
-                    contentDescription = null,
-                    tint = EmeraldPrimaryLight,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = NativeStationDetailSheetHelper.LABEL_FOCUS_MODE,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold
+            if (hasDcCharging) {
+                // Primary Pill: ⚡ Focus Mode (Adjacent to Chỉ đường)
+                Button(
+                    onClick = onFocusClick,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldContainerDark,
+                        contentColor = EmeraldPrimaryLight
                     ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .weight(1f, fill = true)
+                        .wrapContentHeight()
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Bolt,
+                        contentDescription = null,
+                        tint = EmeraldPrimaryLight,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = NativeStationDetailSheetHelper.LABEL_FOCUS_MODE,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 

@@ -7,6 +7,7 @@ import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.domain.location.DistanceCalculator
+import com.evcs.favorites.domain.model.isDc
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,22 +26,22 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Filter rules enforcing strict DC fast charging port categorization (>= 30kW).
+ * Filter rules enforcing strict DC fast charging port categorization (>= 20kW).
  * Excludes AC 7kW/11kW/22kW and motorcycle charging plugs.
  */
 object FocusModeDcFilter {
-    const val MIN_DC_POWER_WATTS = 30_000L // 30kW
+    const val MIN_DC_POWER_WATTS = 20_000L // 20kW
 
     /**
      * Determines whether a given [PowerPort] is a DC fast charging port.
      */
     fun isDcPort(port: PowerPort): Boolean {
-        return port.typeWatts >= MIN_DC_POWER_WATTS
+        return port.isDc()
     }
 
     /**
      * Computes the available and total DC slots from a list of power ports,
-     * strictly excluding AC ports (< 30kW).
+     * strictly excluding AC ports (< 20kW or 22kW AC).
      *
      * @return Pair(availableDcSlots, totalDcSlots)
      */
@@ -141,10 +142,10 @@ class FocusModeTelemetryEngine(
                 val (availDc, _) = FocusModeDcFilter.calculateDcSlots(candidate)
                 if (availDc <= 0) return@filter false
 
-                // Must offer matching DC power tier with available plugs
+                // Must offer matching or higher DC power tier with available plugs
                 candidate.powers.any { port ->
                     FocusModeDcFilter.isDcPort(port) &&
-                            port.typeWatts == targetMaxDcWatts &&
+                            port.typeWatts >= targetMaxDcWatts &&
                             port.availablePlugs > 0
                 }
             }

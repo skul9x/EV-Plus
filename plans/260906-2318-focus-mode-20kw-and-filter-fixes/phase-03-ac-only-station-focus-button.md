@@ -1,5 +1,5 @@
 # Phase 03: AC-Only Station Focus Button Visibility Refinement
-Status: ⬜ Pending
+Status: ✅ Completed
 Dependencies: Phase 01, Phase 02
 
 ## Objective
@@ -7,21 +7,21 @@ Refine `NativeStationDetailSheet` so that when a driver inspects a station with 
 
 ## Requirements
 ### Functional
-- [ ] Determine whether a station has DC charging capability: `val hasDc = station.powers.any { it.isDc() }`.
-- [ ] In `NativeStationDetailSheetContent`:
+- [x] Determine whether a station has DC charging capability: `val hasDc = station.powers.any { it.isDc() }`.
+- [x] In `NativeStationDetailSheetContent`:
   - When `hasDc == true`: Show Row 1 with two buttons: `[Chỉ đường]` (weight 1f) and `[⚡ Focus Mode]` (weight 1f).
   - When `hasDc == false`: Render only `[Chỉ đường]` with `Modifier.fillMaxWidth()`.
-- [ ] Retain Row 2 with `[Yêu thích]` and `[Chia sẻ]` unchanged in both scenarios.
-- [ ] Add helper method or spec evaluator in `NativeStationDetailSheetHelper` to allow pure unit testing without Compose runtime dependencies:
+- [x] Retain Row 2 with `[Yêu thích]` and `[Chia sẻ]` unchanged in both scenarios.
+- [x] Add helper method or spec evaluator in `NativeStationDetailSheetHelper` to allow pure unit testing without Compose runtime dependencies:
   - `fun shouldShowFocusModeButton(station: Station): Boolean`
   - `fun resolvePrimaryActionLayout(station: Station): PrimaryActionLayoutSpec`
 
 ### Non-Functional
-- [ ] No UI jank or visual breakage when sheet expands.
-- [ ] Maintain consistent Material 3 button heights and rounded corner shapes (24.dp).
+- [x] No UI jank or visual breakage when sheet expands.
+- [x] Maintain consistent Material 3 button heights and rounded corner shapes (24.dp).
 
 ## Implementation Steps
-1. [ ] Modify `app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt`:
+1. [x] Modify `app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt`:
    - In `NativeStationDetailSheetHelper`, add:
      ```kotlin
      fun hasDcCharging(station: Station): Boolean {
@@ -37,7 +37,7 @@ Refine `NativeStationDetailSheet` so that when a driver inspects a station with 
    - Conditionally display the buttons:
      - If `hasDcCharging`: Render Row with `[Chỉ đường]` (weight 1f) + `[⚡ Focus Mode]` (weight 1f).
      - If `!hasDcCharging`: Render Row with single `[Chỉ đường]` (fillMaxWidth).
-2. [ ] Create single test file: `app/src/test/java/com/evcs/favorites/ui/components/StationDetailFocusButtonVisibilityTest.kt`:
+2. [x] Create single test file: `app/src/test/java/com/evcs/favorites/ui/components/StationDetailFocusButtonVisibilityTest.kt`:
    - Test station with only AC ports (e.g. 11kW, 22kW AC) returns `hasDcCharging == false`.
    - Test station with 20kW DC returns `hasDcCharging == true`.
    - Test station with mixed 11kW AC and 60kW DC returns `hasDcCharging == true`.
@@ -48,8 +48,8 @@ Refine `NativeStationDetailSheet` so that when a driver inspects a station with 
 - `app/src/test/java/com/evcs/favorites/ui/components/StationDetailFocusButtonVisibilityTest.kt` - Unit test for Phase 03 verification.
 
 ## Test Criteria
-- [ ] Run `./gradlew testDebugUnitTest --tests "com.evcs.favorites.ui.components.StationDetailFocusButtonVisibilityTest"`
-- [ ] 100% tests pass.
+- [x] Run `./gradlew testDebugUnitTest --tests "com.evcs.favorites.ui.components.StationDetailFocusButtonVisibilityTest"`
+- [x] 100% tests pass.
 
 ---
 Implementation Complete after Phase 03.

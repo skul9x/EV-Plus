@@ -134,14 +134,14 @@ data class HereConnector(
         get() = if (maxPowerLevel > 1000.0) maxPowerLevel / 1000.0 else maxPowerLevel
 
     /**
-     * Identifies whether this connector represents a DC fast charger (>= 30kW).
+     * Identifies whether this connector represents a DC fast charger (>= 20kW, excluding 22kW AC).
      */
     val isDcCharging: Boolean
         get() {
-            if (powerType != null && !powerType.contains("DC", ignoreCase = true) && powerKw < 30.0) {
+            if (powerType != null && !powerType.contains("DC", ignoreCase = true)) {
                 return false
             }
-            return powerKw >= 30.0 || (powerType?.contains("DC", ignoreCase = true) == true && powerKw >= 20.0)
+            return powerKw >= 20.0 && powerKw != 22.0
         }
 }
 

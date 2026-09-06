@@ -138,8 +138,8 @@ object NearbyUiHelper {
      * of the list back to the top (index = 0).
      *
      * Invariant Rules:
-     * 1. Only fires for explicit user refresh actions ([RefreshTriggerType.USER_REFRESH]).
-     * 2. Passive background updates, pagination, or filter changes must NOT trigger auto-scroll.
+     * 1. Only fires for explicit user refresh actions ([RefreshTriggerType.USER_REFRESH]) or filter changes ([RefreshTriggerType.FILTER_CHANGE]).
+     * 2. Passive background updates or pagination must NOT trigger auto-scroll.
      * 3. The loaded list must be non-empty ([itemCount] > 0) to avoid index bounds or race conditions.
      * 4. The event timestamp must be strictly newer than the last handled timestamp.
      */
@@ -149,9 +149,9 @@ object NearbyUiHelper {
         lastHandledTimestamp: Long = 0L,
         eventTimestamp: Long = 1L
     ): Boolean {
-        return triggerType == RefreshTriggerType.USER_REFRESH &&
-                itemCount > 0 &&
-                eventTimestamp > lastHandledTimestamp
+        val isScrollEligibleTrigger = triggerType == RefreshTriggerType.USER_REFRESH ||
+                triggerType == RefreshTriggerType.FILTER_CHANGE
+        return isScrollEligibleTrigger && itemCount > 0 && eventTimestamp > lastHandledTimestamp
     }
 
     /**

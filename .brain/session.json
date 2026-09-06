@@ -1,94 +1,99 @@
 {
-  "updated_at": "2026-09-06T23:03:00+07:00",
+  "updated_at": "2026-09-07T00:27:00+07:00",
   "working_on": {
-    "feature": "Focus Mode & Live DC Telemetry Navigation Tracker",
-    "task": "Completed all 6 phases, performance audit fixes, test suites verification, and GitHub repository sync",
-    "status": "completed",
+    "feature": "Click-Spam Protection, Concurrency & Edge-Case Hardening",
+    "task": "Plan created, verified, and standardized across 4 phases in plans/260907-0025-click-spam-and-edge-case-hardening/",
+    "status": "planned",
     "files": [
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeFloatingViewManager.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeVoiceAlertPolicy.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeViewLayoutHelper.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeNotificationHelper.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeState.kt",
-      "app/src/main/java/com/evcs/favorites/data/network/here/HereEvApiClient.kt",
-      "app/src/main/java/com/evcs/favorites/data/network/here/HereOAuthManager.kt",
-      "app/src/main/java/com/evcs/favorites/data/network/here/model/HereEvModels.kt",
-      "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-      "docs/reports/audit_2026-09-06.md"
+      "plans/260907-0025-click-spam-and-edge-case-hardening/plan.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-01-action-debounce-and-throttling.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-02-thread-safe-favorites-and-rapid-click.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-03-gps-timeout-and-notification-permission.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-04-rate-limit-and-lifecycle-hardening.md"
     ],
     "blockers": [],
-    "notes": "All 6 Focus Mode phases completed & verified. Performance audit performed and 7/7 issues resolved (GPS leak, Android 14 FGS, GC churn, duplicate scroll, touch drag metrics, TTS audio ducking, coroutine protection). APK built and verified on device with live logs, and changes committed & pushed to origin/main."
+    "notes": "Plan is fully reviewed and formatted according to project conventions. Each phase has exactly one comprehensive test file and runs only that single test for verification before pausing for user review."
   },
-  "pending_tasks": [],
+  "pending_tasks": [
+    {
+      "phase": "01",
+      "task": "Phase 01: Action Debounce & Throttling Engine",
+      "verification_test": "ActionDebounceAndThrottlingTest.kt",
+      "status": "pending"
+    },
+    {
+      "phase": "02",
+      "task": "Phase 02: Thread-Safe Favorites Synchronization & Rapid-Click Guard",
+      "verification_test": "FavoriteConcurrencyAndThreadSafetyTest.kt",
+      "status": "pending"
+    },
+    {
+      "phase": "03",
+      "task": "Phase 03: GPS Timeout, Scan Guard & Android 13+ Notification Permissions",
+      "verification_test": "GpsTimeoutAndNotificationPermissionTest.kt",
+      "status": "pending"
+    },
+    {
+      "phase": "04",
+      "task": "Phase 04: Client Rate Limit & Lifecycle Edge Cases",
+      "verification_test": "RateLimitAndLifecycleHardeningTest.kt",
+      "status": "pending"
+    }
+  ],
   "recent_changes": [
     {
-      "timestamp": "2026-09-06T22:54:00+07:00",
-      "type": "git",
-      "description": "Committed and pushed full Focus Mode, Live Telemetry, Audit fixes, and Nearby auto-scroll codebase to GitHub repository (skul9x/EV-Plus:main)",
+      "timestamp": "2026-09-07T00:26:00+07:00",
+      "type": "plan",
+      "description": "Created and standardized comprehensive Click-Spam Protection, Concurrency & Edge-Case Hardening Plan (4 phases, 1 unit test per phase).",
       "files": [
-        "app/src/main/java/com/evcs/favorites/focus/*",
-        "app/src/main/java/com/evcs/favorites/data/network/here/*",
-        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "docs/reports/audit_2026-09-06.md"
+        "plans/260907-0025-click-spam-and-edge-case-hardening/plan.md",
+        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-01-action-debounce-and-throttling.md",
+        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-02-thread-safe-favorites-and-rapid-click.md",
+        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-03-gps-timeout-and-notification-permission.md",
+        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-04-rate-limit-and-lifecycle-hardening.md"
       ]
     },
     {
-      "timestamp": "2026-09-06T22:40:00+07:00",
-      "type": "audit_fix",
-      "description": "Applied Fix All for Performance Audit: GPS listener & Coroutine cleanup in FocusModeForegroundService, Android 14 FGS permission fallback, HERE EV raw filtering to cut GC churn, duplicate scroll animation prevention, display metrics touch caching, and atomic TTS audio ducking counter.",
-      "files": [
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
-        "app/src/main/java/com/evcs/favorites/data/network/here/HereEvApiClient.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeFloatingViewManager.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-        "docs/reports/audit_2026-09-06.md"
-      ]
-    },
-    {
-      "timestamp": "2026-09-06T21:30:00+07:00",
+      "timestamp": "2026-09-06T23:30:00+07:00",
       "type": "feature",
-      "description": "Completed Phase 01 to Phase 06 of Focus Mode & Live Telemetry subsystem",
+      "description": "Implemented Focus Mode 20kW DC support, Auto-scroll to top on filter changes/refresh, and AC-only station focus button refinement (3/3 phases verified).",
       "files": [
-        "plans/260906-1930-focus-mode-and-live-telemetry/*"
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+        "plans/260906-2318-focus-mode-20kw-and-filter-fixes/*"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "Potential GPS listener leak when FocusModeForegroundService receives ACTION_START multiple times",
-      "solution": "Added explicit locationService?.stopLocationUpdates() and stateCollectionJob?.cancel() before reallocating",
-      "resolved": true
+      "error": "FusedLocationProviderClient hangs indefinitely when GPS hardware is disabled",
+      "solution": "Wrap getFreshLocation in withTimeoutOrNull(8000L) and clean up CancellationTokenSource",
+      "resolved": false
     },
     {
-      "error": "Android 14 SecurityException when starting FGS with FOREGROUND_SERVICE_TYPE_LOCATION without runtime permission",
-      "solution": "Checked permission dynamically and fell back to FOREGROUND_SERVICE_TYPE_DATA_SYNC with try-catch wrapper",
-      "resolved": true
+      "error": "Cloudflare/EVCS rate-limiting bans prolonged by repeated client requests during 429 cooldown",
+      "solution": "Check isGlobalRateLimited() prior to socket creation and fail immediately with RateLimitException",
+      "resolved": false
     },
     {
-      "error": "Heavy Garbage Collection churn from mapping 50 HERE EV stations during 5s polling intervals",
-      "solution": "Optimized HereEvApiClient.fetchStationById to filter on raw HereEvStation models first before domain mapping",
-      "resolved": true
+      "error": "Audio focus ducking permanently stuck if third-party TTS engine hangs without onDone callback",
+      "solution": "Implement a 6-second watchdog timer in FocusModeTtsManager to force abandonDuckAudioFocus()",
+      "resolved": false
     }
   ],
   "decisions_made": [
     {
-      "decision": "Hybrid 2-Tier Architecture for Live DC Telemetry",
-      "reason": "Tier 1 queries HERE EV API (OAuth 1.0a HMAC-SHA256 direct from VinFast credentials) without driver login, falling back to Tier 2 EVCS"
+      "decision": "Single Test File Verification per Phase",
+      "reason": "Enforces strict isolation and prevents test bloat; only exactly one comprehensive test is created and run per phase"
     },
     {
-      "decision": "Dynamic Distance-Based Polling Intervals (15s -> 10s -> 5s)",
-      "reason": "Saves cellular radio power and battery when far away (>3km: 15s, 1.5-3km: 10s) and provides near real-time updates when approaching (<1.5km: 5s)"
+      "decision": "Two-Pronged Click-Spam Defense (UI State + Engine Debounce)",
+      "reason": "Combines immediate UI feedback (disabling buttons in-flight) with repository/helper debouncing (idempotent MapNavigator, Mutex locking) for bulletproof user interaction safety"
     },
     {
-      "decision": "System Alert Window Overlay (TYPE_APPLICATION_OVERLAY) with Notification Fallback",
-      "reason": "Allows real-time station availability capsule to float on top of Google Maps navigation while seamlessly falling back to Foreground Notification if overlay permission is denied"
+      "decision": "Android 13+ Runtime POST_NOTIFICATIONS Permission Launcher",
+      "reason": "Ensures Foreground Service and Notification Fallback modes deliver critical real-time alerts without being silently swallowed by OS"
     }
   ]
 }

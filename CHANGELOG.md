@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-07] - Click-Spam Protection, Concurrency & Edge-Case Hardening Plan
+
+### Added
+- **Click-Spam & Edge-Case Hardening Architecture (`plans/260907-0025-click-spam-and-edge-case-hardening/`)**:
+  - Comprehensive 4-phase hardening plan covering:
+    - **Phase 01**: Generic `DebounceHelper`, 1-Tap navigation throttling in `MapNavigator`, debounced Focus Mode & reroute clicks, OTP auto-submit double-click protection, and Google Sign-In button disabling.
+    - **Phase 02**: Coroutine `Mutex` synchronization in `FirestoreFavoritesRepository`, in-flight station toggle tracking (`togglingStationIds`), toast notification spam suppression, and UI button disabling.
+    - **Phase 03**: 8-second GPS acquisition timeout in `LocationService.getFreshLocation()`, re-entrant scan job guard on refresh, and runtime `POST_NOTIFICATIONS` permission flow for Android 13+ (API 33+).
+    - **Phase 04**: Pre-network HTTP 429 rate limit cooldown checks in `EvcsApiClient` & `EvcsRepository`, lightbox continuous gesture optimization (zero per-frame coroutine allocations), TTS audio ducking 6s watchdog timeout, and `rememberSaveable` dialog state preservation across rotations.
+  - Verification strategy: Strictly **one** dedicated comprehensive unit test file per phase, verified via `./gradlew testDebugUnitTest`.
+
+## [2026-09-06] - Focus Mode 20kW DC Support, Auto-Scroll Filter Fix & AC-Only Sheet Refinement
+
+### Added
+- **Focus Mode 20kW DC Fast Charger Support**:
+  - Lowered minimum DC charging threshold in `FocusModeDcFilter.MIN_DC_POWER_WATTS` from 30kW to 20kW (supporting VinFast VF3 / VF5 chargers).
+  - Aligned DC port classifier in `HereEvModels` and `FocusModeDcFilter` so 22kW AC is excluded while 20kW DC is recognized.
+  - Enhanced smart auto-reroute to find nearest available candidate with matching or higher DC tier (`typeWatts >= targetMaxDcWatts`).
+  - Added verification suite `FocusMode20kWSupportTest.kt` (100% PASS).
+
+### Fixed
+- **Auto-Scroll to Top on Filter Changes & Refresh**:
+  - Extended `NearbyUiHelper.shouldScrollToTop` with `FILTER_CHANGE` trigger type.
+  - Wired `NearbyViewModel` filter transitions (charging mode toggles, DC tier selection, custom filter application/clearing) to trigger smooth auto-scroll to the top nearest station.
+  - Added verification suite `NearbyAutoScrollFilterFixTest.kt` (100% PASS).
+- **AC-Only Station Focus Button Refinement**:
+  - Updated `NativeStationDetailSheet` to check DC port availability (`NativeStationDetailSheetHelper.hasDcCharging`).
+  - AC-only stations automatically hide the `[⚡ Focus Mode]` button and expand `[Chỉ đường]` to full width.
+  - Added verification suite `StationDetailFocusButtonVisibilityTest.kt` (100% PASS).
+
 ## [2026-09-06] - Focus Mode (Live DC Telemetry Navigation Tracker) & Audit Hardening
 
 ### Added

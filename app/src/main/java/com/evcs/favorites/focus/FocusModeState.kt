@@ -73,11 +73,11 @@ data class FocusModeState(
         get() = totalDcSlots > 0 && availableDcSlots == 0
 
     /**
-     * Highest DC power tier available at the target station (>= 30kW), in Watts.
+     * Highest DC power tier available at the target station (>= 20kW), in Watts.
      */
     val maxDcPowerWatts: Long
         get() = targetStation.powers
-            .filter { it.typeWatts >= FocusModeDcFilter.MIN_DC_POWER_WATTS }
+            .filter { FocusModeDcFilter.isDcPort(it) }
             .maxOfOrNull { it.typeWatts } ?: 0L
 
     val maxDcPowerKw: Int

@@ -280,7 +280,8 @@ class NearbyViewModel(
                     rawStations = raw,
                     userLat = lat,
                     userLon = lon,
-                    selectedWattages = newSelected
+                    selectedWattages = newSelected,
+                    triggerType = RefreshTriggerType.FILTER_CHANGE
                 )
             }
             routingJob = job
@@ -308,7 +309,8 @@ class NearbyViewModel(
                     rawStations = raw,
                     userLat = lat,
                     userLon = lon,
-                    selectedWattages = emptySet()
+                    selectedWattages = emptySet(),
+                    triggerType = RefreshTriggerType.FILTER_CHANGE
                 )
             }
             routingJob = job
@@ -335,7 +337,7 @@ class NearbyViewModel(
         }
         smartFilterPrefs.saveActiveFilterMode(newMode)
         smartFilterPrefs.saveSelectedDcTier(null)
-        return triggerFilterPipeline()
+        return triggerFilterPipeline(RefreshTriggerType.FILTER_CHANGE)
     }
 
     /**
@@ -355,7 +357,7 @@ class NearbyViewModel(
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.DC)
         smartFilterPrefs.saveSelectedDcTier(null)
         if (_uiState.value.rawStations.isNotEmpty()) {
-            triggerFilterPipeline()
+            triggerFilterPipeline(RefreshTriggerType.FILTER_CHANGE)
         }
     }
 
@@ -375,7 +377,7 @@ class NearbyViewModel(
         }
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)
         smartFilterPrefs.saveSelectedDcTier(null)
-        return triggerFilterPipeline()
+        return triggerFilterPipeline(RefreshTriggerType.FILTER_CHANGE)
     }
 
     /**
@@ -393,7 +395,7 @@ class NearbyViewModel(
         }
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.DC)
         smartFilterPrefs.saveSelectedDcTier(tier)
-        return triggerFilterPipeline()
+        return triggerFilterPipeline(RefreshTriggerType.FILTER_CHANGE)
     }
 
     /**
@@ -415,7 +417,7 @@ class NearbyViewModel(
             }
             smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.CUSTOM)
             smartFilterPrefs.saveSelectedDcTier(null)
-            return triggerFilterPipeline()
+            return triggerFilterPipeline(RefreshTriggerType.FILTER_CHANGE)
         } else {
             _uiState.update {
                 it.copy(showCustomConfigPrompt = true)
@@ -442,7 +444,7 @@ class NearbyViewModel(
                 selectedWattages = emptySet()
             )
         }
-        return triggerFilterPipeline()
+        return triggerFilterPipeline(RefreshTriggerType.FILTER_CHANGE)
     }
 
     /**
@@ -467,8 +469,13 @@ class NearbyViewModel(
         }
         smartFilterPrefs.saveActiveFilterMode(SmartFilterMode.NONE)
         smartFilterPrefs.saveSelectedDcTier(null)
-        return triggerFilterPipeline()
+        return triggerFilterPipeline(RefreshTriggerType.FILTER_CHANGE)
     }
+
+    /**
+     * Clears all active filters (smart filter or wattage filters).
+     */
+    fun clearFilters(): Job? = clearSmartFilter()
 
 
     /**
@@ -526,6 +533,14 @@ class NearbyViewModel(
      */
     fun dismissStationDetail() {
         stationDetailCoordinator.dismissStationDetail()
+    }
+
+    /**
+     * Refreshes nearby stations with explicit user or passive trigger flag.
+     */
+    fun refreshNearbyStations(isUserRefresh: Boolean = true): Job {
+        val trigger = if (isUserRefresh) RefreshTriggerType.USER_REFRESH else RefreshTriggerType.PASSIVE_BACKGROUND
+        return refresh(trigger)
     }
 
     /**
@@ -689,7 +704,7 @@ class NearbyViewModel(
     /**
      * Re-runs the filtering and routing pipeline using current state.
      */
-    private fun triggerFilterPipeline(): Job? {
+    private fun triggerFilterPipeline(triggerType: RefreshTriggerType = RefreshTriggerType.FILTER_CHANGE): Job? {
         val lat = _uiState.value.userLatitude
         val lon = _uiState.value.userLongitude
         val raw = _uiState.value.rawStations
@@ -701,7 +716,8 @@ class NearbyViewModel(
                     rawStations = raw,
                     userLat = lat ?: 0.0,
                     userLon = lon ?: 0.0,
-                    selectedWattages = _uiState.value.selectedWattages
+                    selectedWattages = _uiState.value.selectedWattages,
+                    triggerType = triggerType
                 )
             }
             routingJob = job
@@ -761,7 +777,8 @@ class NearbyViewModel(
         }
 
         val isUserRefresh = triggerType == RefreshTriggerType.USER_REFRESH
-        val refreshTimestamp = if (isUserRefresh) System.currentTimeMillis() else _uiState.value.lastRefreshTimestamp
+        val isScrollTrigger = triggerType == RefreshTriggerType.USER_REFRESH || triggerType == RefreshTriggerType.FILTER_CHANGE
+        val refreshTimestamp = if (isScrollTrigger) System.currentTimeMillis() else _uiState.value.lastRefreshTimestamp
 
         // 3. Immediately show Top 10 with Haversine distance while routing computes
         _uiState.update {
