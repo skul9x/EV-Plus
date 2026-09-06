@@ -8,6 +8,7 @@ import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.domain.model.isDc
+import com.evcs.favorites.util.StationNameSanitizer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,7 +70,7 @@ object FocusModeDcFilter {
  * Fully decoupled from Android UI to facilitate pure unit testing and headless execution.
  */
 class FocusModeTelemetryEngine(
-    initialStation: Station,
+    val initialStation: Station,
     private val fetchStationTelemetry: suspend (stationId: String, lat: Double, lon: Double) -> Result<Station>,
     private val fetchNearbyCandidates: (suspend (lat: Double, lon: Double) -> Result<List<Station>>)? = null,
     private val locationProvider: (() -> Pair<Double, Double>?)? = null,
@@ -82,7 +83,8 @@ class FocusModeTelemetryEngine(
         initialAvailableSlots = FocusModeDcFilter.calculateDcSlots(initialStation).first,
         clock = clock
     ),
-    private val onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null
+    private val onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null,
+    val stationNameResolver: EvcsStationNameResolver? = null
 ) {
     companion object {
         const val INTERVAL_FAR_MS = 15_000L     // Distance > 3.0km -> 15s
@@ -120,7 +122,8 @@ class FocusModeTelemetryEngine(
             targetStation: Station,
             candidates: List<Station>,
             driverLat: Double,
-            driverLon: Double
+            driverLon: Double,
+            stationNameResolver: EvcsStationNameResolver? = null
         ): AlternativeStationRecommendation? {
             // Target highest DC tier watts (e.g. 150_000L for 150kW, 60_000L for 60kW)
             val targetDcPorts = targetStation.powers.filter { FocusModeDcFilter.isDcPort(it) }
@@ -166,10 +169,16 @@ class FocusModeTelemetryEngine(
             }.minByOrNull { it.second } ?: return null
 
             val (chosenStation, distanceKm) = closestCandidateWithDist
-            val (availDc, totalDc) = FocusModeDcFilter.calculateDcSlots(chosenStation)
+            val resolvedStation = if (stationNameResolver != null) {
+                stationNameResolver.resolveStationSync(chosenStation)
+            } else {
+                val clean = StationNameSanitizer.sanitize(chosenStation.name).ifBlank { chosenStation.name }
+                chosenStation.copy(name = clean)
+            }
+            val (availDc, totalDc) = FocusModeDcFilter.calculateDcSlots(resolvedStation)
 
             return AlternativeStationRecommendation(
-                station = chosenStation,
+                station = resolvedStation,
                 distanceKm = distanceKm,
                 matchingPowerWatts = targetMaxDcWatts,
                 availableDcSlots = availDc,
@@ -194,7 +203,8 @@ class FocusModeTelemetryEngine(
             initialAvailableSlots = FocusModeDcFilter.calculateDcSlots(initialStation).first,
             clock = clock
         ),
-        onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null
+        onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null,
+        stationNameResolver: EvcsStationNameResolver? = null
     ) : this(
         initialStation = initialStation,
         fetchStationTelemetry = { stationId, lat, lon ->
@@ -220,7 +230,8 @@ class FocusModeTelemetryEngine(
         defaultDispatcher = defaultDispatcher,
         coroutineScope = coroutineScope,
         voiceAlertPolicy = voiceAlertPolicy,
-        onVoiceAlert = onVoiceAlert
+        onVoiceAlert = onVoiceAlert,
+        stationNameResolver = stationNameResolver
     )
 
     private val scope = coroutineScope ?: CoroutineScope(defaultDispatcher)
@@ -230,10 +241,27 @@ class FocusModeTelemetryEngine(
     private var currentDriverLon: Double? = null
     private var lastSuccessfulTelemetryTimestamp: Long = clock()
 
+    private val initialTargetStation: Station = run {
+        val authenticName = if (!EvcsStationNameResolver.isGenericStationName(initialStation.name)) {
+            initialStation.name
+        } else {
+            stationNameResolver?.resolveFromCache(initialStation.id, initialStation.latitude, initialStation.longitude)
+                ?: initialStation.name
+        }
+        val cleanName = StationNameSanitizer.sanitize(authenticName).ifBlank { authenticName }
+        initialStation.copy(name = cleanName)
+    }
+
+    init {
+        if (!EvcsStationNameResolver.isGenericStationName(initialStation.name)) {
+            stationNameResolver?.cacheStation(initialStation)
+        }
+    }
+
     private val _state = MutableStateFlow(
         FocusModeState.createInitial(
-            targetStation = initialStation,
-            distanceRemainingKm = initialStation.effectiveDistanceKm,
+            targetStation = initialTargetStation,
+            distanceRemainingKm = initialTargetStation.effectiveDistanceKm,
             timestamp = clock()
         )
     )
@@ -276,14 +304,22 @@ class FocusModeTelemetryEngine(
      * Dynamically updates the target station during active focus navigation (e.g. on reroute).
      */
     fun updateTargetStation(newStation: Station) {
-        val (avail, total) = FocusModeDcFilter.calculateDcSlots(newStation)
-        val dist = if (currentDriverLat != null && currentDriverLon != null && newStation.latitude != 0.0 && newStation.longitude != 0.0) {
-            DistanceCalculator.calculateDistanceKm(currentDriverLat!!, currentDriverLon!!, newStation.latitude, newStation.longitude)
+        val authenticName = when {
+            !EvcsStationNameResolver.isGenericStationName(newStation.name) -> newStation.name
+            stationNameResolver != null -> stationNameResolver.resolveStationSync(newStation).name
+            else -> newStation.name
+        }
+        val cleanName = StationNameSanitizer.sanitize(authenticName).ifBlank { authenticName }
+        val preservedStation = newStation.copy(name = cleanName)
+
+        val (avail, total) = FocusModeDcFilter.calculateDcSlots(preservedStation)
+        val dist = if (currentDriverLat != null && currentDriverLon != null && preservedStation.latitude != 0.0 && preservedStation.longitude != 0.0) {
+            DistanceCalculator.calculateDistanceKm(currentDriverLat!!, currentDriverLon!!, preservedStation.latitude, preservedStation.longitude)
         } else {
-            newStation.effectiveDistanceKm
+            preservedStation.effectiveDistanceKm
         }
         _state.value = _state.value.copy(
-            targetStation = newStation,
+            targetStation = preservedStation,
             availableDcSlots = avail,
             totalDcSlots = total,
             distanceRemainingKm = dist,
@@ -338,10 +374,27 @@ class FocusModeTelemetryEngine(
             val (availDc, totalDc) = FocusModeDcFilter.calculateDcSlots(updatedStation)
             lastSuccessfulTelemetryTimestamp = clock()
 
+            // Resolve and preserve authentic station name (evcs.vn authentic name preservation)
+            val authenticName = when {
+                !EvcsStationNameResolver.isGenericStationName(target.name) -> target.name
+                !EvcsStationNameResolver.isGenericStationName(initialStation.name) -> initialStation.name
+                stationNameResolver != null -> {
+                    stationNameResolver.resolveStationName(
+                        stationId = updatedStation.id.ifBlank { target.id },
+                        latitude = if (updatedStation.latitude != 0.0) updatedStation.latitude else target.latitude,
+                        longitude = if (updatedStation.longitude != 0.0) updatedStation.longitude else target.longitude,
+                        fallbackName = if (!EvcsStationNameResolver.isGenericStationName(updatedStation.name)) updatedStation.name else target.name
+                    )
+                }
+                !EvcsStationNameResolver.isGenericStationName(updatedStation.name) -> updatedStation.name
+                else -> target.name
+            }
+            val sanitizedAuthenticName = StationNameSanitizer.sanitize(authenticName).ifBlank { authenticName }
+
             AppDebugLogger.log(
                 tag = DebugLogTag.FOCUS_MODE,
                 level = DebugLogLevel.SUCCESS,
-                message = "Focus Mode: Cập nhật thành công trạm ${updatedStation.name} -> Trống $availDc/$totalDc cổng DC"
+                message = "Focus Mode: Cập nhật thành công trạm $sanitizedAuthenticName -> Trống $availDc/$totalDc cổng DC"
             )
 
             var recommendation: AlternativeStationRecommendation? = null
@@ -351,16 +404,24 @@ class FocusModeTelemetryEngine(
                 AppDebugLogger.log(
                     tag = DebugLogTag.FOCUS_MODE,
                     level = DebugLogLevel.WARN,
-                    message = "Focus Mode: Trạm ${updatedStation.name} đã hết cổng sạc DC! Bắt đầu tìm trạm thay thế trong bán kính 10km..."
+                    message = "Focus Mode: Trạm $sanitizedAuthenticName đã hết cổng sạc DC! Bắt đầu tìm trạm thay thế trong bán kính 10km..."
                 )
                 val candidatesResult = fetchNearbyCandidates.invoke(driverLat, driverLon)
                 if (candidatesResult.isSuccess) {
                     val candidates = candidatesResult.getOrThrow()
+                    val enrichedCandidates = if (stationNameResolver != null) {
+                        candidates.map { candidate ->
+                            stationNameResolver.enrichCandidateStation(candidate)
+                        }
+                    } else {
+                        candidates
+                    }
                     recommendation = findAlternativeStation(
-                        targetStation = updatedStation,
-                        candidates = candidates,
+                        targetStation = updatedStation.copy(name = sanitizedAuthenticName, distanceKm = remainingDist),
+                        candidates = enrichedCandidates,
                         driverLat = driverLat,
-                        driverLon = driverLon
+                        driverLon = driverLon,
+                        stationNameResolver = stationNameResolver
                     )
                     if (recommendation != null) {
                         val recDistStr = String.format(locale, "%.1fkm", recommendation.distanceKm)
@@ -379,7 +440,10 @@ class FocusModeTelemetryEngine(
                 }
             }
 
-            val updatedWithDist = updatedStation.copy(distanceKm = remainingDist)
+            val updatedWithDist = updatedStation.copy(
+                name = sanitizedAuthenticName,
+                distanceKm = remainingDist
+            )
 
             _state.value = FocusModeState(
                 targetStation = updatedWithDist,
@@ -413,14 +477,28 @@ class FocusModeTelemetryEngine(
                 timeZone = timeZone,
                 locale = locale
             )
+            val currentTarget = currentState.targetStation
+            val authenticName = when {
+                !EvcsStationNameResolver.isGenericStationName(currentTarget.name) -> currentTarget.name
+                !EvcsStationNameResolver.isGenericStationName(initialStation.name) -> initialStation.name
+                stationNameResolver != null -> {
+                    stationNameResolver.resolveFromCache(currentTarget.id, currentTarget.latitude, currentTarget.longitude)
+                        ?: currentTarget.name
+                }
+                else -> currentTarget.name
+            }
+            val sanitizedName = StationNameSanitizer.sanitize(authenticName).ifBlank { authenticName }
+            val preservedTarget = currentTarget.copy(name = sanitizedName)
+
             AppDebugLogger.log(
                 tag = DebugLogTag.FOCUS_MODE,
                 level = DebugLogLevel.ERROR,
-                message = "Focus Mode: Lỗi kết nối trạm ${target.name} (id: ${target.id}): ${err?.message ?: "Lỗi mạng"}. Chuyển sang chế độ ngoại tuyến: \"$offlineMsg\"",
+                message = "Focus Mode: Lỗi kết nối trạm ${preservedTarget.name} (id: ${preservedTarget.id}): ${err?.message ?: "Lỗi mạng"}. Chuyển sang chế độ ngoại tuyến: \"$offlineMsg\"",
                 errorDetails = err?.stackTraceToString()
             )
 
             _state.value = currentState.copy(
+                targetStation = preservedTarget,
                 distanceRemainingKm = remainingDist,
                 connectionStatus = FocusConnectionStatus.OFFLINE,
                 offlineMessage = offlineMsg

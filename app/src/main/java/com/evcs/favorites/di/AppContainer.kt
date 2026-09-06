@@ -1,9 +1,13 @@
 package com.evcs.favorites.di
 
 import android.content.Context
+import com.evcs.favorites.data.api.EvcsApiClient
+import com.evcs.favorites.data.auth.InMemorySessionStorage
+import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.data.network.here.HereOAuthManager
+import com.evcs.favorites.focus.EvcsStationNameResolver
 import com.evcs.favorites.focus.FocusModeTelemetryEngine
 import kotlinx.coroutines.CoroutineScope
 
@@ -14,6 +18,8 @@ import kotlinx.coroutines.CoroutineScope
 interface AppContainer {
     val hereOAuthManager: HereOAuthManager
     val hereEvApiClient: HereEvApiClient
+    val evcsApiClient: EvcsApiClient
+    val evcsStationNameResolver: EvcsStationNameResolver
 
     fun createFocusModeTelemetryEngine(
         initialStation: Station,
@@ -35,6 +41,16 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
         HereEvApiClient(oauthManager = hereOAuthManager)
     }
 
+    override val evcsApiClient: EvcsApiClient by lazy {
+        val sessionManager = context?.let { SessionManager.create(it) }
+            ?: SessionManager(InMemorySessionStorage())
+        EvcsApiClient(sessionManager = sessionManager)
+    }
+
+    override val evcsStationNameResolver: EvcsStationNameResolver by lazy {
+        EvcsStationNameResolver(apiClient = evcsApiClient)
+    }
+
     override fun createFocusModeTelemetryEngine(
         initialStation: Station,
         locationProvider: (() -> Pair<Double, Double>?)?,
@@ -44,7 +60,8 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
             initialStation = initialStation,
             hereEvApiClient = hereEvApiClient,
             locationProvider = locationProvider,
-            coroutineScope = coroutineScope
+            coroutineScope = coroutineScope,
+            stationNameResolver = evcsStationNameResolver
         )
     }
 

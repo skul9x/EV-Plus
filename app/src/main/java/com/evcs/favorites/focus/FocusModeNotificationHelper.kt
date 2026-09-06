@@ -72,7 +72,8 @@ object FocusModeNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = "⚡ Focus Mode: ${state.targetStation.name}"
+        val cleanName = com.evcs.favorites.util.StationNameSanitizer.sanitize(state.targetStation.name).ifBlank { state.targetStation.name }
+        val title = "⚡ Focus Mode: $cleanName"
         val distStr = state.distanceRemainingKm?.let { String.format(Locale.US, "%.1f km", it) } ?: "..."
         val contentText = if (state.detailedDcTiersText != null) {
             "${state.statusBadgeOverviewText} • ${state.detailedDcTiersText} • Cách $distStr"

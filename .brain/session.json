@@ -1,39 +1,49 @@
 {
-  "updated_at": "2026-09-07T00:27:00+07:00",
+  "updated_at": "2026-09-07T01:06:00+07:00",
   "working_on": {
-    "feature": "Click-Spam Protection, Concurrency & Edge-Case Hardening",
-    "task": "Plan created, verified, and standardized across 4 phases in plans/260907-0025-click-spam-and-edge-case-hardening/",
-    "status": "planned",
+    "feature": "Focus Mode evcs.vn Station Name & 1-Tap Direct Turn-by-Turn Navigation",
+    "task": "Completed Phase 01 & Phase 02 with 100% test pass rate",
+    "status": "completed",
     "files": [
-      "plans/260907-0025-click-spam-and-edge-case-hardening/plan.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-01-action-debounce-and-throttling.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-02-thread-safe-favorites-and-rapid-click.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-03-gps-timeout-and-notification-permission.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-04-rate-limit-and-lifecycle-hardening.md"
+      "plans/260907-0055-focus-mode-name-and-navigation-fix/plan.md",
+      "plans/260907-0055-focus-mode-name-and-navigation-fix/phase-01-turn-by-turn-direct-navigation.md",
+      "plans/260907-0055-focus-mode-name-and-navigation-fix/phase-02-evcs-station-name-resolution.md",
+      "app/src/main/java/com/evcs/favorites/focus/EvcsStationNameResolver.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeState.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeViewLayoutHelper.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeNotificationHelper.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
+      "app/src/main/java/com/evcs/favorites/di/AppContainer.kt",
+      "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt"
     ],
     "blockers": [],
-    "notes": "Plan is fully reviewed and formatted according to project conventions. Each phase has exactly one comprehensive test file and runs only that single test for verification before pausing for user review."
+    "notes": "Both phases in 260907-0055 plan are 100% completed and verified via dedicated single test files."
   },
   "pending_tasks": [
     {
+      "plan": "260907-0025-click-spam-and-edge-case-hardening",
       "phase": "01",
       "task": "Phase 01: Action Debounce & Throttling Engine",
       "verification_test": "ActionDebounceAndThrottlingTest.kt",
       "status": "pending"
     },
     {
+      "plan": "260907-0025-click-spam-and-edge-case-hardening",
       "phase": "02",
       "task": "Phase 02: Thread-Safe Favorites Synchronization & Rapid-Click Guard",
       "verification_test": "FavoriteConcurrencyAndThreadSafetyTest.kt",
       "status": "pending"
     },
     {
+      "plan": "260907-0025-click-spam-and-edge-case-hardening",
       "phase": "03",
       "task": "Phase 03: GPS Timeout, Scan Guard & Android 13+ Notification Permissions",
       "verification_test": "GpsTimeoutAndNotificationPermissionTest.kt",
       "status": "pending"
     },
     {
+      "plan": "260907-0025-click-spam-and-edge-case-hardening",
       "phase": "04",
       "task": "Phase 04: Client Rate Limit & Lifecycle Edge Cases",
       "verification_test": "RateLimitAndLifecycleHardeningTest.kt",
@@ -42,58 +52,50 @@
   ],
   "recent_changes": [
     {
-      "timestamp": "2026-09-07T00:26:00+07:00",
-      "type": "plan",
-      "description": "Created and standardized comprehensive Click-Spam Protection, Concurrency & Edge-Case Hardening Plan (4 phases, 1 unit test per phase).",
+      "timestamp": "2026-09-07T01:05:00+07:00",
+      "type": "feature",
+      "description": "Implemented EvcsStationNameResolver and station name preservation during live telemetry polling & auto-reroute recommendation candidate enrichment.",
       "files": [
-        "plans/260907-0025-click-spam-and-edge-case-hardening/plan.md",
-        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-01-action-debounce-and-throttling.md",
-        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-02-thread-safe-favorites-and-rapid-click.md",
-        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-03-gps-timeout-and-notification-permission.md",
-        "plans/260907-0025-click-spam-and-edge-case-hardening/phase-04-rate-limit-and-lifecycle-hardening.md"
+        "app/src/main/java/com/evcs/favorites/focus/EvcsStationNameResolver.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeState.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeViewLayoutHelper.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeNotificationHelper.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
+        "app/src/main/java/com/evcs/favorites/di/AppContainer.kt",
+        "app/src/test/java/com/evcs/favorites/focus/FocusModeEvcsStationNameTest.kt"
       ]
     },
     {
-      "timestamp": "2026-09-06T23:30:00+07:00",
+      "timestamp": "2026-09-07T00:55:00+07:00",
       "type": "feature",
-      "description": "Implemented Focus Mode 20kW DC support, Auto-scroll to top on filter changes/refresh, and AC-only station focus button refinement (3/3 phases verified).",
+      "description": "Implemented 1-Tap Direct Turn-by-Turn Driving Navigation on Focus Mode activation (google.navigation:q=lat,lon&mode=d).",
       "files": [
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
-        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
         "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "plans/260906-2318-focus-mode-20kw-and-filter-fixes/*"
+        "app/src/test/java/com/evcs/favorites/focus/FocusModeDirectNavigationTest.kt"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "FusedLocationProviderClient hangs indefinitely when GPS hardware is disabled",
-      "solution": "Wrap getFreshLocation in withTimeoutOrNull(8000L) and clean up CancellationTokenSource",
-      "resolved": false
+      "error": "Here EV API returns generic 'Trạm sạc VinFast' for all stations, wiping out authentic evcs.vn station names during polling",
+      "solution": "Preserve authentic non-generic target.name in pollOnce() and resolve generic names with EvcsStationNameResolver",
+      "resolved": true
     },
     {
-      "error": "Cloudflare/EVCS rate-limiting bans prolonged by repeated client requests during 429 cooldown",
-      "solution": "Check isGlobalRateLimited() prior to socket creation and fail immediately with RateLimitException",
-      "resolved": false
-    },
-    {
-      "error": "Audio focus ducking permanently stuck if third-party TTS engine hangs without onDone callback",
-      "solution": "Implement a 6-second watchdog timer in FocusModeTtsManager to force abandonDuckAudioFocus()",
-      "resolved": false
+      "error": "Google Maps geo:0,0?q=... preview pin screen required extra tap on 'Bắt đầu'",
+      "solution": "Dispatch direct turn-by-turn intent google.navigation:q=lat,lon&mode=d with Maps package target",
+      "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Single Test File Verification per Phase",
-      "reason": "Enforces strict isolation and prevents test bloat; only exactly one comprehensive test is created and run per phase"
+      "decision": "EvcsStationNameResolver In-Memory Concurrent Caching",
+      "reason": "Prevents redundant network queries when polling or evaluating multiple nearby candidates"
     },
     {
-      "decision": "Two-Pronged Click-Spam Defense (UI State + Engine Debounce)",
-      "reason": "Combines immediate UI feedback (disabling buttons in-flight) with repository/helper debouncing (idempotent MapNavigator, Mutex locking) for bulletproof user interaction safety"
-    },
-    {
-      "decision": "Android 13+ Runtime POST_NOTIFICATIONS Permission Launcher",
-      "reason": "Ensures Foreground Service and Notification Fallback modes deliver critical real-time alerts without being silently swallowed by OS"
+      "decision": "Proximity & Location ID Dual Matching",
+      "reason": "Allows resolving station names even if Here EV API uses a proprietary UUID rather than evcs.vn location ID (<= 100m match)"
     }
   ]
 }

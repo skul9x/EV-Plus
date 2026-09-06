@@ -115,8 +115,7 @@ class FocusModeEndToEndIntegrationTest {
         // Validate Navigation Intent Spec
         assertEquals(NativeStationDetailSheetHelper.ACTION_VIEW, activationSpec.navigationIntentSpec.action)
         assertEquals(NativeStationDetailSheetHelper.GOOGLE_MAPS_PACKAGE, activationSpec.navigationIntentSpec.packageName)
-        assertTrue(activationSpec.navigationIntentSpec.uriString.startsWith("geo:0,0?q=10.795,106.7218("))
-        assertTrue(activationSpec.navigationIntentSpec.uriString.contains("VinFast%20Landmark%2081"))
+        assertEquals("google.navigation:q=10.795,106.7218&mode=d", activationSpec.navigationIntentSpec.uriString)
 
         // 2. Build Android Intent via Service helper
         val serviceIntent = FocusModeForegroundService.createStartIntent(context, station)

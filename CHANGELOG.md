@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-07] - Focus Mode evcs.vn Station Name Resolution & 1-Tap Direct Turn-by-Turn Navigation
+
+### Added
+- **evcs.vn Authentic Station Name Resolution & Preservation (`EvcsStationNameResolver`)**:
+  - Implemented `EvcsStationNameResolver` utility to resolve standard, authentic charging station names from evcs.vn search data by location ID (e.g. `c.bni0012` -> `VinFast TTTM Dabaco Mart Quế Võ`) or GPS proximity (<= 100 meters).
+  - Added thread-safe in-memory caching (`ConcurrentHashMap` + `CopyOnWriteArrayList`) to eliminate redundant network queries.
+  - Updated `FocusModeTelemetryEngine.pollOnce()` to preserve authentic evcs.vn station names, preventing Here EV API generic name `"Trạm sạc VinFast"` from overwriting valid station names during 5s/10s/15s telemetry polling cycles.
+  - Enriched auto-reroute candidate stations with authentic evcs.vn names so recommendation CTAs display `"Đổi trạm: [Tên Trạm Chuẩn] (+...)"` instead of generic names.
+  - Sanitized and unified station name presentation across floating window overlays (`FocusModeViewLayoutHelper.formatViewState`, `FocusModeFloatingViewManager`) and foreground notifications (`FocusModeNotificationHelper`).
+  - Added comprehensive verification suite `FocusModeEvcsStationNameTest.kt` (100% PASS).
+- **1-Tap Direct Turn-by-Turn Driving Navigation on Focus Mode Activation**:
+  - Updated `NativeStationDetailSheetHelper.buildFocusModeActivationSpec` and `startFocusMode` to dispatch direct turn-by-turn driving intent (`google.navigation:q=lat,lon&mode=d` targeting `com.google.android.apps.maps`) matching the "Chỉ đường" (Navigate) action.
+  - Eliminated the intermediate station pin preview screen (`geo:0,0?q=...`), allowing drivers to start navigation with a single tap.
+  - Preserved multi-tier fallback mechanism to generic `geo:` intent and browser routing if Google Maps is absent.
+  - Added comprehensive verification suite `FocusModeDirectNavigationTest.kt` (100% PASS).
+
 ## [2026-09-07] - Click-Spam Protection, Concurrency & Edge-Case Hardening Plan
 
 ### Added

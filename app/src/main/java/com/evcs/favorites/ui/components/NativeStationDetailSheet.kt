@@ -90,6 +90,7 @@ import com.evcs.favorites.domain.StationPortStatus
 import com.evcs.favorites.domain.StationRating
 import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.navigation.MapIntentSpec
+import com.evcs.favorites.navigation.MapNavigator
 import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.ui.theme.AppIcons
 import com.evcs.favorites.ui.theme.EmeraldContainerDark
@@ -556,19 +557,18 @@ object NativeStationDetailSheetHelper {
     /**
      * Launches external Google Maps navigation Intent with generic fallback.
      */
-    fun launchNavigation(context: Context, station: Station) {
-        try {
-            val uri = Uri.parse(buildNavigationUri(station.latitude, station.longitude, station.name))
-            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                setPackage(GOOGLE_MAPS_PACKAGE)
-            }
-            context.startActivity(intent)
-        } catch (_: Exception) {
-            try {
-                val uri = Uri.parse("geo:0,0?q=${station.latitude},${station.longitude}")
-                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-            } catch (_: Exception) {}
-        }
+    fun launchNavigation(
+        context: Context,
+        station: Station,
+        intentLauncher: ((Intent) -> Unit)? = null
+    ): Boolean {
+        return MapNavigator.navigate(
+            context = context,
+            latitude = station.latitude,
+            longitude = station.longitude,
+            stationName = station.name,
+            intentLauncher = intentLauncher
+        )
     }
 
     /**
@@ -614,14 +614,18 @@ object NativeStationDetailSheetHelper {
                 targetClass = FocusModeForegroundService::class.java,
                 payloadJson = json.encodeToString(Station.serializer(), station)
             ),
-            navigationIntentSpec = buildNavigationIntentSpec(station)
+            navigationIntentSpec = MapNavigator.getGoogleMapsIntentSpec(station.latitude, station.longitude)
         )
     }
 
     /**
      * Activates Focus Mode: starts FocusModeForegroundService and launches Google Maps navigation.
      */
-    fun startFocusMode(context: Context, station: Station) {
+    fun startFocusMode(
+        context: Context,
+        station: Station,
+        intentLauncher: ((Intent) -> Unit)? = null
+    ) {
         try {
             val serviceIntent = FocusModeForegroundService.createStartIntent(context, station)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -631,7 +635,7 @@ object NativeStationDetailSheetHelper {
             }
         } catch (_: Exception) {}
 
-        launchNavigation(context, station)
+        launchNavigation(context, station, intentLauncher)
     }
 }
 

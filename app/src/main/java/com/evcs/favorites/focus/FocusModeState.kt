@@ -39,7 +39,8 @@ data class AlternativeStationRecommendation(
             } else {
                 String.format(Locale.US, "%.1fkm", distanceKm)
             }
-            return "Đổi trạm: ${station.name} (+$distStr)"
+            val cleanName = com.evcs.favorites.util.StationNameSanitizer.sanitize(station.name).ifBlank { station.name }
+            return "Đổi trạm: $cleanName (+$distStr)"
         }
 }
 

@@ -84,11 +84,13 @@ object FocusModeViewLayoutHelper {
                 String.format(Locale.US, "%.1f km", dist)
             }
         }
+        val cleanStationName = com.evcs.favorites.util.StationNameSanitizer.sanitize(state.targetStation.name)
+            .ifBlank { state.targetStation.name }
 
         return when {
             state.isOffline -> {
                 FloatingViewState(
-                    stationName = state.targetStation.name,
+                    stationName = cleanStationName,
                     badgeText = state.statusBadgeText,
                     detailedTiersText = null,
                     badgeColorToken = FocusBadgeColor.AMBER,
@@ -103,7 +105,7 @@ object FocusModeViewLayoutHelper {
                     "🔄 ${it.displayRerouteLabel}"
                 }
                 FloatingViewState(
-                    stationName = state.targetStation.name,
+                    stationName = cleanStationName,
                     badgeText = state.statusBadgeText,
                     detailedTiersText = state.detailedDcTiersText,
                     badgeColorToken = FocusBadgeColor.RED,
@@ -115,7 +117,7 @@ object FocusModeViewLayoutHelper {
             }
             else -> {
                 FloatingViewState(
-                    stationName = state.targetStation.name,
+                    stationName = cleanStationName,
                     badgeText = state.statusBadgeText,
                     detailedTiersText = state.detailedDcTiersText,
                     badgeColorToken = FocusBadgeColor.GREEN,

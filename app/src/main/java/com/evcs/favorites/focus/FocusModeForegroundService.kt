@@ -280,8 +280,9 @@ class FocusModeForegroundService : Service() {
         val newTtsManager = FocusModeTtsManager(applicationContext)
         ttsManager = newTtsManager
 
-        val hereClient = (applicationContext as? EvPlusApplication)?.appContainer?.hereEvApiClient
-            ?: HereEvApiClient()
+        val appContainer = (applicationContext as? EvPlusApplication)?.appContainer
+        val hereClient = appContainer?.hereEvApiClient ?: HereEvApiClient()
+        val resolver = appContainer?.evcsStationNameResolver
         val newEngine = FocusModeTelemetryEngine(
             initialStation = station,
             hereEvApiClient = hereClient,
@@ -289,7 +290,8 @@ class FocusModeForegroundService : Service() {
             onVoiceAlert = { alert ->
                 newTtsManager.speak(alert.text)
             },
-            coroutineScope = serviceScope
+            coroutineScope = serviceScope,
+            stationNameResolver = resolver
         )
 
         engine = newEngine

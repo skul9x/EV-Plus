@@ -62,6 +62,8 @@
   ],
   "features": [
     "Focus Mode (Live DC Telemetry Navigation Tracker) with Draggable Floating Capsule Overlay over Google Maps",
+    "Focus Mode evcs.vn Authentic Station Name Resolution (EvcsStationNameResolver) & Name Preservation against Here API generic names",
+    "Focus Mode 1-Tap Direct Turn-by-Turn Driving Navigation (google.navigation:q=lat,lon&mode=d)",
     "Focus Mode 20kW DC Fast Charger Support (VF3/VF5) and Smart Candidate Auto-Rerouting (>= target DC tier)",
     "Nearby Screen Auto-Scroll to Top on user-initiated refresh completion and filter changes with timestamp debouncing",
     "AC-Only Station Detail Dynamic Action Buttons (Conditionally hides Focus button, expands Navigate to full width)",
@@ -79,6 +81,9 @@
   ],
   "knowledge_items": {
     "patterns": [
+      "EvcsStationNameResolver in-memory concurrent caching (ConcurrentHashMap + CopyOnWriteArrayList) matching by location ID and coordinate proximity (<= 100m)",
+      "Station name preservation in FocusModeTelemetryEngine.pollOnce() protecting authentic evcs.vn names from Here EV generic overwrites",
+      "Direct turn-by-turn navigation intent generation (google.navigation:q=lat,lon&mode=d) for zero-tap driving start in Google Maps",
       "HereOAuthManager thread-safe token caching with 10-minute proactive refresh buffer via Coroutine Mutex",
       "DebounceHelper with injectable clock for deterministic time-based cooldown (1000ms) and suspend in-flight action locking",
       "FocusModeTelemetryEngine headless decoupling with StateFlow and SharedFlow for discrete voice alerts",
@@ -94,6 +99,8 @@
       "NearbyUiHelper pure function decision rules for auto-scrolling with timestamp verification"
     ],
     "gotchas": [
+      "Here EV API returns generic 'Trạm sạc VinFast' for all stations; polling loops must preserve target.name or query EvcsStationNameResolver to avoid losing specific location names",
+      "Google Maps geo:0,0?q=lat,lon(name) intent lands on an address overview pin screen and requires manual 'Start' tap; use google.navigation:q=lat,lon&mode=d for direct turn-by-turn driving",
       "FusedLocationProviderClient.getCurrentLocation lacks an internal timeout when GPS hardware is off, hanging coroutines indefinitely without withTimeoutOrNull",
       "Android 14 crashes with SecurityException if startForeground(FOREGROUND_SERVICE_TYPE_LOCATION) is called without ACCESS_FINE/COARSE_LOCATION; fallback to DATA_SYNC",
       "On Android 13+ (API 33+), foreground notifications are silently dropped unless Manifest.permission.POST_NOTIFICATIONS is requested at runtime",
