@@ -158,21 +158,16 @@ class PlainSharedPrefsStorage(
     }
 
     companion object {
-        @Volatile
-        private var instance: PlainSharedPrefsStorage? = null
+        private val instances = java.util.concurrent.ConcurrentHashMap<String, PlainSharedPrefsStorage>()
 
-        fun getInstance(context: Context): PlainSharedPrefsStorage {
-            return instance ?: synchronized(this) {
-                instance ?: PlainSharedPrefsStorage(context.applicationContext ?: context).also {
-                    instance = it
-                }
+        fun getInstance(context: Context, prefsName: String = "evcs_public_cache"): PlainSharedPrefsStorage {
+            return instances.computeIfAbsent(prefsName) { name ->
+                PlainSharedPrefsStorage(context.applicationContext ?: context, name)
             }
         }
 
         internal fun resetInstanceForTesting() {
-            synchronized(this) {
-                instance = null
-            }
+            instances.clear()
         }
     }
 }

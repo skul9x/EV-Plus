@@ -36,24 +36,28 @@ object AppOkHttpClientProvider {
 
     /**
      * Configures and installs a persistent HTTP disk cache on the shared OkHttpClient base.
+     * Can be safely executed on Dispatchers.IO without thread contention.
      */
     @Synchronized
     fun installDiskCache(cacheDir: java.io.File, maxSizeBytes: Long = 20L * 1024 * 1024) {
         if (httpCache == null) {
-            httpCache = okhttp3.Cache(cacheDir, maxSizeBytes)
-            // Rebuild base client if already initialized, or allow lazy initialization
-            rebuildBaseClientWithCache(httpCache)
+            try {
+                val cache = okhttp3.Cache(cacheDir, maxSizeBytes)
+                httpCache = cache
+                val current = baseClient
+                baseClient = if (current != null) {
+                    current.newBuilder().cache(cache).build()
+                } else {
+                    OkHttpClient.Builder()
+                        .connectionPool(connectionPool)
+                        .dispatcher(dispatcher)
+                        .cache(cache)
+                        .build()
+                }
+            } catch (e: Throwable) {
+                // Fail-safe degrade without disk cache
+            }
         }
-    }
-
-    private fun rebuildBaseClientWithCache(cache: okhttp3.Cache?) {
-        val builder = OkHttpClient.Builder()
-            .connectionPool(connectionPool)
-            .dispatcher(dispatcher)
-        if (cache != null) {
-            builder.cache(cache)
-        }
-        baseClient = builder.build()
     }
 
     /**

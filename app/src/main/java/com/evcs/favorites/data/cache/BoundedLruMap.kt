@@ -36,4 +36,67 @@ class BoundedLruMap<K, V>(
         get() = synchronized(lock) { LinkedHashMap(map).entries }
 
     fun snapshot(): Map<K, V> = synchronized(lock) { LinkedHashMap(map) }
+
+    /**
+     * Executes the given [action] on each entry while holding the internal lock.
+     * Prevents [ConcurrentModificationException] and eliminates intermediate defensive copies.
+     */
+    fun forEachThreadSafe(action: (K, V) -> Unit) {
+        synchronized(lock) {
+            for ((k, v) in map) {
+                action(k, v)
+            }
+        }
+    }
+
+    /**
+     * Transforms the entries in this map while holding the internal lock,
+     * directly constructing the result map without intermediate defensive cloning.
+     *
+     * @param transform Function mapping each [Map.Entry] to a new value of type [R].
+     * @return A map with the same keys and transformed values.
+     */
+    fun <R> mapValuesThreadSafe(transform: (Map.Entry<K, V>) -> R): Map<K, R> {
+        synchronized(lock) {
+            val destination = LinkedHashMap<K, R>(map.size)
+            for (entry in map.entries) {
+                destination[entry.key] = transform(entry)
+            }
+            return destination
+        }
+    }
+}
+
+/**
+ * Thread-safe forEach delegation for [MutableMap] instances, delegating to [BoundedLruMap.forEachThreadSafe]
+ * when available, or synchronizing on the instance.
+ */
+fun <K, V> MutableMap<K, V>.forEachThreadSafe(action: (K, V) -> Unit) {
+    if (this is BoundedLruMap<K, V>) {
+        this.forEachThreadSafe(action)
+    } else {
+        synchronized(this) {
+            for ((k, v) in this) {
+                action(k, v)
+            }
+        }
+    }
+}
+
+/**
+ * Thread-safe mapValues delegation for [MutableMap] instances, delegating to [BoundedLruMap.mapValuesThreadSafe]
+ * when available, or synchronizing on the instance without intermediate defensive cloning.
+ */
+fun <K, V, R> MutableMap<K, V>.mapValuesThreadSafe(transform: (Map.Entry<K, V>) -> R): Map<K, R> {
+    return if (this is BoundedLruMap<K, V>) {
+        this.mapValuesThreadSafe(transform)
+    } else {
+        synchronized(this) {
+            val destination = LinkedHashMap<K, R>(this.size)
+            for (entry in this.entries) {
+                destination[entry.key] = transform(entry)
+            }
+            destination
+        }
+    }
 }

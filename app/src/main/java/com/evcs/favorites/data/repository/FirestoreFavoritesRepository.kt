@@ -78,11 +78,13 @@ class FirestoreFavoritesRepository(
         get() = authService?.currentUser?.takeIf { !it.isAnonymous }?.uid
 
     init {
-        // Step 1: Immediate 0ms load from local storage
-        val cached = getCachedFavorites()
-        if (cached.isNotEmpty()) {
-            _favoritesState.value = cached
-            _favoriteIdsState.value = cached.map { it.id }.toSet()
+        // Step 1: Asynchronous load from local storage off main thread
+        scope.launch(ioDispatcher) {
+            val cached = getCachedFavorites()
+            if (cached.isNotEmpty()) {
+                _favoritesState.value = cached
+                _favoriteIdsState.value = cached.map { it.id }.toSet()
+            }
         }
 
         // Step 2: Observe auth changes to automatically trigger login sync pipeline

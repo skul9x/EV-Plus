@@ -1,5 +1,6 @@
 package com.evcs.favorites.ui.state
 
+import androidx.compose.runtime.Immutable
 import com.evcs.favorites.data.model.Station
 
 /**
@@ -33,6 +34,7 @@ sealed interface FavoritesUiState {
      * @param stations List of domain [Station] models, sorted nearest-first if GPS is available.
      * @param isRefreshing True when pull-to-refresh is updating data in the background.
      */
+    @Immutable
     data class Success(
         val stations: List<Station>,
         val isRefreshing: Boolean = false,

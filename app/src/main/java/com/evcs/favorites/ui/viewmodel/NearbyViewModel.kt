@@ -60,7 +60,7 @@ class NearbyViewModel(
     telemetryRepository: EvcsTelemetryRepository? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val defaultDispatcher: CoroutineDispatcher = ioDispatcher,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val routingDebounceMs: Long = 300L
 ) : ViewModel() {
 
@@ -828,7 +828,7 @@ class NearbyViewModel(
             telemetryRepository: EvcsTelemetryRepository? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Main,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-            defaultDispatcher: CoroutineDispatcher = ioDispatcher,
+            defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
             routingDebounceMs: Long = 300L
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

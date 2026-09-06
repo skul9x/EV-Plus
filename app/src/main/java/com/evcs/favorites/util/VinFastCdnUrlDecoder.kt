@@ -15,6 +15,22 @@ object VinFastCdnUrlDecoder {
 
     private val FILE_PARAM_REGEX = Regex("""[?&]file=([^&#]+)""")
     private const val VINFAST_CDN_HOST = "cpo-prod-s3.vinfastauto.com"
+    const val MAX_CACHE_CAPACITY = 500
+
+    private val cacheLock = Any()
+    private val lruCache = object : LinkedHashMap<String, String>(MAX_CACHE_CAPACITY, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+            return size > MAX_CACHE_CAPACITY
+        }
+    }
+
+    @Volatile
+    var cacheHits: Long = 0L
+        internal set
+
+    @Volatile
+    var cacheMisses: Long = 0L
+        internal set
 
     /**
      * Decodes a raw media string into a direct VinFast CloudFront S3 CDN URL.
@@ -27,9 +43,11 @@ object VinFastCdnUrlDecoder {
      *
      * Pipeline:
      * 1. Extract raw token via regex (without android.net.Uri).
-     * 2. Pass 1: Base64 decode to intermediate base64 string.
-     * 3. Pass 2: Base64 decode intermediate string to percent-encoded URL string.
-     * 4. Pass 3: URL unescape via URLDecoder to yield direct CDN URL.
+     * 2. Check in-memory bounded LRU cache for $O(1)$ hit.
+     * 3. Pass 1: Base64 decode to intermediate base64 string.
+     * 4. Pass 2: Base64 decode intermediate string to percent-encoded URL string.
+     * 5. Pass 3: URL unescape via URLDecoder to yield direct CDN URL.
+     * 6. Cache successfully resolved CDN URL.
      *
      * Gracefully returns `null` on corrupted, empty, or malformed inputs without throwing exceptions.
      */
@@ -54,14 +72,28 @@ object VinFastCdnUrlDecoder {
             }
         }
 
+        // 3. Check cache before performing Base64 decoding
+        synchronized(cacheLock) {
+            val cached = lruCache[token]
+            if (cached != null) {
+                cacheHits++
+                return cached
+            }
+        }
+
         return try {
+            cacheMisses++
             // Pass 1: Decode raw Base64 token to intermediate base64 string
             val pass1Bytes = decodeBase64(token) ?: return null
             val pass1Str = String(pass1Bytes, StandardCharsets.UTF_8).trim()
 
             // If Pass 1 already resolved to an absolute URL (e.g. single-encoded token)
             if (isValidHttpUrl(pass1Str)) {
-                return URLDecoder.decode(pass1Str, StandardCharsets.UTF_8.name())
+                val decoded = URLDecoder.decode(pass1Str, StandardCharsets.UTF_8.name())
+                synchronized(cacheLock) {
+                    lruCache[token] = decoded
+                }
+                return decoded
             }
 
             // Pass 2: Decode intermediate base64 string to percent-encoded URL string
@@ -72,6 +104,9 @@ object VinFastCdnUrlDecoder {
             val decodedUrl = URLDecoder.decode(pass2Str, StandardCharsets.UTF_8.name()).trim()
 
             if (isValidHttpUrl(decodedUrl)) {
+                synchronized(cacheLock) {
+                    lruCache[token] = decodedUrl
+                }
                 decodedUrl
             } else {
                 null
@@ -87,6 +122,45 @@ object VinFastCdnUrlDecoder {
     fun decodeList(rawList: List<String>?): List<String> {
         if (rawList.isNullOrEmpty()) return emptyList()
         return rawList.mapNotNull { decode(it) }
+    }
+
+    /**
+     * Clears all cached decoded URLs and resets hit/miss counters.
+     */
+    fun clearCache() {
+        synchronized(cacheLock) {
+            lruCache.clear()
+            cacheHits = 0L
+            cacheMisses = 0L
+        }
+    }
+
+    /**
+     * Returns current number of items cached in the LRU cache.
+     */
+    fun getCacheSize(): Int {
+        return synchronized(cacheLock) {
+            lruCache.size
+        }
+    }
+
+    /**
+     * Retrieves cached CDN URL for the given key (raw URL or token) if present.
+     */
+    fun getCached(key: String): String? {
+        val token = extractToken(key.trim())
+        return synchronized(cacheLock) {
+            lruCache[token] ?: lruCache[key]
+        }
+    }
+
+    /**
+     * Injects a key-value mapping directly into the LRU cache (useful for testing eviction).
+     */
+    internal fun putCached(key: String, url: String) {
+        synchronized(cacheLock) {
+            lruCache[key] = url
+        }
     }
 
     /**

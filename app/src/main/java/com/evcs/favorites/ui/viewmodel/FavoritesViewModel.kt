@@ -49,7 +49,7 @@ class FavoritesViewModel(
     private val routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
     telemetryRepository: EvcsTelemetryRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val defaultDispatcher: CoroutineDispatcher = ioDispatcher
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     val authState: StateFlow<AuthState> = authService?.authState ?: MutableStateFlow(AuthState.Unauthenticated)
@@ -761,7 +761,7 @@ class FavoritesViewModel(
             routingCoordinator: MultiTierRoutingCoordinator = MultiTierRoutingCoordinator(),
             telemetryRepository: EvcsTelemetryRepository? = null,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-            defaultDispatcher: CoroutineDispatcher = ioDispatcher
+            defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {

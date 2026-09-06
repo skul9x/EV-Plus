@@ -1,7 +1,7 @@
 package com.evcs.favorites.data.preferences
 
 import android.content.Context
-import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
+import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionStorage
 import com.evcs.favorites.domain.model.WattageOption
 
@@ -10,7 +10,7 @@ import com.evcs.favorites.domain.model.WattageOption
  * for the Nearby Charging Stations screen.
  *
  * Utilizes the [SessionStorage] abstraction:
- * - [EncryptedSharedPrefsStorage] for persistent encrypted preferences in Android production.
+ * - [PlainSharedPrefsStorage] for zero-overhead preferences in Android production.
  * - [com.evcs.favorites.data.auth.InMemorySessionStorage] for fast JVM unit tests.
  */
 class NearbyFilterPreferences(
@@ -24,7 +24,7 @@ class NearbyFilterPreferences(
          */
         fun create(context: Context): NearbyFilterPreferences {
             return NearbyFilterPreferences(
-                storage = EncryptedSharedPrefsStorage.getInstance(context)
+                storage = PlainSharedPrefsStorage.getInstance(context, "evcs_nearby_filter_prefs")
             )
         }
     }

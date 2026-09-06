@@ -1,5 +1,6 @@
 package com.evcs.favorites.ui.state
 
+import androidx.compose.runtime.Immutable
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.routing.DrivingMetrics
 import com.evcs.favorites.domain.model.CustomFilterConfig
@@ -28,6 +29,7 @@ import com.evcs.favorites.domain.model.WattageOption
  * @param savedCustomConfig User's saved custom filter configuration.
  * @param showCustomConfigPrompt True to display prompt dialog when tapping Custom without config.
  */
+@Immutable
 data class NearbyUiState(
     val hasSearched: Boolean = false,
     val isLocating: Boolean = false,

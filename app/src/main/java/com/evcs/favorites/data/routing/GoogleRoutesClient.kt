@@ -1,16 +1,24 @@
 package com.evcs.favorites.data.routing
 
+import com.evcs.favorites.data.network.AppOkHttpClientProvider
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import com.evcs.favorites.data.network.AppOkHttpClientProvider
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import kotlin.math.roundToLong
+import okhttp3.Response
 
 /**
  * Tier 1 HTTP network client for Google Routes API v2 (computeRouteMatrix).
@@ -22,6 +30,7 @@ class GoogleRoutesClient(
 ) {
     companion object {
         const val DEFAULT_BASE_URL = "https://routes.googleapis.com/"
+        const val DEFAULT_TIMEOUT_MS = 3500L
         const val HEADER_API_KEY = "X-Goog-Api-Key"
         const val HEADER_FIELD_MASK = "X-Goog-FieldMask"
         const val HEADER_ANDROID_PACKAGE = "X-Android-Package"
@@ -44,13 +53,15 @@ class GoogleRoutesClient(
      * @param originLat Latitude of origin point.
      * @param originLng Longitude of origin point.
      * @param destinations List of destination points with station IDs.
+     * @param timeoutMs Maximum duration to wait for the HTTP response before timing out.
      * @return Result wrapping Map of stationId -> DrivingMetrics on success, or failure exception.
      */
     suspend fun computeRouteMatrix(
         apiKey: String,
         originLat: Double,
         originLng: Double,
-        destinations: List<RoutingDestination>
+        destinations: List<RoutingDestination>,
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS
     ): Result<Map<String, DrivingMetrics>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Google API Key cannot be blank"))
@@ -95,15 +106,39 @@ class GoogleRoutesClient(
             .post(jsonBody.toRequestBody(jsonMediaType))
             .build()
 
-        try {
-            okHttpClient.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string().orEmpty()
+        val effectiveClient = if (timeoutMs > 0L) {
+            okHttpClient.newBuilder()
+                .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                .build()
+        } else {
+            okHttpClient
+        }
+        val call = effectiveClient.newCall(request)
 
-                if (!response.isSuccessful) {
+        try {
+            val response = suspendCancellableCoroutine<Response> { continuation ->
+                continuation.invokeOnCancellation {
+                    call.cancel()
+                }
+                call.enqueue(object : Callback {
+                    override fun onResponse(call: Call, response: Response) {
+                        continuation.resume(response)
+                    }
+                    override fun onFailure(call: Call, e: IOException) {
+                        if (continuation.isCancelled) return
+                        continuation.resumeWithException(e)
+                    }
+                })
+            }
+
+            response.use { resp ->
+                val responseBody = resp.body?.string().orEmpty()
+
+                if (!resp.isSuccessful) {
                     return@withContext Result.failure(
                         RoutingApiException(
-                            statusCode = response.code,
-                            message = "Google Routes API error HTTP ${response.code}: $responseBody"
+                            statusCode = resp.code,
+                            message = "Google Routes API error HTTP ${resp.code}: $responseBody"
                         )
                     )
                 }

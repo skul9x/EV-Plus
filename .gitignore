@@ -35,7 +35,8 @@ reports/
 !app/src/main/res/**/*.png
 *.zip
 
-# Original app heavy binary assets & decompiled dumps
+# Decompiled / extracted assets & dumps
+output_vinfast/
 original_app_data/*.xapk
 original_app_data/*.apk
 original_app_data/extracted_xapk/
@@ -59,7 +60,10 @@ ehthumbs.db
 Thumbs.db
 
 # Editors & IDEs
+.idea/
 .vscode/
+.brain/
 *.swp
 *.swo
 *~
+

@@ -14,22 +14,37 @@ import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.domain.model.matchesCustomRange
 import com.evcs.favorites.domain.model.matchesQuickChip
 
+import java.util.PriorityQueue
+import java.util.concurrent.ConcurrentHashMap
+
+private val connectorCompatibilityCache = ConcurrentHashMap<String, Boolean>()
+
+/**
+ * Clears the connector compatibility cache. Primarily used for testing.
+ */
+fun clearConnectorCompatibilityCache() {
+    connectorCompatibilityCache.clear()
+}
+
 /**
  * Extension function on [Station] to check if it has any car-compatible charging ports
  * (DC ports, or AC ports with rating >= 11kW).
  *
  * Rules:
  * - Returns true if any port satisfies `it.isDc()`, `it.isAc()`, or `it.typeWatts >= 11_000L`.
- * - If `powers` is empty, falls back to connector string parsing via [EvcsRepository.parseConnectorsToPowers].
+ * - If `powers` is empty, falls back to connector string parsing via [EvcsRepository.parseConnectorsToPowers]
+ *   with thread-safe memoization to avoid repetitive regex and string allocations.
  * - Returns false if the station only contains low-power motorbike ports (3.5kW, 7kW, 7.4kW) and no DC or AC >= 11kW ports.
  */
 fun Station.hasCarCompatiblePorts(): Boolean {
-    val portList = if (powers.isNotEmpty()) {
-        powers
-    } else {
-        EvcsRepository.parseConnectorsToPowers(connectors)
+    if (powers.isNotEmpty()) {
+        return powers.any { it.isDc() || it.isAc() || it.typeWatts >= 11_000L }
     }
-    return portList.any { it.isDc() || it.isAc() || it.typeWatts >= 11_000L }
+    if (connectors.isBlank()) return false
+    return connectorCompatibilityCache.computeIfAbsent(connectors) { conn ->
+        val portList = EvcsRepository.parseConnectorsToPowers(conn)
+        portList.any { it.isDc() || it.isAc() || it.typeWatts >= 11_000L }
+    }
 }
 
 /**
@@ -174,7 +189,9 @@ object NearbyStationFilter {
 
     /**
      * Computes great-circle Haversine distance from user's coordinates to each station,
-     * sorts stations nearest-first, and extracts strictly the top [limit] elements.
+     * selects strictly the top [limit] nearest stations using a bounded PriorityQueue (Max-Heap)
+     * in O(N log k) time and O(k) extra space, and only instantiates copied [Station] objects
+     * for the final top [limit] results.
      *
      * @param userLat User's current latitude
      * @param userLon User's current longitude
@@ -188,20 +205,55 @@ object NearbyStationFilter {
         stations: List<Station>,
         limit: Int = 10
     ): List<Station> {
-        return stations
-            .distinctBy { it.id }
-            .map { station ->
-                val distance = DistanceCalculator.calculateDistanceKm(
-                    lat1 = userLat,
-                    lon1 = userLon,
-                    lat2 = station.latitude,
-                    lon2 = station.longitude
-                )
-                station.copy(distanceKm = distance)
+        if (limit <= 0 || stations.isEmpty()) return emptyList()
+
+        val maxHeapComparator = Comparator<StationCandidate> { a, b ->
+            val cmp = b.distanceKm.compareTo(a.distanceKm)
+            if (cmp != 0) cmp else b.index.compareTo(a.index)
+        }
+
+        val heap = PriorityQueue<StationCandidate>(limit, maxHeapComparator)
+        val seenIds = HashSet<String>()
+        var index = 0
+
+        for (station in stations) {
+            if (!seenIds.add(station.id)) {
+                continue
             }
-            .sortedBy { it.distanceKm ?: Double.MAX_VALUE }
-            .take(limit)
+
+            val currentIndex = index++
+            val dist = DistanceCalculator.calculateDistanceKm(
+                lat1 = userLat,
+                lon1 = userLon,
+                lat2 = station.latitude,
+                lon2 = station.longitude
+            )
+
+            if (heap.size < limit) {
+                heap.offer(StationCandidate(station, dist, currentIndex))
+            } else {
+                val worst = heap.peek()
+                if (worst != null && dist < worst.distanceKm) {
+                    heap.poll()
+                    heap.offer(StationCandidate(station, dist, currentIndex))
+                }
+            }
+        }
+
+        val sortedCandidates = heap.sortedWith(
+            compareBy<StationCandidate> { it.distanceKm }.thenBy { it.index }
+        )
+
+        return sortedCandidates.map { candidate ->
+            candidate.station.copy(distanceKm = candidate.distanceKm)
+        }
     }
+
+    private data class StationCandidate(
+        val station: Station,
+        val distanceKm: Double,
+        val index: Int
+    )
 
     /**
      * Sorts stations ascending by actual driving road distance (`drivingMetrics.distanceMeters`).

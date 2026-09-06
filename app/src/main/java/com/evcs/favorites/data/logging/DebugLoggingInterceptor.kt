@@ -1,5 +1,6 @@
 package com.evcs.favorites.data.logging
 
+import com.evcs.favorites.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
@@ -8,15 +9,18 @@ import okio.Buffer
 /**
  * OkHttp Interceptor that systematically captures outgoing requests and incoming responses,
  * recording latencies and peeking response bodies safely without consuming stream data.
+ *
+ * Defaults to enabled only in debug builds ([BuildConfig.DEBUG]) to avoid body peeking,
+ * string buffering, and latency logging overhead in production release builds.
  */
 class DebugLoggingInterceptor(
-    var enabled: Boolean = true,
+    var enabled: Boolean = BuildConfig.DEBUG,
     private val maxBodySnippetLength: Int = 500,
     private val maxPeekBytes: Long = 4096L
 ) : Interceptor {
 
     constructor(maxBodySnippetLength: Int, maxPeekBytes: Long = 4096L) : this(
-        enabled = true,
+        enabled = BuildConfig.DEBUG,
         maxBodySnippetLength = maxBodySnippetLength,
         maxPeekBytes = maxPeekBytes
     )

@@ -1,6 +1,144 @@
+# -------------------------------------------------------------------------
+# Android Runtime (ART) Baseline Profile for EV-Plus
+# Ahead-Of-Time (AOT) compilation rules for critical user journeys and cold startup
+# -------------------------------------------------------------------------
+
+# Core Application & Main Activity Lifecycle
+HSPLcom/evcs/favorites/EvPlusApplication;-><init>()V
+HSPLcom/evcs/favorites/EvPlusApplication;->onCreate()V
 HSPLcom/evcs/favorites/MainActivity;-><init>()V
 HSPLcom/evcs/favorites/MainActivity;->onCreate(Landroid/os/Bundle;)V
-HSPLcom/evcs/favorites/ui/screens/FavoritesScreenKt;->*
+HSPLcom/evcs/favorites/MainActivity;->onStart()V
+HSPLcom/evcs/favorites/MainActivity;->onResume()V
+HSPLcom/evcs/favorites/MainActivity;->onPause()V
+HSPLcom/evcs/favorites/MainActivity;->onStop()V
+
+# Critical User Journey Screens & Composables
 HSPLcom/evcs/favorites/ui/screens/NearbyScreenKt;->*
+HSPLcom/evcs/favorites/ui/screens/FavoritesScreenKt;->*
+HSPLcom/evcs/favorites/ui/screens/LoginScreenKt;->*
+HSPLcom/evcs/favorites/ui/components/NativeStationDetailSheetKt;->*
 HSPLcom/evcs/favorites/ui/components/StationCardKt;->*
+HSPLcom/evcs/favorites/ui/components/SmartFilterBarKt;->*
+HSPLcom/evcs/favorites/ui/components/FavoritesProfileHeaderKt;->*
+HSPLcom/evcs/favorites/ui/components/WattageFilterChipsRowKt;->*
+HSPLcom/evcs/favorites/ui/components/CustomFilterSettingsCardKt;->*
+HSPLcom/evcs/favorites/ui/components/RoutingSettingsModalKt;->*
+HSPLcom/evcs/favorites/ui/components/StationPhotoViewerModalKt;->*
+HSPLcom/evcs/favorites/ui/components/VerticalScrollbarKt;->*
+HSPLcom/evcs/favorites/ui/navigation/NavigationRootKt;->*
+
+# ViewModels & UI States
+HSPLcom/evcs/favorites/ui/viewmodel/NearbyViewModel;->*
+HSPLcom/evcs/favorites/ui/viewmodel/FavoritesViewModel;->*
+HSPLcom/evcs/favorites/ui/screens/NearbyUiState;->*
+HSPLcom/evcs/favorites/ui/screens/FavoritesUiState;->*
+
+# Domain Calculation Engines & Models
 HSPLcom/evcs/favorites/domain/location/DistanceCalculator;->*
+HSPLcom/evcs/favorites/domain/location/DistanceCalculator$Companion;->*
+HSPLcom/evcs/favorites/domain/filter/NearbyStationFilter;->*
+HSPLcom/evcs/favorites/domain/filter/NearbyStationFilter$Companion;->*
+HSPLcom/evcs/favorites/domain/Station24hStatsCalculator;->*
+HSPLcom/evcs/favorites/domain/StationTelemetryParser;->*
+HSPLcom/evcs/favorites/domain/model/Station;->*
+HSPLcom/evcs/favorites/domain/model/PowerPort;->*
+HSPLcom/evcs/favorites/domain/model/CustomFilterConfig;->*
+HSPLcom/evcs/favorites/domain/model/SmartFilterMode;->*
+
+# Data Layer: Repositories, Caches, Preferences & Routing
+HSPLcom/evcs/favorites/data/repository/FirestoreFavoritesRepository;->*
+HSPLcom/evcs/favorites/data/repository/EvcsRepository;->*
+HSPLcom/evcs/favorites/data/cache/MemoryStationCache;->*
+HSPLcom/evcs/favorites/data/cache/DiskStationCache;->*
+HSPLcom/evcs/favorites/data/preferences/SmartFilterPreferences;->*
+HSPLcom/evcs/favorites/data/preferences/NearbyFilterPreferences;->*
+HSPLcom/evcs/favorites/data/routing/RoutingPreferencesManager;->*
+HSPLcom/evcs/favorites/data/routing/MultiTierRoutingCoordinator;->*
+HSPLcom/evcs/favorites/data/routing/DrivingMetrics;->*
+HSPLcom/evcs/favorites/data/routing/RoutingEngineType;->*
+HSPLcom/evcs/favorites/data/routing/TrafficCondition;->*
+HSPLcom/evcs/favorites/data/model/Station;->*
+HSPLcom/evcs/favorites/data/model/Station$Companion;->*
+HSPLcom/evcs/favorites/data/model/PowerPort;->*
+HSPLcom/evcs/favorites/data/model/PowerPort$Companion;->*
+HSPLcom/evcs/favorites/data/auth/PlainSharedPrefsStorage;->*
+HSPLcom/evcs/favorites/data/auth/EncryptedSharedPrefsStorage;->*
+HSPLcom/evcs/favorites/data/logging/PerformanceLogger;->*
+
+# Network Pipeline & URL Utilities
+HSPLcom/evcs/favorites/data/network/AppOkHttpClientProvider;->*
+HSPLcom/evcs/favorites/data/network/RateLimitRetryInterceptor;->*
+HSPLcom/evcs/favorites/data/api/EvcsApiClient;->*
+HSPLcom/evcs/favorites/util/VinFastCdnUrlDecoder;->*
+HSPLcom/evcs/favorites/util/SingleFlight;->*
+HSPLcom/evcs/favorites/util/StationNameSanitizer;->*
+HSPLcom/evcs/favorites/util/StationUrlBuilder;->*
+HSPLcom/evcs/favorites/util/RetryAfterParser;->*
+
+# AndroidX Compose Runtime & Snapshot State System
+HSPLandroidx/compose/runtime/Composer;->*
+HSPLandroidx/compose/runtime/ComposerImpl;->*
+HSPLandroidx/compose/runtime/Recomposer;->*
+HSPLandroidx/compose/runtime/CompositionLocal;->*
+HSPLandroidx/compose/runtime/CompositionLocalMap;->*
+HSPLandroidx/compose/runtime/MutableState;->*
+HSPLandroidx/compose/runtime/SnapshotMutableStateImpl;->*
+HSPLandroidx/compose/runtime/SnapshotStateKt;->*
+HSPLandroidx/compose/runtime/snapshots/Snapshot;->*
+HSPLandroidx/compose/runtime/snapshots/SnapshotKt;->*
+HSPLandroidx/compose/runtime/snapshots/SnapshotStateList;->*
+HSPLandroidx/compose/runtime/snapshots/SnapshotStateMap;->*
+
+# AndroidX Compose UI Layout & Rendering Pipeline
+HSPLandroidx/compose/ui/node/LayoutNode;->*
+HSPLandroidx/compose/ui/node/MeasureAndLayoutDelegate;->*
+HSPLandroidx/compose/ui/node/NodeCoordinator;->*
+HSPLandroidx/compose/ui/layout/MeasurePolicy;->*
+HSPLandroidx/compose/ui/platform/AndroidComposeView;->*
+HSPLandroidx/compose/foundation/lazy/LazyListState;->*
+HSPLandroidx/compose/foundation/lazy/LazyListItemProvider;->*
+HSPLandroidx/compose/foundation/layout/BoxKt;->*
+HSPLandroidx/compose/foundation/layout/ColumnKt;->*
+HSPLandroidx/compose/foundation/layout/RowKt;->*
+
+# Coil Image Loading & Memory/Disk Caches
+HSPLcoil/compose/AsyncImageKt;->*
+HSPLcoil/compose/AsyncImagePainter;->*
+HSPLcoil/ImageLoader;->*
+HSPLcoil/RealImageLoader;->*
+HSPLcoil/memory/MemoryCache;->*
+HSPLcoil/memory/RealMemoryCache;->*
+HSPLcoil/disk/DiskCache;->*
+HSPLcoil/disk/DiskLruCache;->*
+HSPLcoil/request/ImageRequest;->*
+HSPLcoil/request/ImageRequest$Builder;->*
+HSPLcoil/decode/BitmapFactoryDecoder;->*
+
+# OkHttp 4.x Dispatcher, Connection Pool & Http Codecs
+HSPLokhttp3/OkHttpClient;->*
+HSPLokhttp3/OkHttpClient$Builder;->*
+HSPLokhttp3/internal/connection/RealCall;->*
+HSPLokhttp3/Dispatcher;->*
+HSPLokhttp3/ConnectionPool;->*
+HSPLokhttp3/internal/http/RealInterceptorChain;->*
+HSPLokhttp3/internal/http/HttpCodec;->*
+HSPLokhttp3/Request;->*
+HSPLokhttp3/Response;->*
+HSPLokhttp3/ResponseBody;->*
+
+# Kotlinx Coroutines & Serialization
+HSPLkotlinx/coroutines/Dispatchers;->*
+HSPLkotlinx/coroutines/CoroutineDispatcher;->*
+HSPLkotlinx/coroutines/internal/DispatchedContinuation;->*
+HSPLkotlinx/coroutines/CancellableContinuationImpl;->*
+HSPLkotlinx/coroutines/flow/StateFlowImpl;->*
+HSPLkotlinx/coroutines/flow/SharedFlowImpl;->*
+HSPLkotlinx/coroutines/flow/FlowKt;->*
+HSPLkotlinx/serialization/json/Json;->*
+HSPLkotlinx/serialization/json/Json$Default;->*
+HSPLkotlinx/serialization/json/internal/StreamingJsonDecoder;->*
+HSPLkotlinx/serialization/json/internal/StreamingJsonEncoder;->*
+HSPLkotlinx/serialization/json/internal/JsonLexer;->*
+HSPLkotlinx/serialization/encoding/Decoder;->*
+HSPLkotlinx/serialization/encoding/Encoder;->*

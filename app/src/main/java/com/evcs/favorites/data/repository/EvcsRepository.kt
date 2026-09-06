@@ -29,8 +29,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import com.evcs.favorites.data.cache.BoundedLruMap
+import com.evcs.favorites.data.cache.mapValuesThreadSafe
 import java.io.IOException
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Coordinate pair for JSON serialization in persistent cache.
@@ -73,30 +78,42 @@ open class EvcsRepository(
         // Pre-compiled regex for connector power extraction (PERF-UI-02)
         val KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
 
+        private val parsedConnectorsCache = ConcurrentHashMap<String, List<PowerPort>>()
+
+        /**
+         * Clears parsed connectors cache. Primarily used for testing.
+         */
+        fun clearParsedConnectorsCache() {
+            parsedConnectorsCache.clear()
+        }
+
         /**
          * Parses connector string (e.g. "120kW, 60kW, 7kW") into fallback [PowerPort] list
          * with clean connector tags and no synthetic 0/0 counts.
+         * Memoizes results to prevent redundant regex evaluation and string splitting.
          */
         fun parseConnectorsToPowers(connectors: String?): List<PowerPort> {
             if (connectors.isNullOrBlank()) return emptyList()
 
-            return connectors.split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .map { part ->
-                    val kwMatch = KW_REGEX.find(part)
-                    val watts = kwMatch?.let {
-                        (it.groupValues[1].toDoubleOrNull() ?: 0.0) * 1000.0
-                    }?.toLong() ?: 0L
+            return parsedConnectorsCache.computeIfAbsent(connectors) { conn ->
+                conn.split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .map { part ->
+                        val kwMatch = KW_REGEX.find(part)
+                        val watts = kwMatch?.let {
+                            (it.groupValues[1].toDoubleOrNull() ?: 0.0) * 1000.0
+                        }?.toLong() ?: 0L
 
-                    PowerPort(
-                        typeWatts = watts,
-                        label = part,
-                        availablePlugs = 0,
-                        totalPlugs = 0,
-                        displayString = part
-                    )
-                }
+                        PowerPort(
+                            typeWatts = watts,
+                            label = part,
+                            availablePlugs = 0,
+                            totalPlugs = 0,
+                            displayString = part
+                        )
+                    }
+            }
         }
     }
 
@@ -175,7 +192,7 @@ open class EvcsRepository(
      */
     fun saveCachedCoordinates() {
         try {
-            val mapToSave = coordinateCache.mapValues { CoordinatePair(it.value.first, it.value.second) }
+            val mapToSave = coordinateCache.mapValuesThreadSafe { CoordinatePair(it.value.first, it.value.second) }
             val json = EvcsApiClient.json.encodeToString(mapToSave)
             cacheStorage?.putString(KEY_COORDINATE_CACHE, json)
         } catch (e: Exception) {
@@ -267,7 +284,9 @@ open class EvcsRepository(
             }
             return Result.success(enriched)
         }
-        val flightKey = "favorites_${userLat ?: 0.0}_${userLon ?: 0.0}_$autoResolveUnknownCoordinates"
+        val latStr = "%.4f".format(Locale.US, userLat ?: 0.0)
+        val lonStr = "%.4f".format(Locale.US, userLon ?: 0.0)
+        val flightKey = "favorites_${latStr}_${lonStr}_$autoResolveUnknownCoordinates"
         return singleFlight.execute(flightKey) {
             getFavoritesInternal(userLat, userLon, autoResolveUnknownCoordinates)
         }
@@ -310,21 +329,40 @@ open class EvcsRepository(
 
         // 2. Resolve coordinates for favorite stations if auto-resolve is enabled
         if (autoResolveUnknownCoordinates) {
-            for (fav in rawFavorites) {
+            val missingFavorites = rawFavorites.filter { fav ->
                 val favKey = fav.locationId.trim().lowercase()
                 val cached = coordinateCache[favKey] ?: coordinateResolver?.invoke(fav.locationId)
-                if (cached == null || (cached.first == 0.0 && cached.second == 0.0)) {
-                    val resolved = try {
-                        apiClient.fetchStationCoordinates(fav.name, fav.locationId).getOrNull()
-                    } catch (e: Exception) {
-                        null
-                    }
-                    if (resolved != null && (resolved.first != 0.0 || resolved.second != 0.0)) {
-                        coordinateCache[favKey] = resolved
-                    }
+                cached == null || (cached.first == 0.0 && cached.second == 0.0)
+            }.distinctBy { it.locationId.trim().lowercase() }
+
+            if (missingFavorites.isNotEmpty()) {
+                val semaphore = Semaphore(4)
+                val resolvedList = coroutineScope {
+                    missingFavorites.map { fav ->
+                        async {
+                            semaphore.withPermit {
+                                val favKey = fav.locationId.trim().lowercase()
+                                val resolved = try {
+                                    apiClient.fetchStationCoordinates(fav.name, fav.locationId).getOrNull()
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    null
+                                }
+                                if (resolved != null && (resolved.first != 0.0 || resolved.second != 0.0)) {
+                                    favKey to resolved
+                                } else {
+                                    null
+                                }
+                            }
+                        }
+                    }.awaitAll().filterNotNull()
                 }
+
+                for ((key, coords) in resolvedList) {
+                    coordinateCache[key] = coords
+                }
+                saveCachedCoordinates()
             }
-            saveCachedCoordinates()
         }
 
         // 3. Collect known coordinates for favorite stations
@@ -586,7 +624,7 @@ open class EvcsRepository(
     open suspend fun searchNearbyVinFast(
         lat: Double,
         lon: Double
-    ): Result<List<Station>> = singleFlight.execute("search_${lat}_${lon}") {
+    ): Result<List<Station>> = singleFlight.execute("search_${"%.4f".format(Locale.US, lat)}_${"%.4f".format(Locale.US, lon)}") {
         searchNearbyVinFastInternal(lat, lon)
     }
 

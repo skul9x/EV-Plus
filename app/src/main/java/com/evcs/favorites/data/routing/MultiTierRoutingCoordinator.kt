@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToLong
 
 /**
@@ -22,6 +23,12 @@ open class MultiTierRoutingCoordinator(
     private val osrmClient: OsrmRoutingClient = OsrmRoutingClient(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
+
+    companion object {
+        const val GOOGLE_TIMEOUT_MS = 3500L
+        const val OSRM_TIMEOUT_MS = 3500L
+        const val AUTO_ARBITRATION_TIMEOUT_MS = 5000L
+    }
 
     /**
      * Calculates driving metrics from origin to given destination stations according to user settings.
@@ -85,14 +92,17 @@ open class MultiTierRoutingCoordinator(
             return emptyMap()
         }
 
-        val result = googleClient.computeRouteMatrix(
-            apiKey = settings.googleApiKey,
-            originLat = originLat,
-            originLng = originLng,
-            destinations = destinations
-        )
+        val result = withTimeoutOrNull(GOOGLE_TIMEOUT_MS) {
+            googleClient.computeRouteMatrix(
+                apiKey = settings.googleApiKey,
+                originLat = originLat,
+                originLng = originLng,
+                destinations = destinations,
+                timeoutMs = GOOGLE_TIMEOUT_MS
+            )
+        }
 
-        return result.getOrElse { emptyMap() }
+        return result?.getOrElse { emptyMap() } ?: emptyMap()
     }
 
     /**
@@ -105,14 +115,17 @@ open class MultiTierRoutingCoordinator(
         destinations: List<RoutingDestination>,
         settings: RoutingSettings
     ): Map<String, DrivingMetrics> {
-        val result = osrmClient.computeTable(
-            originLat = originLat,
-            originLng = originLng,
-            destinations = destinations,
-            customBaseUrl = settings.customOsrmServerUrl
-        )
+        val result = withTimeoutOrNull(OSRM_TIMEOUT_MS) {
+            osrmClient.computeTable(
+                originLat = originLat,
+                originLng = originLng,
+                destinations = destinations,
+                customBaseUrl = settings.customOsrmServerUrl,
+                timeoutMs = OSRM_TIMEOUT_MS
+            )
+        }
 
-        if (result.isSuccess) {
+        if (result != null && result.isSuccess) {
             val metrics = result.getOrThrow()
             if (metrics.isNotEmpty() || !settings.autoFallbackEnabled) {
                 return metrics
@@ -129,9 +142,9 @@ open class MultiTierRoutingCoordinator(
 
     /**
      * Executes AUTO arbitration:
-     * 1. Attempts Tier 1 (Google) if googleApiKey is present.
-     * 2. If Tier 1 fails (or key is blank), cascades to Tier 2 (OSRM) when autoFallbackEnabled is true.
-     * 3. If Tier 2 fails, cascades to Tier 3 (Haversine) when autoFallbackEnabled is true.
+     * 1. Attempts Tier 1 (Google) if googleApiKey is present, bound by GOOGLE_TIMEOUT_MS (3.5s).
+     * 2. If Tier 1 fails (or times out / key is blank), cascades to Tier 2 (OSRM) bound by OSRM_TIMEOUT_MS (3.5s).
+     * 3. Overall arbitration is capped at AUTO_ARBITRATION_TIMEOUT_MS (5s), falling back to Tier 3 (Haversine).
      */
     private suspend fun executeAuto(
         originLat: Double,
@@ -139,39 +152,53 @@ open class MultiTierRoutingCoordinator(
         destinations: List<RoutingDestination>,
         settings: RoutingSettings
     ): Map<String, DrivingMetrics> {
-        // Attempt Tier 1: Google Routes v2 if key is configured
-        if (settings.googleApiKey.isNotBlank()) {
-            val googleResult = googleClient.computeRouteMatrix(
-                apiKey = settings.googleApiKey,
-                originLat = originLat,
-                originLng = originLng,
-                destinations = destinations
-            )
+        val result = withTimeoutOrNull(AUTO_ARBITRATION_TIMEOUT_MS) {
+            // Attempt Tier 1: Google Routes v2 if key is configured
+            if (settings.googleApiKey.isNotBlank()) {
+                val googleResult = withTimeoutOrNull(GOOGLE_TIMEOUT_MS) {
+                    googleClient.computeRouteMatrix(
+                        apiKey = settings.googleApiKey,
+                        originLat = originLat,
+                        originLng = originLng,
+                        destinations = destinations,
+                        timeoutMs = GOOGLE_TIMEOUT_MS
+                    )
+                }
 
-            if (googleResult.isSuccess) {
-                return googleResult.getOrThrow()
+                if (googleResult != null && googleResult.isSuccess) {
+                    return@withTimeoutOrNull googleResult.getOrThrow()
+                }
+
+                // Tier 1 failed; if autoFallback is disabled, stop immediately
+                if (!settings.autoFallbackEnabled) {
+                    return@withTimeoutOrNull emptyMap()
+                }
             }
 
-            // Tier 1 failed; if autoFallback is disabled, stop immediately
-            if (!settings.autoFallbackEnabled) {
-                return emptyMap()
+            // Attempt Tier 2: OSRM Table Service
+            val osrmResult = withTimeoutOrNull(OSRM_TIMEOUT_MS) {
+                osrmClient.computeTable(
+                    originLat = originLat,
+                    originLng = originLng,
+                    destinations = destinations,
+                    customBaseUrl = settings.customOsrmServerUrl,
+                    timeoutMs = OSRM_TIMEOUT_MS
+                )
+            }
+
+            if (osrmResult != null && osrmResult.isSuccess) {
+                return@withTimeoutOrNull osrmResult.getOrThrow()
+            }
+
+            // Attempt Tier 3: Local Haversine baseline calculation
+            if (settings.autoFallbackEnabled) {
+                computeHaversine(originLat, originLng, destinations)
+            } else {
+                emptyMap()
             }
         }
 
-        // Attempt Tier 2: OSRM Table Service
-        val osrmResult = osrmClient.computeTable(
-            originLat = originLat,
-            originLng = originLng,
-            destinations = destinations,
-            customBaseUrl = settings.customOsrmServerUrl
-        )
-
-        if (osrmResult.isSuccess) {
-            return osrmResult.getOrThrow()
-        }
-
-        // Attempt Tier 3: Local Haversine baseline calculation
-        return if (settings.autoFallbackEnabled) {
+        return result ?: if (settings.autoFallbackEnabled) {
             computeHaversine(originLat, originLng, destinations)
         } else {
             emptyMap()
@@ -195,15 +222,9 @@ open class MultiTierRoutingCoordinator(
                 lon2 = dest.longitude
             ).roundToLong()
 
-            val duration = if (distanceM > 0) {
-                (distanceM / (30.0 * 1000.0 / 3600.0)).roundToLong().coerceAtLeast(60L)
-            } else {
-                0L
-            }
-
             dest.id to DrivingMetrics(
                 distanceMeters = distanceM,
-                durationSeconds = duration,
+                durationSeconds = 0L,
                 staticDurationSeconds = null,
                 trafficCondition = TrafficCondition.UNKNOWN,
                 engineUsed = RoutingEngineType.HAVERSINE

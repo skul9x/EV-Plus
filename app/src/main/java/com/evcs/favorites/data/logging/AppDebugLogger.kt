@@ -1,5 +1,6 @@
 package com.evcs.favorites.data.logging
 
+import com.evcs.favorites.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,10 +15,16 @@ import kotlinx.coroutines.launch
  * Thread-safe in-memory circular buffer managing debug logs.
  * Holds at most 500 entries (FIFO eviction) and provides reactive StateFlow,
  * formatted plain-text export for sharing / clipboard copy, and buffer reset.
+ *
+ * Gated behind [BuildConfig.DEBUG] by default to avoid retaining entries or
+ * launching coroutine jobs in production release builds unless explicitly enabled.
  */
 object AppDebugLogger {
     const val MAX_CAPACITY = 500
     const val THROTTLE_INTERVAL_MS = 300L
+
+    @Volatile
+    var isEnabled: Boolean = BuildConfig.DEBUG
 
     private val buffer = ArrayDeque<DebugLogEntry>(MAX_CAPACITY)
     private val lock = Any()
@@ -31,11 +38,16 @@ object AppDebugLogger {
 
     /**
      * Appends an entry into the buffer, discarding the oldest element if max capacity is exceeded.
+     * When logging is disabled ([isEnabled] is false), entry retention and coroutine emissions
+     * are completely bypassed.
+     *
      * When there are no active subscribers (_logsFlow.subscriptionCount.value == 0), no snapshot
      * list is allocated or emitted. When subscribers are present, emissions are throttled to a minimum
      * interval of [THROTTLE_INTERVAL_MS].
      */
     fun log(entry: DebugLogEntry) {
+        if (!isEnabled) return
+
         synchronized(lock) {
             if (buffer.size >= MAX_CAPACITY) {
                 buffer.removeFirst()

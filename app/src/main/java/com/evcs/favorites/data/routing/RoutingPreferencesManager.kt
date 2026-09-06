@@ -1,7 +1,7 @@
 package com.evcs.favorites.data.routing
 
 import android.content.Context
-import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
+import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionStorage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -18,10 +18,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
- * Manages secure persistent storage of user routing preferences and Google BYOK API Key.
+ * Manages persistent storage of user routing preferences and Google BYOK API Key.
  *
  * Utilizes the [SessionStorage] abstraction:
- * - [EncryptedSharedPrefsStorage] for AES-256 encrypted persistence in Android production.
+ * - [PlainSharedPrefsStorage] for zero-overhead persistence in Android production.
  * - [InMemorySessionStorage] for fast JVM unit tests.
  *
  * Provides real-time [StateFlow] reactive observation and proactive Google Cloud Routes API key validation.
@@ -43,7 +43,7 @@ class RoutingPreferencesManager(
          */
         fun create(context: Context): RoutingPreferencesManager {
             return RoutingPreferencesManager(
-                storage = EncryptedSharedPrefsStorage.getInstance(context)
+                storage = PlainSharedPrefsStorage.getInstance(context, "evcs_routing_prefs")
             )
         }
     }

@@ -1,7 +1,7 @@
 package com.evcs.favorites.data.preferences
 
 import android.content.Context
-import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
+import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionStorage
 import com.evcs.favorites.domain.model.CustomFilterConfig
 import com.evcs.favorites.domain.model.DcWattageTier
@@ -10,11 +10,11 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Manages secure persistent storage and retrieval of user-selected smart filter modes,
+ * Manages persistent storage and retrieval of user-selected smart filter modes,
  * DC power wattage tiers, and custom filter configurations.
  *
  * Utilizes the [SessionStorage] abstraction:
- * - [EncryptedSharedPrefsStorage] for AES-256 encrypted preferences in Android production.
+ * - [PlainSharedPrefsStorage] for zero-overhead preferences in Android production.
  * - [com.evcs.favorites.data.auth.InMemorySessionStorage] for fast JVM unit tests.
  */
 class SmartFilterPreferences(
@@ -30,7 +30,7 @@ class SmartFilterPreferences(
          */
         fun create(context: Context): SmartFilterPreferences {
             return SmartFilterPreferences(
-                storage = EncryptedSharedPrefsStorage.getInstance(context)
+                storage = PlainSharedPrefsStorage.getInstance(context, "evcs_smart_filter_prefs")
             )
         }
     }

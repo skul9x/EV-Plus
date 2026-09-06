@@ -6,13 +6,18 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.evcs.favorites.data.network.AppOkHttpClientProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 
 class EvPlusApplication : Application(), ImageLoaderFactory {
  
     override fun onCreate() {
         super.onCreate()
-        AppOkHttpClientProvider.installDiskCache(cacheDir.resolve("http_cache"))
+        CoroutineScope(Dispatchers.IO).launch {
+            AppOkHttpClientProvider.installDiskCache(cacheDir.resolve("http_cache"))
+        }
     }
 
     override fun getCacheDir(): File {
@@ -20,11 +25,15 @@ class EvPlusApplication : Application(), ImageLoaderFactory {
             ?: File(System.getProperty("java.io.tmpdir", "/tmp"), "evplus_cache").apply { mkdirs() }
     }
 
+    companion object {
+        const val COIL_MEMORY_CACHE_PERCENT = 0.15
+    }
+
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25) // 25% of available JVM heap
+                    .maxSizePercent(COIL_MEMORY_CACHE_PERCENT) // 15% of available JVM heap
                     .build()
             }
             .diskCache {

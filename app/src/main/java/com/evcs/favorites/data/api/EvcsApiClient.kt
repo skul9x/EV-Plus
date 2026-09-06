@@ -220,7 +220,7 @@ open class EvcsApiClient(
     /**
      * Step 1: Fetches user's saved favorite stations from `POST /favorite.html`.
      */
-    suspend fun fetchFavorites(): Result<FavoritesResponse> = withContext(Dispatchers.IO) {
+    open suspend fun fetchFavorites(): Result<FavoritesResponse> = withContext(Dispatchers.IO) {
         try {
             val url = "$baseUrl/favorite.html"
             val requestBuilder = Request.Builder()
@@ -330,7 +330,7 @@ open class EvcsApiClient(
      * Step 2: Queries native background search API for real-time station metrics.
      * Signs the request with HMAC-SHA256 according to EVCS protocol.
      */
-    suspend fun searchStations(
+    open suspend fun searchStations(
         latitude: Double,
         longitude: Double,
         token: String = DEFAULT_SEARCH_TOKEN
