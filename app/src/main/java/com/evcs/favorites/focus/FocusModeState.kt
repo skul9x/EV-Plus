@@ -85,7 +85,7 @@ data class FocusModeState(
 
     /**
      * Formatted status badge string for UI presentation:
-     * - Normal: "🟢 2/8 Trống (150kW)"
+     * - Normal: "🟢 2/8 Trống (150kW)" (single tier) or "🟢 3/6 Trống" (multi-tier)
      * - Full: "🔴 HẾT CHỖ!"
      * - Offline: "⚠️ Mất kết nối - Dữ liệu lúc HH:mm"
      */
@@ -99,6 +99,48 @@ data class FocusModeState(
             }
             val kwLabel = if (maxDcPowerKw > 0) " (${maxDcPowerKw}kW)" else ""
             return "🟢 $availableDcSlots/$totalDcSlots Trống$kwLabel"
+        }
+
+    /**
+     * Line 1 badge text for 2-line presentation mode:
+     * - Normal: "🟢 Trống 3/6 cổng DC"
+     * - Full: "🔴 HẾT CHỖ!"
+     * - Offline: "⚠️ Mất kết nối - Dữ liệu lúc HH:mm"
+     */
+    val statusBadgeOverviewText: String
+        get() {
+            if (isOffline) {
+                return offlineMessage ?: "⚠️ Mất kết nối"
+            }
+            if (isDcFull) {
+                return "🔴 HẾT CHỖ!"
+            }
+            return "🟢 Trống $availableDcSlots/$totalDcSlots cổng DC"
+        }
+
+    /**
+     * Line 2 detailed breakdown of individual DC power tiers (e.g. "⚡ 60kW (1/4)  |  20kW (2/2)").
+     * Returns null if offline or no DC ports with totalPlugs > 0.
+     */
+    val detailedDcTiersText: String?
+        get() {
+            if (isOffline) return null
+            val dcPorts = targetStation.powers
+                .filter { FocusModeDcFilter.isDcPort(it) && it.totalPlugs > 0 }
+                .sortedByDescending { it.typeWatts }
+            if (dcPorts.isEmpty()) return null
+            val tiers = dcPorts.joinToString("  |  ") { port ->
+                val kw = port.typeWatts / 1000.0
+                val kwLabel = if (kw > 0.0 && kw % 1.0 == 0.0) {
+                    "${kw.toInt()}kW"
+                } else if (kw > 0.0) {
+                    "${kw}kW"
+                } else {
+                    port.label.trim()
+                }
+                "$kwLabel (${port.availablePlugs}/${port.totalPlugs})"
+            }
+            return "⚡ $tiers"
         }
 
     companion object {

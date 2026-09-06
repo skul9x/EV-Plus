@@ -240,4 +240,57 @@ class FocusMode20kWSupportTest {
         )
         assertNull("Should return null when no eligible stations are available", recNull)
     }
+
+    @Test
+    fun verifyDetailedDcTiersTextFormatting() {
+        // Multi-tier station: 60kW (1/4) and 20kW (2/2)
+        val port60k = PowerPort(typeWatts = 60_000L, label = "60kW", availablePlugs = 1, totalPlugs = 4)
+        val port20k = PowerPort(typeWatts = 20_000L, label = "20kW", availablePlugs = 2, totalPlugs = 2)
+        val portAc = PowerPort(typeWatts = 11_000L, label = "11kW AC", availablePlugs = 2, totalPlugs = 2)
+
+        val station = createSampleStation(
+            id = "st_nguyen_van_sang",
+            name = "VinFast Nguyễn Văn Sáng",
+            lat = 21.195641,
+            lon = 106.130966,
+            powers = listOf(port60k, port20k, portAc)
+        )
+
+        val state = FocusModeState.createInitial(station)
+        assertEquals(3, state.availableDcSlots)
+        assertEquals(6, state.totalDcSlots)
+        assertEquals("⚡ 60kW (1/4)  |  20kW (2/2)", state.detailedDcTiersText)
+
+        val viewState = FocusModeViewLayoutHelper.formatViewState(state)
+        assertEquals("VinFast Nguyễn Văn Sáng", viewState.stationName)
+        assertEquals("⚡ 60kW (1/4)  |  20kW (2/2)", viewState.detailedTiersText)
+        assertEquals(FocusBadgeColor.GREEN, viewState.badgeColorToken)
+
+        // Saturated state: 0/6 slots available
+        val fullState = state.copy(
+            targetStation = station.copy(
+                powers = listOf(
+                    port60k.copy(availablePlugs = 0),
+                    port20k.copy(availablePlugs = 0),
+                    portAc
+                )
+            ),
+            availableDcSlots = 0
+        )
+        assertTrue(fullState.isDcFull)
+        assertEquals("⚡ 60kW (0/4)  |  20kW (0/2)", fullState.detailedDcTiersText)
+        val fullViewState = FocusModeViewLayoutHelper.formatViewState(fullState)
+        assertEquals("🔴 HẾT CHỖ!", fullViewState.badgeText)
+        assertEquals("⚡ 60kW (0/4)  |  20kW (0/2)", fullViewState.detailedTiersText)
+
+        // Offline state
+        val offlineState = state.copy(
+            connectionStatus = FocusConnectionStatus.OFFLINE,
+            offlineMessage = "⚠️ Mất kết nối - Dữ liệu lúc 14:35"
+        )
+        assertNull("Offline state should have null detailedDcTiersText", offlineState.detailedDcTiersText)
+        val offlineViewState = FocusModeViewLayoutHelper.formatViewState(offlineState)
+        assertNull("Offline view state should have null detailedTiersText", offlineViewState.detailedTiersText)
+        assertEquals("⚠️ Mất kết nối - Dữ liệu lúc 14:35", offlineViewState.badgeText)
+    }
 }

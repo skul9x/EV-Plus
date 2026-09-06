@@ -31,6 +31,7 @@ enum class PresentationMode {
 data class FloatingViewState(
     val stationName: String,
     val badgeText: String,
+    val detailedTiersText: String? = null,
     val badgeColorToken: FocusBadgeColor,
     val isRerouteAvailable: Boolean,
     val rerouteButtonText: String?,
@@ -71,8 +72,8 @@ object FocusModeViewLayoutHelper {
 
     /**
      * Formats raw [FocusModeState] into [FloatingViewState] presentation tokens:
-     * - Normal state: Green badge ("🟢 2/8 Trống (150kW)"), reroute disabled.
-     * - Full state: Red badge ("🔴 HẾT CHỖ!"), 1-tap reroute button revealed if alternative available.
+     * - Normal state: Green badge ("🟢 Trống 3/6 cổng DC"), Line 2 details ("⚡ 60kW (1/4)  |  20kW (2/2)"), reroute disabled.
+     * - Full state: Red badge ("🔴 HẾT CHỖ!"), Line 2 details ("⚡ 60kW (0/4)  |  20kW (0/2)"), 1-tap reroute button revealed if alternative available.
      * - Offline state: Amber badge ("⚠️ Mất kết nối - Dữ liệu lúc HH:mm"), reroute disabled.
      */
     fun formatViewState(state: FocusModeState): FloatingViewState {
@@ -89,6 +90,7 @@ object FocusModeViewLayoutHelper {
                 FloatingViewState(
                     stationName = state.targetStation.name,
                     badgeText = state.statusBadgeText,
+                    detailedTiersText = null,
                     badgeColorToken = FocusBadgeColor.AMBER,
                     isRerouteAvailable = false,
                     rerouteButtonText = null,
@@ -103,6 +105,7 @@ object FocusModeViewLayoutHelper {
                 FloatingViewState(
                     stationName = state.targetStation.name,
                     badgeText = state.statusBadgeText,
+                    detailedTiersText = state.detailedDcTiersText,
                     badgeColorToken = FocusBadgeColor.RED,
                     isRerouteAvailable = state.alternativeStation != null,
                     rerouteButtonText = rerouteLabel,
@@ -114,6 +117,7 @@ object FocusModeViewLayoutHelper {
                 FloatingViewState(
                     stationName = state.targetStation.name,
                     badgeText = state.statusBadgeText,
+                    detailedTiersText = state.detailedDcTiersText,
                     badgeColorToken = FocusBadgeColor.GREEN,
                     isRerouteAvailable = false,
                     rerouteButtonText = null,

@@ -74,7 +74,11 @@ object FocusModeNotificationHelper {
 
         val title = "⚡ Focus Mode: ${state.targetStation.name}"
         val distStr = state.distanceRemainingKm?.let { String.format(Locale.US, "%.1f km", it) } ?: "..."
-        val contentText = "${state.statusBadgeText} • Cách $distStr"
+        val contentText = if (state.detailedDcTiersText != null) {
+            "${state.statusBadgeOverviewText} • ${state.detailedDcTiersText} • Cách $distStr"
+        } else {
+            "${state.statusBadgeText} • Cách $distStr"
+        }
 
         val priority = if (isFallbackMode && state.isDcFull) {
             NotificationCompat.PRIORITY_HIGH

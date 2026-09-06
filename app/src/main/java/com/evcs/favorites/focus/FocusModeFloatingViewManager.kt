@@ -40,6 +40,7 @@ class FocusModeFloatingViewManager(
 
     private var stationNameView: TextView? = null
     private var statusBadgeView: TextView? = null
+    private var detailedTiersView: TextView? = null
     private var rerouteButtonView: TextView? = null
     private var currentAlternativeStation: AlternativeStationRecommendation? = null
 
@@ -92,6 +93,13 @@ class FocusModeFloatingViewManager(
         }
         statusBadgeView?.setTextColor(badgeColorInt)
 
+        if (viewState.detailedTiersText != null) {
+            detailedTiersView?.visibility = View.VISIBLE
+            detailedTiersView?.text = viewState.detailedTiersText
+        } else {
+            detailedTiersView?.visibility = View.GONE
+        }
+
         if (viewState.isRerouteAvailable && viewState.rerouteButtonText != null) {
             rerouteButtonView?.visibility = View.VISIBLE
             rerouteButtonView?.text = viewState.rerouteButtonText
@@ -122,6 +130,7 @@ class FocusModeFloatingViewManager(
                 windowLayoutParams = null
                 stationNameView = null
                 statusBadgeView = null
+                detailedTiersView = null
                 rerouteButtonView = null
                 isViewAttached = false
             }
@@ -236,7 +245,7 @@ class FocusModeFloatingViewManager(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
             layoutParams = LinearLayout.LayoutParams(
-                dp(170),
+                dp(200),
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
@@ -259,6 +268,23 @@ class FocusModeFloatingViewManager(
         }
         statusBadgeView = badgeTv
         infoCol.addView(badgeTv)
+
+        val tiersTv = TextView(context).apply {
+            textSize = 10.5f
+            setTextColor(Color.parseColor("#CCCCCC"))
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(2)
+            }
+            layoutParams = lp
+            visibility = View.GONE
+        }
+        detailedTiersView = tiersTv
+        infoCol.addView(tiersTv)
 
         headerRow.addView(infoCol)
 
