@@ -1,0 +1,100 @@
+{
+  "updated_at": "2026-09-06T10:25:00+07:00",
+  "working_on": {
+    "feature": "VinFast CAPP Direct API Integration with Dual-Tier Fallback & EV Car Port Filtering",
+    "task": "Refined and validated implementation plan: Dual-Tier Architecture (Tier 1 VinFast -> Tier 2 EVCS), Tier 3 cache removed, query params aligned, S3 CDN decoding included",
+    "status": "ready_to_code",
+    "files": [
+      "docs/BRIEF_VINFAST_DIRECT.md",
+      "plans/260906-1005-vinfast-capp-direct-api-and-fallback/plan.md",
+      "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-01-vinfast-capp-api-client-and-headers.md",
+      "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-02-dto-mapping-and-ev-car-port-filtering.md",
+      "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-03-multi-tier-station-repository-and-fallback.md",
+      "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-04-integration-ui-wiring-and-verification.md"
+    ],
+    "blockers": [],
+    "notes": "Plan structure validated and updated. Next step is Phase 01 implementation (/code phase-01)."
+  },
+  "pending_tasks": [
+    {
+      "phase": "phase-01",
+      "name": "VinFast CAPP API Client & Headers",
+      "status": "pending",
+      "deliverables": [
+        "VinFastStationDtos.kt",
+        "VinFastHeaderInterceptor.kt",
+        "VinFastCAppApiClient.kt",
+        "VinFastCAppApiClientTest.kt"
+      ]
+    },
+    {
+      "phase": "phase-02",
+      "name": "DTO Mapping & EV Car Port Filtering",
+      "status": "pending",
+      "deliverables": [
+        "VinFastStationMapper.kt",
+        "Car-only port filter (drop <= 7kW)",
+        "Direct S3 CDN Image URL decoding",
+        "VinFastStationMapperTest.kt"
+      ]
+    },
+    {
+      "phase": "phase-03",
+      "name": "Dual-Tier Station Repository & Fallback",
+      "status": "pending",
+      "deliverables": [
+        "DualTierStationRepository.kt",
+        "Tier 1 (VinFast) -> Tier 2 (EVCS) failover",
+        "DualTierStationRepositoryFallbackTest.kt"
+      ]
+    },
+    {
+      "phase": "phase-04",
+      "name": "Integration, UI Wiring & Verification",
+      "status": "pending",
+      "deliverables": [
+        "MainActivity DI wiring",
+        "FavoritesViewModel & NearbyViewModel updates",
+        "VinFastDirectIntegrationTest.kt"
+      ]
+    }
+  ],
+  "recent_changes": [
+    {
+      "timestamp": "2026-09-06T10:24:00+07:00",
+      "type": "planning",
+      "description": "Updated BRIEF_VINFAST_DIRECT.md and 4-phase plan: removed Tier 3 offline cache snapshot, aligned query params for /stations/search, integrated direct S3 image double-base64 decoding",
+      "files": [
+        "docs/BRIEF_VINFAST_DIRECT.md",
+        "plans/260906-1005-vinfast-capp-direct-api-and-fallback/plan.md",
+        "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-01-vinfast-capp-api-client-and-headers.md",
+        "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-02-dto-mapping-and-ev-car-port-filtering.md",
+        "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-03-multi-tier-station-repository-and-fallback.md",
+        "plans/260906-1005-vinfast-capp-direct-api-and-fallback/phase-04-integration-ui-wiring-and-verification.md"
+      ]
+    }
+  ],
+  "errors_encountered": [],
+  "decisions_made": [
+    {
+      "decision": "Direct Client Architecture (Option A)",
+      "reason": "Zero additional server hosting cost, lower latency (<200ms), and direct lineage to VinFast CAPP backend"
+    },
+    {
+      "decision": "Dual-Tier Fallback Coordinator",
+      "reason": "Tier 1: VinFast CAPP Direct API -> Tier 2: evcs.vn HMAC-signed public API (Tier 3 offline cache removed per user request)"
+    },
+    {
+      "decision": "VinFast / V-GREEN Focus",
+      "reason": "Matches 100% of user driving requirement, ignoring 3rd-party CPOs"
+    },
+    {
+      "decision": "Hard Filter Motorbike Charging Ports",
+      "reason": "Eliminate 3.5kW and 7kW AC ports (type <= 7000), showing only automobile EV ports (11kW AC, 30kW - 360kW DC)"
+    },
+    {
+      "decision": "Preserve Firestore Schema",
+      "reason": "VinFast locationId is 100% identical to evcs.vn IDs; zero migration required for existing user favorites"
+    }
+  ]
+}

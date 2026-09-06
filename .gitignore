@@ -1,0 +1,66 @@
+# Built-in Gradle / Android Studio
+.gradle/
+/build/
+build/
+app/build/
+!**/src/**/build/
+*.iml
+.idea/
+local.properties
+.navigation/
+captures/
+
+# Android Build Outputs & Packages
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Native build artifacts
+.cxx/
+.externalNativeBuild/
+
+# Signing keys & Keystores
+*.jks
+*.keystore
+
+# Google Services & Secrets
+google-services.json
+
+# Test & Lint reports & temporary captures
+lint/
+reports/
+*.png
+!app/src/main/res/**/*.png
+*.zip
+
+# Original app heavy binary assets & decompiled dumps
+original_app_data/*.xapk
+original_app_data/*.apk
+original_app_data/extracted_xapk/
+original_app_data/apktool_out/
+original_app_data/src_code/
+original_app_data/auth_state.json
+output_vinfast/
+
+# Temporary network captures, packet dumps & logs
+curl_capture_*/
+lan*/
+get.md
+*.log
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editors & IDEs
+.vscode/
+*.swp
+*.swo
+*~
