@@ -30,19 +30,19 @@ google-services.json
 
 # Test & Lint reports & temporary captures
 lint/
-reports/
+/reports/
+app/reports/
 *.png
 !app/src/main/res/**/*.png
+# Large archives & decompiled dumps
+*.rar
 *.zip
-
-# Decompiled / extracted assets & dumps
+*.tar
+*.tar.gz
+*.7z
+plan+source-code-vinfast-app/
+original_app_data/
 output_vinfast/
-original_app_data/*.xapk
-original_app_data/*.apk
-original_app_data/extracted_xapk/
-original_app_data/apktool_out/
-original_app_data/src_code/
-original_app_data/auth_state.json
 
 # Temporary network captures, packet dumps & logs
 curl_capture_*/

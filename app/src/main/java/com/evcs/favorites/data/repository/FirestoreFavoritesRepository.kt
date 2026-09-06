@@ -65,10 +65,11 @@ class FirestoreFavoritesRepository(
         const val KEY_OFFLINE_FAVORITES = "evcs_offline_favorites_snapshot"
     }
 
-    private val _favoritesState = MutableStateFlow<List<Station>>(emptyList())
+    private val initialCached = getCachedFavorites()
+    private val _favoritesState = MutableStateFlow<List<Station>>(initialCached)
     val favoritesState: StateFlow<List<Station>> = _favoritesState.asStateFlow()
 
-    private val _favoriteIdsState = MutableStateFlow<Set<String>>(emptySet())
+    private val _favoriteIdsState = MutableStateFlow<Set<String>>(initialCached.map { it.id }.toSet())
     val favoriteIdsState: StateFlow<Set<String>> = _favoriteIdsState.asStateFlow()
 
     private val _isSyncing = MutableStateFlow(false)
@@ -78,12 +79,14 @@ class FirestoreFavoritesRepository(
         get() = authService?.currentUser?.takeIf { !it.isAnonymous }?.uid
 
     init {
-        // Step 1: Asynchronous load from local storage off main thread
-        scope.launch(ioDispatcher) {
-            val cached = getCachedFavorites()
-            if (cached.isNotEmpty()) {
-                _favoritesState.value = cached
-                _favoriteIdsState.value = cached.map { it.id }.toSet()
+        // Step 1: Ensure state is populated if loaded off-thread or updated
+        if (initialCached.isEmpty()) {
+            scope.launch(ioDispatcher) {
+                val cached = getCachedFavorites()
+                if (cached.isNotEmpty()) {
+                    _favoritesState.value = cached
+                    _favoriteIdsState.value = cached.map { it.id }.toSet()
+                }
             }
         }
 
@@ -215,9 +218,15 @@ class FirestoreFavoritesRepository(
                             _favoritesState.value = mergedList
                             _favoriteIdsState.value = mergedList.map { it.id }.toSet()
 
-                            // Write merged union to Cloud Firestore
-                            val mergedCloudMap = mergedList.associate { it.id to it.toFirestoreMap(now) }
-                            remoteDataSource.saveAllFavorites(userId, mergedCloudMap, now)
+                            // Write merged union to Cloud Firestore only if cloud is not already identical
+                            val isCloudAlreadyInSync = mergedList.size == cloudFavorites.size && mergedList.all { st ->
+                                val c = cloudMap[st.id]
+                                c != null && c.addedAt == st.addedAt
+                            }
+                            if (!isCloudAlreadyInSync) {
+                                val mergedCloudMap = mergedList.associate { it.id to it.toFirestoreMap(now) }
+                                remoteDataSource.saveAllFavorites(userId, mergedCloudMap, now)
+                            }
 
                             mergedList
                         }

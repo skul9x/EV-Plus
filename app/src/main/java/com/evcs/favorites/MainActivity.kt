@@ -180,6 +180,8 @@ fun FavoritesApp(
         }
     }
 
+    val saveableStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+
     // Check location permissions when user enters Favorites screen
     LaunchedEffect(isLoggedIn, currentTab) {
         if (isLoggedIn && currentTab == AppTab.FAVORITES) {
@@ -205,7 +207,8 @@ fun FavoritesApp(
                 .fillMaxSize()
                 .padding(bottom = innerPadding.calculateBottomPadding())
         ) {
-            when (currentTab) {
+            saveableStateHolder.SaveableStateProvider(currentTab) {
+                when (currentTab) {
                 AppTab.FAVORITES -> {
                     val selectedStation by viewModel.selectedStationForDetail.collectAsStateWithLifecycle()
                     val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
@@ -288,6 +291,7 @@ fun FavoritesApp(
                 }
             }
         }
+    }
 
         // Location Permission Rationale Dialog (Favorites screen)
         if (showPermissionRationale) {

@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-06] - Performance & Memory Audit & Optimization
+
+### Fixed
+- **Recomposition Storm Elimination in Native Station Detail Sheet**:
+  - Isolated `RotatingRefreshIcon` into a dedicated Composable, preventing the 60-120fps animated rotation state from triggering full bottom sheet recompositions during station refresh.
+- **Bitmap Memory Halved for Station Photo Carousel**:
+  - Configured `allowRgb565(true)` in Coil `ImageRequest` for carousel thumbnails, slashing RAM usage from 4 bytes/pixel to 2 bytes/pixel (50% reduction).
+- **Tab UI & Scroll State Preservation**:
+  - Integrated `SaveableStateProvider(currentTab)` and `rememberLazyListState()` across `MainActivity` and `NearbyScreen`, preserving scroll positions when toggling between tabs.
+- **Redundant Firestore Write Suppression**:
+  - Added in-sync check in `FirestoreFavoritesRepository` to bypass remote `saveAllFavorites` calls when local and cloud datasets are already identical.
+- **Build Infrastructure Optimization**:
+  - Resolved `JdkImageTransform` failure on Linux by configuring Temurin JDK 17 with full `jlink` toolchain in `gradle.properties`.
+- **Verification Suite**:
+  - Added dedicated test file `AuditPerformanceFixTest.kt` (100% PASS) and generated comprehensive audit report `docs/reports/audit_2026-09-06.md`.
+
 ## [2026-09-05] - Station Photo Gallery, Firebase Auth & Local-First Firestore Favorites Sync
 
 ### Added

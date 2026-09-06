@@ -165,6 +165,45 @@ data class RefreshButtonSpec(
 )
 
 /**
+ * Isolated animated refresh icon to prevent recomposition storm on parent sheet content.
+ */
+@Composable
+fun RotatingRefreshIcon(
+    refreshSpec: RefreshButtonSpec,
+    modifier: Modifier = Modifier
+) {
+    val rotationAngle = if (refreshSpec.isRefreshing) {
+        val infiniteTransition = rememberInfiniteTransition(label = "RefreshRotationTransition")
+        val angle by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = refreshSpec.rotationDurationMs,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "RefreshRotationAngle"
+        )
+        angle
+    } else {
+        0f
+    }
+
+    Icon(
+        imageVector = Icons.Default.Refresh,
+        contentDescription = refreshSpec.contentDescription,
+        tint = refreshSpec.tint,
+        modifier = modifier
+            .size(22.dp)
+            .graphicsLayer {
+                rotationZ = rotationAngle
+            }
+    )
+}
+
+/**
  * Pure Kotlin helper providing formatting, intent generation, and badge resolution logic
  * decoupled from Android framework dependencies for 100% JVM unit testability.
  */
@@ -621,25 +660,6 @@ fun NativeStationDetailContent(
             refreshingTint = EmeraldPrimary
         )
 
-        val rotationAngle = if (uiState.isRefreshing) {
-            val infiniteTransition = rememberInfiniteTransition(label = "RefreshRotationTransition")
-            val angle by infiniteTransition.animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(
-                        durationMillis = refreshSpec.rotationDurationMs,
-                        easing = LinearEasing
-                    ),
-                    repeatMode = RepeatMode.Restart
-                ),
-                label = "RefreshRotationAngle"
-            )
-            angle
-        } else {
-            0f
-        }
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -675,16 +695,7 @@ fun NativeStationDetailContent(
                         modifier = Modifier.size(36.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = refreshSpec.contentDescription,
-                            tint = refreshSpec.tint,
-                            modifier = Modifier
-                                .size(22.dp)
-                                .graphicsLayer {
-                                    rotationZ = rotationAngle
-                                }
-                        )
+                        RotatingRefreshIcon(refreshSpec = refreshSpec)
                     }
                 }
 
@@ -1110,6 +1121,7 @@ fun StationPhotoCarousel(
                 ImageRequest.Builder(context)
                     .data(images[page])
                     .crossfade(true)
+                    .allowRgb565(true)
                     .build()
             }
             AsyncImage(
