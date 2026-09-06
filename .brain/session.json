@@ -1,21 +1,37 @@
 {
-  "updated_at": "2026-09-05T18:37:00+07:00",
+  "updated_at": "2026-09-06T18:48:00+07:00",
   "working_on": {
-    "feature": "Station Photo Gallery & Firebase Firestore Favorites Migration",
-    "task": "Completed all 4 phases (Socket.io removal, Photo Gallery, Firebase Auth, Local-First Firestore Favorites Sync)",
+    "feature": "Performance & Memory Audit and Optimization",
+    "task": "Completed performance audit fixes and verified with dedicated test suite and debug APK build",
     "status": "completed",
     "files": [
-      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/plan.md",
-      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-01-socketio-removal-and-detail-speedup.md",
-      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-02-station-photo-gallery-and-lightbox.md",
-      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-03-firebase-auth-and-google-signin.md",
-      "plans/260905-1735-station-photo-gallery-and-firebase-favorites/phase-04-firestore-favorites-sync-and-localfirst.md"
+      "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+      "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
+      "app/src/test/java/com/evcs/favorites/performance/AuditPerformanceFixTest.kt",
+      "docs/reports/audit_2026-09-06.md",
+      "gradle.properties",
+      "local.properties"
     ],
     "blockers": [],
-    "notes": "All 4 phases verified with single file-based test suites (100% PASS), debug APK compiled, installed, and launched on OnePlus device."
+    "notes": "All 4 performance fixes verified: Recomposition storm eliminated, RGB_565 RAM cut, Tab scroll preservation, Firestore redundant write prevention. AuditPerformanceFixTest PASSED 100%, debug APK successfully assembled (16MB)."
   },
   "pending_tasks": [],
   "recent_changes": [
+    {
+      "timestamp": "2026-09-06T18:47:00+07:00",
+      "type": "performance",
+      "description": "Resolved 4 critical & warning issues from Performance Audit: Isolated RotatingRefreshIcon, added allowRgb565 to StationPhotoCarousel, added SaveableStateProvider & rememberLazyListState to tabs, and optimized FirestoreFavoritesRepository sync writes.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
+        "app/src/test/java/com/evcs/favorites/performance/AuditPerformanceFixTest.kt",
+        "docs/reports/audit_2026-09-06.md"
+      ]
+    },
     {
       "timestamp": "2026-09-05T18:35:00+07:00",
       "type": "feature",
@@ -31,69 +47,36 @@
         "app/src/main/java/com/evcs/favorites/MainActivity.kt",
         "app/src/test/java/com/evcs/favorites/data/repository/LocalFirstFirestoreFavoritesSyncTest.kt"
       ]
-    },
-    {
-      "timestamp": "2026-09-05T18:15:00+07:00",
-      "type": "feature",
-      "description": "Completed Phase 03: Firebase Auth & Google 1-Tap Credential Manager with unified AuthState Flow",
-      "files": [
-        "app/src/main/java/com/evcs/favorites/data/auth/AuthEngine.kt",
-        "app/src/main/java/com/evcs/favorites/data/auth/FirebaseAuthManager.kt",
-        "app/src/test/java/com/evcs/favorites/data/auth/FirebaseAuthFlowTest.kt"
-      ]
-    },
-    {
-      "timestamp": "2026-09-05T17:55:00+07:00",
-      "type": "feature",
-      "description": "Completed Phase 02: Station Photo Gallery & Full-Screen Lightbox Zoom Viewer with direct VinFast CDN base64 decoding",
-      "files": [
-        "app/src/main/java/com/evcs/favorites/ui/detail/StationMediaUrlDecoder.kt",
-        "app/src/main/java/com/evcs/favorites/ui/detail/StationPhotoGallery.kt",
-        "app/src/main/java/com/evcs/favorites/ui/detail/StationPhotoLightboxModal.kt",
-        "app/src/main/java/com/evcs/favorites/ui/detail/NativeStationDetailSheet.kt",
-        "app/src/test/java/com/evcs/favorites/ui/detail/StationPhotoGalleryAndLightboxTest.kt"
-      ]
-    },
-    {
-      "timestamp": "2026-09-05T17:40:00+07:00",
-      "type": "refactor",
-      "description": "Completed Phase 01: Socket.io Removal & Detail Loading Speedup (eliminated 4s Stage 2 timeout)",
-      "files": [
-        "app/build.gradle.kts",
-        "app/src/main/java/com/evcs/favorites/data/repository/EvcsTelemetryRepository.kt",
-        "app/src/main/java/com/evcs/favorites/ui/detail/StationDetailCoordinator.kt",
-        "app/src/test/java/com/evcs/favorites/ui/detail/SocketIoRemovalAndDetailSpeedupTest.kt"
-      ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "Icons.Default.CloudSync and CloudDone missing in standard Material icons artifact",
-      "solution": "Replaced with AppIcons.EvStation for zero additional dependency footprint",
+      "error": "JdkImageTransform failed due to missing jlink in headless JRE 21",
+      "solution": "Downloaded Eclipse Temurin JDK 17 to ~/.jdks and configured org.gradle.java.home in gradle.properties",
       "resolved": true
     },
     {
-      "error": "Flow collection under StandardTestDispatcher required scheduler advancement",
-      "solution": "Used UnconfinedTestDispatcher(testScheduler) for immediate emission assertions in tests",
+      "error": "Animation state reading in NativeStationDetailContent caused 60-120fps recomposition storm of entire bottom sheet",
+      "solution": "Extracted RotatingRefreshIcon into an isolated Composable so animated float is read only inside its own scope",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Remove Socket.io completely",
-      "reason": "Stage 2 socket telemetry takes 4s timeout without providing vital real-time data"
+      "decision": "Isolate RotatingRefreshIcon in NativeStationDetailSheet",
+      "reason": "Prevents CPU/GPU recomposition storms during station detail refresh"
     },
     {
-      "decision": "Decode VinFast S3 URLs directly",
-      "reason": "Bypasses evcs.vn 403 Cloudflare block and delivers 0ms cached images"
+      "decision": "Use allowRgb565(true) for StationPhotoCarousel thumbnails",
+      "reason": "Reduces bitmap memory consumption from 4 bytes/pixel to 2 bytes/pixel, cutting RAM usage by 50%"
     },
     {
-      "decision": "Use Firestore Map data structure for favorites",
-      "reason": "Atomic additions/deletions without array byte-mismatch issues"
+      "decision": "Use SaveableStateProvider(currentTab) in MainActivity",
+      "reason": "Preserves LazyColumn scroll position and UI state when toggling between NEARBY and FAVORITES tabs"
     },
     {
-      "decision": "Local-First with 3-Way Conflict Resolution",
-      "reason": "Instant 0ms offline startup, silent auto-merge on login without data loss"
+      "decision": "Skip redundant Cloud Firestore write in MERGE conflict resolution if in-sync",
+      "reason": "Conserves Firebase Firestore Free Tier quota and eliminates unnecessary network latency"
     }
   ]
 }

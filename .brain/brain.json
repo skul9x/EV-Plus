@@ -12,7 +12,7 @@
     "frontend": {
       "language": "Kotlin",
       "ui_framework": "Jetpack Compose",
-      "image_loader": "Coil Compose 2.6.0",
+      "image_loader": "Coil Compose 2.6.0 (RGB_565 downsampling)",
       "auth_library": "AndroidX Credentials / Google ID"
     },
     "backend": {
@@ -39,18 +39,24 @@
     "relationships_explained": "Each user owns exactly one favorites document at /users/{userId}/userdata/favorites."
   },
   "features": [
-    "Native Station Detail Bottom Sheet with VinFast S3 Photo Carousel and Lightbox Zoom",
-    "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In",
+    "Native Station Detail Bottom Sheet with VinFast S3 Photo Carousel, Lightbox Zoom, and Recomposition-isolated RotatingRefreshIcon",
+    "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In and redundant write suppression",
+    "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation",
     "Direct CDN Media URL Decoding (Bypassing Cloudflare HTTP 403)"
   ],
   "knowledge_items": {
     "patterns": [
       "VinFast CDN media double base64 URL decoding to bypass evcs.vn 403",
-      "Firestore Map structure favorites.[stationId] for atomic add/delete"
+      "Firestore Map structure favorites.[stationId] for atomic add/delete",
+      "Isolated Composable for continuous rotation animations (RotatingRefreshIcon) to prevent parent sheet recomposition storm",
+      "SaveableStateProvider(currentTab) for seamless bottom navigation without scroll reset",
+      "allowRgb565 in Coil ImageRequest to halve Bitmap RAM consumption for photo carousels"
     ],
     "gotchas": [
       "evcs.vn /media endpoint blocks requests with Cloudflare 403; decode double base64 to cpo-prod-s3.vinfastauto.com direct URL instead",
-      "FieldValue.arrayRemove requires exact byte match; use Map updates instead"
+      "FieldValue.arrayRemove requires exact byte match; use Map updates instead",
+      "Reading animation float state in a root composable body triggers 60-120fps recomposition storm of the entire screen hierarchy; always isolate in dedicated Composable or graphicsLayer block",
+      "Building AGP projects on Ubuntu without openjdk-21-jdk-headless fails on JdkImageTransform due to missing jlink; use standalone Temurin JDK 17 configured in gradle.properties"
     ]
   }
 }
