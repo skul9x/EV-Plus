@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -74,6 +75,7 @@ import com.evcs.favorites.navigation.MapNavigator
 import com.evcs.favorites.ui.components.CustomConfigPromptDialog
 import com.evcs.favorites.ui.components.LoginRequiredDialog
 import com.evcs.favorites.ui.components.NativeStationDetailSheet
+import com.evcs.favorites.ui.components.NearbyUiHelper
 import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.components.SmartFilterBar
 import com.evcs.favorites.ui.components.StationCard
@@ -202,7 +204,9 @@ fun NearbyScreen(
         }
     }
 
-    // Collect one-shot events (auth guard, toasts, permission prompt)
+    val listState = rememberLazyListState()
+
+    // Collect one-shot events (auth guard, toasts, permission prompt, auto-scroll)
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -225,7 +229,25 @@ fun NearbyScreen(
                         )
                     }
                 }
+                is NearbyUiEvent.ScrollToTop -> {
+                    // Handled declaratively with debounce and state verification by LaunchedEffect(lastRefreshTimestamp)
+                }
             }
+        }
+    }
+
+    // Observe refresh completion and trigger smooth scroll to index 0 safely
+    var lastHandledRefreshTimestamp by remember { mutableStateOf(0L) }
+    LaunchedEffect(uiState.lastRefreshTimestamp, uiState.top10DisplayStations.size) {
+        if (NearbyUiHelper.shouldScrollToTop(
+                isUserInitiated = true,
+                itemCount = uiState.top10DisplayStations.size,
+                lastHandledTimestamp = lastHandledRefreshTimestamp,
+                eventTimestamp = uiState.lastRefreshTimestamp
+            )
+        ) {
+            lastHandledRefreshTimestamp = uiState.lastRefreshTimestamp
+            listState.animateScrollToItem(0)
         }
     }
 
@@ -364,7 +386,8 @@ fun NearbyScreen(
                             onClearFilters = onClearFilters,
                             onFavoriteClick = onFavoriteClick,
                             onNavigateClick = onNavigateClick,
-                            onStationClick = onStationClick
+                            onStationClick = onStationClick,
+                            listState = listState
                         )
                     }
                 }
@@ -604,7 +627,8 @@ private fun NearbyResultContent(
     onFavoriteClick: (Station) -> Unit,
     onNavigateClick: (Station) -> Unit,
     onStationClick: (Station) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState()
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         // Smart Filter Bar with 3-button selector & animated DC sub-filter
@@ -670,7 +694,6 @@ private fun NearbyResultContent(
         if (uiState.top10DisplayStations.isEmpty()) {
             NearbyEmptyFilterContent(onClearFilters = onClearFilters)
         } else {
-            val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),

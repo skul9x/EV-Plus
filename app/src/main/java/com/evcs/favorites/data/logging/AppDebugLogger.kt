@@ -48,6 +48,14 @@ object AppDebugLogger {
     fun log(entry: DebugLogEntry) {
         if (!isEnabled) return
 
+        try {
+            when (entry.level) {
+                DebugLogLevel.ERROR -> android.util.Log.e("EVCS_DEBUG", "[${entry.tag}] ${entry.message}")
+                DebugLogLevel.WARN -> android.util.Log.w("EVCS_DEBUG", "[${entry.tag}] ${entry.message}")
+                DebugLogLevel.INFO, DebugLogLevel.SUCCESS -> android.util.Log.i("EVCS_DEBUG", "[${entry.tag}] ${entry.message}")
+            }
+        } catch (_: Throwable) {}
+
         synchronized(lock) {
             if (buffer.size >= MAX_CAPACITY) {
                 buffer.removeFirst()

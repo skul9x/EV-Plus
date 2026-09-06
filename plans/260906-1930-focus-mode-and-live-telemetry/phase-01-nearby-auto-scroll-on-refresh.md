@@ -1,6 +1,6 @@
 # Phase 01: Nearby Auto-Scroll on Refresh
 
-Status: ⬜ Pending
+Status: ✅ Completed
 Dependencies: None
 
 ## Objective
@@ -8,13 +8,13 @@ Enable automatic and smooth scrolling of the Nearby stations list to the top (`i
 
 ## Requirements
 ### Functional
-- [ ] Track manual refresh events triggered by the user in `NearbyViewModel` / `NearbyScreen`.
-- [ ] When new stations load successfully following an explicit refresh action, automatically scroll `LazyListState` to `index = 0` via `animateScrollToItem(0)`.
-- [ ] Ensure that background updates or passive location updates do NOT unexpectedly hijack or disturb the user's manual scroll position while browsing down the list.
+- [x] Track manual refresh events triggered by the user in `NearbyViewModel` / `NearbyScreen`.
+- [x] When new stations load successfully following an explicit refresh action, automatically scroll `LazyListState` to `index = 0` via `animateScrollToItem(0)`.
+- [x] Ensure that background updates or passive location updates do NOT unexpectedly hijack or disturb the user's manual scroll position while browsing down the list.
 
 ### Non-Functional
-- [ ] Animation must be smooth and non-blocking (executed inside a Compose `CoroutineScope`).
-- [ ] No race conditions with recomposition or empty list transitions.
+- [x] Animation must be smooth and non-blocking (executed inside a Compose `CoroutineScope`).
+- [x] No race conditions with recomposition or empty list transitions.
 
 ## Implementation Steps
 1. Add an event or state trigger `lastRefreshTimestamp` or `ScrollToTopEffect` in `NearbyViewModel` or `NearbyUiHelper`.

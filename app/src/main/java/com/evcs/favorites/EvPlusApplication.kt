@@ -6,12 +6,16 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.evcs.favorites.data.network.AppOkHttpClientProvider
+import com.evcs.favorites.di.AppContainer
+import com.evcs.favorites.di.DefaultAppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
 
 class EvPlusApplication : Application(), ImageLoaderFactory {
+
+    val appContainer: AppContainer by lazy { DefaultAppContainer.getInstance(this) }
  
     override fun onCreate() {
         super.onCreate()

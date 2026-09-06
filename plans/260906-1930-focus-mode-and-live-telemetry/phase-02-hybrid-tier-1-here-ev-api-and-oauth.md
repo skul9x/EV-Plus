@@ -1,6 +1,6 @@
 # Phase 02: Hybrid Tier 1 HERE EV API & OAuth 1.0a
 
-Status: ⬜ Pending
+Status: ✅ Completed
 Dependencies: None
 
 ## Objective
@@ -8,15 +8,15 @@ Build the Tier 1 zero-login live telemetry infrastructure by integrating the HER
 
 ## Requirements
 ### Functional
-- [ ] Implement `HereOAuthManager` with HMAC-SHA256 OAuth 1.0a Client Credentials signing against `https://account.api.here.com/oauth2/token`.
-- [ ] Cache bearer access tokens in memory and proactively refresh them when less than 10 minutes of validity remain.
-- [ ] Create data models in `HereEvModels.kt` parsing HERE stations JSON (`prox={lat},{lon},{radius}`), connectors, and `connectorStatuses`.
-- [ ] Implement `HereEvApiClient` calling `https://ev-v2.cc.api.here.com/ev/stations.json` and mapping raw responses into `Station` domain models with DC-only port filtering capabilities.
-- [ ] Parse `AVAILABLE` vs `OCCUPIED` states to extract live available/total counts per power tier (30kW, 60kW, 150kW, 250kW, 360kW).
+- [x] Implement `HereOAuthManager` with HMAC-SHA256 OAuth 1.0a Client Credentials signing against `https://account.api.here.com/oauth2/token`.
+- [x] Cache bearer access tokens in memory and proactively refresh them when less than 10 minutes of validity remain.
+- [x] Create data models in `HereEvModels.kt` parsing HERE stations JSON (`prox={lat},{lon},{radius}`), connectors, and `connectorStatuses`.
+- [x] Implement `HereEvApiClient` calling `https://ev-v2.cc.api.here.com/ev/stations.json` and mapping raw responses into `Station` domain models with DC-only port filtering capabilities.
+- [x] Parse `AVAILABLE` vs `OCCUPIED` states to extract live available/total counts per power tier (30kW, 60kW, 150kW, 250kW, 360kW).
 
 ### Non-Functional
-- [ ] Network timeout bounded at 5 seconds.
-- [ ] Thread-safe token acquisition avoiding duplicate concurrent authentication requests.
+- [x] Network timeout bounded at 5 seconds.
+- [x] Thread-safe token acquisition avoiding duplicate concurrent authentication requests.
 
 ## Implementation Steps
 1. Create `HereEvModels.kt` with kotlinx serialization data classes.

@@ -18,10 +18,36 @@ data class FavoriteIconState(
 )
 
 /**
+ * Origin source triggering a station refresh or list reload.
+ */
+enum class RefreshTriggerType {
+    /** Explicit user action such as tapping the refresh button or pull-to-refresh */
+    USER_REFRESH,
+    /** Passive periodic background refresh or telemetry update */
+    PASSIVE_BACKGROUND,
+    /** Infinite scroll pagination or lazy loading */
+    PAGINATION,
+    /** Filter configuration changes (AC/DC/Custom toggle) */
+    FILTER_CHANGE
+}
+
+/**
+ * Effect describing an automatic scroll-to-top action.
+ *
+ * @param triggerTimestamp Epoch timestamp of the refresh event.
+ * @param triggerType The origin trigger for the reload.
+ */
+data class ScrollToTopEffect(
+    val triggerTimestamp: Long = System.currentTimeMillis(),
+    val triggerType: RefreshTriggerType = RefreshTriggerType.USER_REFRESH
+)
+
+/**
  * Pure Kotlin/Compose UI helper for Nearby stations components:
  * - Wattage options descending sorting & label formatting
  * - Multi-selection toggle & clear filter state logic
  * - Heart icon state resolution (colors, icons, content descriptions)
+ * - Auto-scroll on refresh state resolution & scroll position preservation
  * - Accessibility & dialog string constants
  */
 object NearbyUiHelper {
@@ -105,5 +131,70 @@ object NearbyUiHelper {
                 contentDescription = FAVORITE_ACTION_ADD
             )
         }
+    }
+
+    /**
+     * Determines whether an incoming station reload should trigger an automatic smooth scroll
+     * of the list back to the top (index = 0).
+     *
+     * Invariant Rules:
+     * 1. Only fires for explicit user refresh actions ([RefreshTriggerType.USER_REFRESH]).
+     * 2. Passive background updates, pagination, or filter changes must NOT trigger auto-scroll.
+     * 3. The loaded list must be non-empty ([itemCount] > 0) to avoid index bounds or race conditions.
+     * 4. The event timestamp must be strictly newer than the last handled timestamp.
+     */
+    fun shouldScrollToTop(
+        triggerType: RefreshTriggerType,
+        itemCount: Int,
+        lastHandledTimestamp: Long = 0L,
+        eventTimestamp: Long = 1L
+    ): Boolean {
+        return triggerType == RefreshTriggerType.USER_REFRESH &&
+                itemCount > 0 &&
+                eventTimestamp > lastHandledTimestamp
+    }
+
+    /**
+     * Convenience boolean-based overload for [shouldScrollToTop].
+     */
+    fun shouldScrollToTop(
+        isUserInitiated: Boolean,
+        itemCount: Int,
+        lastHandledTimestamp: Long = 0L,
+        eventTimestamp: Long = 1L
+    ): Boolean {
+        val trigger = if (isUserInitiated) RefreshTriggerType.USER_REFRESH else RefreshTriggerType.PASSIVE_BACKGROUND
+        return shouldScrollToTop(trigger, itemCount, lastHandledTimestamp, eventTimestamp)
+    }
+
+    /**
+     * Resolves the target scroll position (firstVisibleItemIndex, firstVisibleItemScrollOffset)
+     * during a list reload:
+     * - For user-initiated refresh ([RefreshTriggerType.USER_REFRESH]), returns (0, 0) to reset viewport to top.
+     * - For passive background updates, pagination, or filter reloads, preserves ([currentIndex], [currentOffset])
+     *   so the driver's reading position is never hijacked.
+     */
+    fun resolveTargetScrollPosition(
+        triggerType: RefreshTriggerType,
+        currentIndex: Int,
+        currentOffset: Int
+    ): Pair<Int, Int> {
+        return if (triggerType == RefreshTriggerType.USER_REFRESH) {
+            0 to 0
+        } else {
+            currentIndex to currentOffset
+        }
+    }
+
+    /**
+     * Convenience boolean-based overload for [resolveTargetScrollPosition].
+     */
+    fun resolveTargetScrollPosition(
+        isUserInitiated: Boolean,
+        currentIndex: Int,
+        currentOffset: Int
+    ): Pair<Int, Int> {
+        val trigger = if (isUserInitiated) RefreshTriggerType.USER_REFRESH else RefreshTriggerType.PASSIVE_BACKGROUND
+        return resolveTargetScrollPosition(trigger, currentIndex, currentOffset)
     }
 }

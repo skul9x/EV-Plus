@@ -490,6 +490,7 @@ private fun resolveTagColors(tag: DebugLogTag, level: DebugLogLevel): Pair<Color
         DebugLogTag.SEARCH -> UltraPurple to UltraPurpleContainerDark
         DebugLogTag.ROUTING -> EmeraldPrimaryLight to EmeraldContainerDark
         DebugLogTag.FAVORITES -> Color(0xFFF59E0B) to Color(0x26F59E0B)
+        DebugLogTag.FOCUS_MODE -> Color(0xFF38BDF8) to Color(0x2638BDF8)
     }
 }
 

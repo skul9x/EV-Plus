@@ -1,6 +1,6 @@
 # Phase 05: Floating Window UI & Permission Fallback
 
-Status: ⬜ Pending
+Status: ✅ Completed
 Dependencies: Phase 03, Phase 04
 
 ## Objective
@@ -8,20 +8,21 @@ Build the draggable Android System Alert Overlay (Floating Bubble/Capsule) that 
 
 ## Requirements
 ### Functional
-- [ ] Permission check for `Settings.canDrawOverlays(context)`.
-- [ ] Implement `FocusModeFloatingViewManager`:
+- [x] Permission check for `Settings.canDrawOverlays(context)`.
+- [x] Implement `FocusModeFloatingViewManager`:
   - When overlay permission is granted, instantiate a compact floating capsule using `WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY`.
   - Support smooth touch dragging and snap-to-edge behavior.
   - Normal state: Display station name, available DC slots / total slots (`🟢 2/8 Trống (150kW)`), and a close `[X]` button.
   - Full state (0 slots): Highlight red badge (`🔴 HẾT CHỖ!`) and reveal 1-tap reroute button (`[🔄 Đổi trạm: {Tên} (+{km}km)]`). Tapping reroute immediately updates the target station and relaunches Google Maps navigation intent.
   - Offline state: Display warning badge (`⚠️ Mất kết nối - Dữ liệu lúc HH:mm`).
   - Dismiss: Only closes when user taps `[X]`.
-- [ ] Implement Notification Fallback:
+- [x] Implement Notification Fallback:
   - When overlay permission is denied or revoked, present an ongoing Foreground Notification with equivalent text, action buttons ("Đổi trạm", "Tắt"), and maintain TTS alerts.
 
 ### Non-Functional
-- [ ] Zero crash on rapid orientation changes or app minimization.
-- [ ] Safe removal from `WindowManager` on service destroy to prevent Android window leaks.
+- [x] Zero crash on rapid orientation changes or app minimization.
+- [x] Safe removal from `WindowManager` on service destroy to prevent Android window leaks.
+
 
 ## Implementation Steps
 1. Create `FocusModeViewLayoutHelper.kt` defining layout parameters, touch listener math, and state formatting.

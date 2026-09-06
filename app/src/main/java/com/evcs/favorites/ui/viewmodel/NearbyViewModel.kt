@@ -22,6 +22,8 @@ import com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource
 import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.domain.model.WattageOption
+import com.evcs.favorites.ui.components.NearbyUiHelper
+import com.evcs.favorites.ui.components.RefreshTriggerType
 import com.evcs.favorites.ui.state.NearbyUiEvent
 import com.evcs.favorites.ui.state.NearbyUiState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -531,8 +533,10 @@ class NearbyViewModel(
      * Always re-acquires fresh real-time GPS coordinates via [locationService.getFreshLocation]
      * rather than reusing stale in-memory coordinates. If location cannot be determined,
      * updates error message requesting GPS check and retry.
+     *
+     * @param triggerType Indicates if this refresh was explicitly requested by user or by passive background/polling.
      */
-    fun refresh(): Job {
+    fun refresh(triggerType: RefreshTriggerType = RefreshTriggerType.USER_REFRESH): Job {
         scanJob?.cancel()
         routingJob?.cancel()
         routingDebounceJob?.cancel()
@@ -595,7 +599,8 @@ class NearbyViewModel(
                 userLat = newLat,
                 userLon = newLon,
                 selectedWattages = _uiState.value.selectedWattages,
-                debounce = false
+                debounce = false,
+                triggerType = triggerType
             )
         }
         scanJob = job
@@ -714,7 +719,8 @@ class NearbyViewModel(
         userLat: Double,
         userLon: Double,
         selectedWattages: Set<WattageOption>,
-        debounce: Boolean = true
+        debounce: Boolean = true,
+        triggerType: RefreshTriggerType = RefreshTriggerType.PASSIVE_BACKGROUND
     ) {
         val currentMode = _uiState.value.activeFilterMode
         val currentDcTier = _uiState.value.selectedDcTier
@@ -754,12 +760,20 @@ class NearbyViewModel(
             return
         }
 
+        val isUserRefresh = triggerType == RefreshTriggerType.USER_REFRESH
+        val refreshTimestamp = if (isUserRefresh) System.currentTimeMillis() else _uiState.value.lastRefreshTimestamp
+
         // 3. Immediately show Top 10 with Haversine distance while routing computes
         _uiState.update {
             it.copy(
                 top10DisplayStations = top10,
-                isRoutingLoading = true
+                isRoutingLoading = true,
+                lastRefreshTimestamp = refreshTimestamp
             )
+        }
+
+        if (isUserRefresh) {
+            _events.send(NearbyUiEvent.ScrollToTop(refreshTimestamp))
         }
 
         // 4. Debounced Remote Route Calculation

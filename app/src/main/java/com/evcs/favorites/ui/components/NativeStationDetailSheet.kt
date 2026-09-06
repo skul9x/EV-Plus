@@ -3,6 +3,10 @@ package com.evcs.favorites.ui.components
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import com.evcs.favorites.focus.FocusModeForegroundService
+import com.evcs.favorites.focus.FocusServiceIntentSpec
+import kotlinx.serialization.json.Json
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -143,6 +147,15 @@ data class FavoriteButtonSpec(
 )
 
 /**
+ * Model representing resolved specification for Focus Mode activation:
+ * foreground service startup intent and Google Maps navigation intent.
+ */
+data class FocusModeActivationSpec(
+    val serviceIntentSpec: FocusServiceIntentSpec,
+    val navigationIntentSpec: MapIntentSpec
+)
+
+/**
  * Model representing computed horizontal width allocation across the quick action row buttons.
  */
 data class ActionRowLayoutAllocation(
@@ -214,10 +227,12 @@ object NativeStationDetailSheetHelper {
     const val GOOGLE_MAPS_PACKAGE = "com.google.android.apps.maps"
 
     const val LABEL_NAVIGATE = "Chỉ đường"
+    const val LABEL_FOCUS_MODE = "⚡ Focus Mode"
     const val LABEL_FAVORITE = "Yêu thích"
     const val LABEL_SAVED = "Đã lưu"
     const val LABEL_SHARE = "Chia sẻ"
     const val DESC_UNFAVORITE = "Bỏ yêu thích"
+    const val DESC_FOCUS_MODE = "Kích hoạt Chế độ Focus Mode"
 
     const val PRIMARY_NAV_WEIGHT = 1.3f
     const val SECONDARY_FAVORITE_WEIGHT = 1.0f
@@ -536,6 +551,54 @@ object NativeStationDetailSheetHelper {
             context.startActivity(shareIntent)
         } catch (_: Exception) {}
     }
+
+    /**
+     * Checks if overlay permission is granted.
+     */
+    fun canDrawOverlays(context: Context): Boolean {
+        return FocusModePermissionDialogHelper.canDrawOverlays(context)
+    }
+
+    /**
+     * Opens system overlay settings targeting this application.
+     */
+    fun openOverlaySettings(context: Context) {
+        FocusModePermissionDialogHelper.openOverlaySettings(context)
+    }
+
+    /**
+     * Builds [FocusModeActivationSpec] containing intent specifications for service and navigation.
+     */
+    fun buildFocusModeActivationSpec(station: Station): FocusModeActivationSpec {
+        val json = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
+        return FocusModeActivationSpec(
+            serviceIntentSpec = FocusServiceIntentSpec(
+                action = FocusModeForegroundService.ACTION_START,
+                targetClass = FocusModeForegroundService::class.java,
+                payloadJson = json.encodeToString(Station.serializer(), station)
+            ),
+            navigationIntentSpec = buildNavigationIntentSpec(station)
+        )
+    }
+
+    /**
+     * Activates Focus Mode: starts FocusModeForegroundService and launches Google Maps navigation.
+     */
+    fun startFocusMode(context: Context, station: Station) {
+        try {
+            val serviceIntent = FocusModeForegroundService.createStartIntent(context, station)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (_: Exception) {}
+
+        launchNavigation(context, station)
+    }
 }
 
 /**
@@ -560,6 +623,7 @@ fun NativeStationDetailSheet(
     onNavigate: ((Station) -> Unit)? = null,
     onToggleFavorite: ((Station) -> Unit)? = null,
     onShare: ((Station) -> Unit)? = null,
+    onStartFocusMode: ((Station) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val station = uiState.station ?: return
@@ -567,6 +631,7 @@ fun NativeStationDetailSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    var showOverlayPermissionDialog by remember { mutableStateOf(false) }
 
     val handleDismiss: () -> Unit = remember(coroutineScope, sheetState, onDismiss) {
         {
@@ -604,6 +669,42 @@ fun NativeStationDetailSheet(
         }
     }
 
+    val handleStartFocusMode: (Station) -> Unit = remember(onStartFocusMode, context) {
+        { st ->
+            if (onStartFocusMode != null) {
+                onStartFocusMode(st)
+            } else {
+                NativeStationDetailSheetHelper.startFocusMode(context, st)
+            }
+        }
+    }
+
+    val handleFocusModeClick: (Station) -> Unit = remember(handleStartFocusMode, context) {
+        { st ->
+            if (NativeStationDetailSheetHelper.canDrawOverlays(context)) {
+                handleStartFocusMode(st)
+            } else {
+                showOverlayPermissionDialog = true
+            }
+        }
+    }
+
+    if (showOverlayPermissionDialog) {
+        FocusModePermissionDialog(
+            onGrantOverlayPermission = {
+                showOverlayPermissionDialog = false
+                NativeStationDetailSheetHelper.openOverlaySettings(context)
+            },
+            onUseNotificationFallback = {
+                showOverlayPermissionDialog = false
+                handleStartFocusMode(station)
+            },
+            onDismiss = {
+                showOverlayPermissionDialog = false
+            }
+        )
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -622,6 +723,7 @@ fun NativeStationDetailSheet(
             onNavigate = handleNavigate,
             onToggleFavorite = handleToggleFavorite,
             onShare = handleShare,
+            onStartFocusMode = handleFocusModeClick,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -642,6 +744,7 @@ fun NativeStationDetailContent(
     onNavigate: (Station) -> Unit,
     onToggleFavorite: (Station) -> Unit,
     onShare: (Station) -> Unit,
+    onStartFocusMode: ((Station) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -832,8 +935,20 @@ fun NativeStationDetailContent(
         }
 
         // ---------------------------------------------------------------------
-        // 4. Quick Action Row: Chỉ đường (Primary), Yêu thích, Chia sẻ
         // ---------------------------------------------------------------------
+        // 4. Quick Action Row: Chỉ đường & ⚡ Focus Mode (Navigation), Yêu thích & Chia sẻ
+        // ---------------------------------------------------------------------
+        val onNavClick = remember(onNavigate, station) { { onNavigate(station) } }
+        val onFocusClick: () -> Unit = remember(onStartFocusMode, station) {
+            {
+                onStartFocusMode?.invoke(station)
+                Unit
+            }
+        }
+        val onFavClick = remember(onToggleFavorite, station) { { onToggleFavorite(station) } }
+        val onShareClick = remember(onShare, station) { { onShare(station) } }
+
+        // Primary Navigation Actions: Chỉ đường & ⚡ Focus Mode
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -841,10 +956,6 @@ fun NativeStationDetailContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val onNavClick = remember(onNavigate, station) { { onNavigate(station) } }
-            val onFavClick = remember(onToggleFavorite, station) { { onToggleFavorite(station) } }
-            val onShareClick = remember(onShare, station) { { onShare(station) } }
-
             // Primary Pill: Chỉ đường
             Button(
                 onClick = onNavClick,
@@ -855,7 +966,7 @@ fun NativeStationDetailContent(
                 ),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                 modifier = Modifier
-                    .weight(NativeStationDetailSheetHelper.PRIMARY_NAV_WEIGHT, fill = true)
+                    .weight(1f, fill = true)
                     .wrapContentHeight()
             ) {
                 Icon(
@@ -874,7 +985,45 @@ fun NativeStationDetailContent(
                 )
             }
 
-            // Secondary Pill: Yêu thích
+            // Primary Pill: ⚡ Focus Mode (Adjacent to Chỉ đường)
+            Button(
+                onClick = onFocusClick,
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldContainerDark,
+                    contentColor = EmeraldPrimaryLight
+                ),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .wrapContentHeight()
+            ) {
+                Icon(
+                    imageVector = AppIcons.Bolt,
+                    contentDescription = null,
+                    tint = EmeraldPrimaryLight,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = NativeStationDetailSheetHelper.LABEL_FOCUS_MODE,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // Secondary Actions: Yêu thích & Chia sẻ
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
             val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
             val favoriteSpec = remember(isFavorite, surfaceVariant, onSurfaceVariant) {
@@ -885,6 +1034,7 @@ fun NativeStationDetailContent(
                 )
             }
 
+            // Secondary Pill: Yêu thích
             FilledTonalButton(
                 onClick = onFavClick,
                 shape = RoundedCornerShape(24.dp),
@@ -894,7 +1044,7 @@ fun NativeStationDetailContent(
                 ),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                 modifier = Modifier
-                    .weight(NativeStationDetailSheetHelper.SECONDARY_FAVORITE_WEIGHT, fill = true)
+                    .weight(1f, fill = true)
                     .wrapContentHeight()
             ) {
                 Icon(
@@ -924,7 +1074,7 @@ fun NativeStationDetailContent(
                 ),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                 modifier = Modifier
-                    .weight(NativeStationDetailSheetHelper.SECONDARY_SHARE_WEIGHT, fill = true)
+                    .weight(1f, fill = true)
                     .wrapContentHeight()
             ) {
                 Icon(

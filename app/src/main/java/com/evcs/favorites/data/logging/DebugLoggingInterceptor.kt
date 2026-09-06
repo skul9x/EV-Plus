@@ -91,6 +91,7 @@ class DebugLoggingInterceptor(
         val partialHeader = request.header("X-Partial")
 
         return when {
+            url.contains("here.com") || url.contains("/ev/") -> DebugLogTag.FOCUS_MODE
             url.contains("/search") -> DebugLogTag.SEARCH
             url.contains("/favorite") || partialHeader.equals("fav", ignoreCase = true) -> DebugLogTag.FAVORITES
             url.contains("/table/v1/driving") || url.contains("osrm") || url.contains("google") -> DebugLogTag.ROUTING

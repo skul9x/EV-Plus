@@ -9,7 +9,8 @@ enum class DebugLogTag {
     NETWORK,
     SEARCH,
     FAVORITES,
-    ROUTING
+    ROUTING,
+    FOCUS_MODE
 }
 
 enum class DebugLogLevel {

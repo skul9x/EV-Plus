@@ -1,6 +1,6 @@
 # Phase 06: Sheet Entry Point & E2E Integration
 
-Status: ⬜ Pending
+Status: ✅ Completed
 Dependencies: Phase 01, Phase 02, Phase 03, Phase 04, Phase 05
 
 ## Objective
@@ -8,17 +8,17 @@ Wire the entire Focus Mode workflow into the main application UI by adding the `
 
 ## Requirements
 ### Functional
-- [ ] Add `[⚡ Focus Mode]` button into `NativeStationDetailSheet.kt` (positioned adjacent to "Chỉ đường" or inside the quick action row).
-- [ ] Show `FocusModePermissionDialog` on first click if `Settings.canDrawOverlays` is not granted, giving users the choice to "Cấp quyền (Cửa sổ nổi)" or "Dùng thông báo (Không cần quyền)".
-- [ ] On activation:
+- [x] Add `[⚡ Focus Mode]` button into `NativeStationDetailSheet.kt` (positioned adjacent to "Chỉ đường" or inside the quick action row).
+- [x] Show `FocusModePermissionDialog` on first click if `Settings.canDrawOverlays` is not granted, giving users the choice to "Cấp quyền (Cửa sổ nổi)" or "Dùng thông báo (Không cần quyền)".
+- [x] On activation:
   1. Start `FocusModeForegroundService` with the selected station ID and coordinates.
   2. Launch Google Maps navigation intent pointing to the station's latitude/longitude.
-- [ ] Register `FocusModeForegroundService` in `AndroidManifest.xml` with appropriate foreground service types (`dataSync` / `specialUse` / `location`).
-- [ ] Update `AppContainer.kt` to provide dependencies (`HereOAuthManager`, `HereEvApiClient`, `FocusModeTelemetryEngine`).
+- [x] Register `FocusModeForegroundService` in `AndroidManifest.xml` with appropriate foreground service types (`dataSync` / `specialUse` / `location`).
+- [x] Update `AppContainer.kt` to provide dependencies (`HereOAuthManager`, `HereEvApiClient`, `FocusModeTelemetryEngine`).
 
 ### Non-Functional
-- [ ] Clean back-stack transition: tapping back or switching apps keeps Focus Mode alive until closed with `[X]`.
-- [ ] No regression on existing station detail sheet operations (refresh, favorite, share, photo carousel).
+- [x] Clean back-stack transition: tapping back or switching apps keeps Focus Mode alive until closed with `[X]`.
+- [x] No regression on existing station detail sheet operations (refresh, favorite, share, photo carousel).
 
 ## Implementation Steps
 1. Add `FocusModePermissionDialog.kt` composable.

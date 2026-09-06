@@ -19,4 +19,10 @@ sealed interface NearbyUiEvent {
      * Emitted when location runtime permission has not yet been granted.
      */
     data object RequestLocationPermission : NearbyUiEvent
+
+    /**
+     * Emitted when an explicit user-initiated refresh completes successfully with stations,
+     * signaling the UI to smoothly scroll the list back to the top (index = 0).
+     */
+    data class ScrollToTop(val timestamp: Long = System.currentTimeMillis()) : NearbyUiEvent
 }

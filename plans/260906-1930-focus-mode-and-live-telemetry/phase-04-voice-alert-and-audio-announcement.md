@@ -1,6 +1,6 @@
 # Phase 04: Voice Alert & Audio Announcement
 
-Status: ⬜ Pending
+Status: ✅ Completed
 Dependencies: Phase 03
 
 ## Objective
@@ -8,17 +8,17 @@ Implement hands-free audio notifications using Android Text-to-Speech (TTS) in V
 
 ## Requirements
 ### Functional
-- [ ] Initialize Android `TextToSpeech` with Locale `vi-VN` (fallback to default TTS engine if Vietnamese language pack requires installation).
-- [ ] Generate audio alert when target station transitions from having slots to 0 DC slots available:
+- [x] Initialize Android `TextToSpeech` with Locale `vi-VN` (fallback to default TTS engine if Vietnamese language pack requires installation).
+- [x] Generate audio alert when target station transitions from having slots to 0 DC slots available:
   - Text: `"Cảnh báo: Trạm sạc vừa hết chỗ!"`
-- [ ] Generate audio alert when target station transitions from 0 to $\ge 1$ DC slot available:
+- [x] Generate audio alert when target station transitions from 0 to $\ge 1$ DC slot available:
   - Text: `"Trụ sạc vừa có súng trống!"`
-- [ ] Implement audio alert debouncing (minimum 20 seconds between identical voice alerts) to prevent notification fatigue during rapid data fluctuations.
-- [ ] Provide a mute/unmute audio preference in Focus Mode.
+- [x] Implement audio alert debouncing (minimum 20 seconds between identical voice alerts) to prevent notification fatigue during rapid data fluctuations.
+- [x] Provide a mute/unmute audio preference in Focus Mode.
 
 ### Non-Functional
-- [ ] Audio focus management: Request transient audio ducking (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`) so navigation apps or music smoothly duck volume during speech and restore afterward.
-- [ ] Release all TTS resources upon service shutdown.
+- [x] Audio focus management: Request transient audio ducking (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`) so navigation apps or music smoothly duck volume during speech and restore afterward.
+- [x] Release all TTS resources upon service shutdown.
 
 ## Implementation Steps
 1. Create `FocusModeVoiceAlertPolicy.kt` with pure business logic deciding when an alert should trigger based on consecutive telemetry snapshots.
