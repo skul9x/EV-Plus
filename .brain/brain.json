@@ -5,27 +5,28 @@
   },
   "project": {
     "name": "EV-Plus",
-    "type": "Android App",
+    "type": "Android App (Jetpack Compose)",
     "status": "In Progress"
   },
   "tech_stack": {
     "frontend": {
-      "language": "Kotlin",
-      "ui_framework": "Jetpack Compose",
+      "language": "Kotlin 1.9.23 (JVM Target 17)",
+      "ui_framework": "Jetpack Compose (Material 3 BOM 2024.04.01)",
       "image_loader": "Coil Compose 2.6.0 (RGB_565 downsampling)",
-      "auth_library": "AndroidX Credentials / Google ID"
+      "audio_tts": "Android TextToSpeech (vi-VN locale) + Transient Audio Ducking",
+      "window_manager": "Android System Alert Window Overlay (TYPE_APPLICATION_OVERLAY)"
     },
     "backend": {
       "service": "Firebase (Firestore + Auth)",
-      "telemetry_source": "EVCS Public API (REST, direct VinFast CDN)"
+      "telemetry_source": "HERE Maps EV API (OAuth 1.0a HMAC-SHA256 direct VinFast telemetry) + EVCS Public API fallback"
     },
     "database": {
       "cloud": "Cloud Firestore (users/{userId}/userdata/favorites)",
-      "local": "Local-First SharedPreferences / JSON Cache"
+      "local": "Local-First EncryptedSharedPreferences / JSON Cache"
     }
   },
   "database_schema": {
-    "summary": "Cloud Firestore stores user favorites under /users/{userId}/userdata/favorites as a map of station IDs to timestamps.",
+    "summary": "Cloud Firestore stores user favorites under /users/{userId}/userdata/favorites as an atomic map of station IDs to timestamps.",
     "tables": [
       {
         "name": "favorites",
@@ -36,27 +37,57 @@
         ]
       }
     ],
-    "relationships_explained": "Each user owns exactly one favorites document at /users/{userId}/userdata/favorites."
+    "relationships_explained": "Each authenticated user owns exactly one favorites document at /users/{userId}/userdata/favorites."
   },
+  "api_endpoints": [
+    {
+      "name": "HERE Maps EV Stations Telemetry",
+      "method": "GET",
+      "endpoint": "https://ev-v2.cc.api.here.com/ev/stations.json?prox={lat},{lon},{radius}&maxresults={n}&apiKey={key}",
+      "auth": "OAuth 1.0a Bearer Token (https://account.api.here.com/oauth2/token) or VinFast API Key fallback",
+      "purpose": "Provides real-time DC connector availability (AVAILABLE vs OCCUPIED) directly from VinFast network."
+    },
+    {
+      "name": "EVCS Search API",
+      "method": "POST",
+      "endpoint": "https://evcs.vn/search?t={hmac_token}",
+      "purpose": "Fetches nearby charging stations by GPS coordinates."
+    },
+    {
+      "name": "OSRM Driving Distance Matrix",
+      "method": "GET",
+      "endpoint": "https://router.project-osrm.org/table/v1/driving/{coords}?sources=0&annotations=duration,distance",
+      "purpose": "Calculates real road driving distance and duration matrix for top 10 stations."
+    }
+  ],
   "features": [
-    "Native Station Detail Bottom Sheet with VinFast S3 Photo Carousel, Lightbox Zoom, and Recomposition-isolated RotatingRefreshIcon",
-    "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In and redundant write suppression",
-    "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation",
-    "Direct CDN Media URL Decoding (Bypassing Cloudflare HTTP 403)"
+    "Focus Mode (Live DC Telemetry Navigation Tracker) with Draggable Floating Capsule Overlay over Google Maps",
+    "Hybrid Tier 1 HERE EV API & OAuth 1.0a HMAC-SHA256 Client Credentials Telemetry Engine",
+    "Dynamic Polling Interval Engine (15s > 3km -> 10s 1.5-3km -> 5s < 1.5km)",
+    "Vietnamese Voice / Audio Announcements (vi-VN TTS) with Transient Audio Ducking on DC slot saturation/availability",
+    "1-Tap Alternative DC Station Auto-Reroute to closest matching kW tier when target station is full",
+    "Nearby Screen Auto-Scroll to top on user-initiated refresh completion with timestamp debouncing",
+    "Native Station Detail Bottom Sheet with VinFast S3 Photo Carousel & Lightbox Zoom",
+    "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In",
+    "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation"
   ],
   "knowledge_items": {
     "patterns": [
-      "VinFast CDN media double base64 URL decoding to bypass evcs.vn 403",
-      "Firestore Map structure favorites.[stationId] for atomic add/delete",
-      "Isolated Composable for continuous rotation animations (RotatingRefreshIcon) to prevent parent sheet recomposition storm",
-      "SaveableStateProvider(currentTab) for seamless bottom navigation without scroll reset",
-      "allowRgb565 in Coil ImageRequest to halve Bitmap RAM consumption for photo carousels"
+      "HereOAuthManager thread-safe token caching with 10-minute proactive refresh buffer via Coroutine Mutex",
+      "FocusModeTelemetryEngine headless decoupling with StateFlow and SharedFlow for discrete voice alerts",
+      "Foreground Service lifecycle management with stateCollectionJob cancellation and locationService listener cleanup",
+      "Android 14 (API 34) Foreground Service runtime permission check with FOREGROUND_SERVICE_TYPE_DATA_SYNC fallback",
+      "Raw HereEvStation direct filtering before domain mapping to eliminate Garbage Collection churn during 5s polling",
+      "Display metrics caching on ACTION_DOWN in floating WindowManager touch listeners to save Main Thread CPU cycles",
+      "Atomic activeUtteranceCount counter for TextToSpeech to prevent premature audio focus un-ducking",
+      "NearbyUiHelper pure function decision rules for auto-scrolling with timestamp verification"
     ],
     "gotchas": [
-      "evcs.vn /media endpoint blocks requests with Cloudflare 403; decode double base64 to cpo-prod-s3.vinfastauto.com direct URL instead",
-      "FieldValue.arrayRemove requires exact byte match; use Map updates instead",
-      "Reading animation float state in a root composable body triggers 60-120fps recomposition storm of the entire screen hierarchy; always isolate in dedicated Composable or graphicsLayer block",
-      "Building AGP projects on Ubuntu without openjdk-21-jdk-headless fails on JdkImageTransform due to missing jlink; use standalone Temurin JDK 17 configured in gradle.properties"
+      "Android 14 crashes with SecurityException if startForeground(FOREGROUND_SERVICE_TYPE_LOCATION) is called without ACCESS_FINE/COARSE_LOCATION; fallback to DATA_SYNC",
+      "Calling LocationService.startLocationUpdates repeatedly without stopping old instances leaks FusedLocationClient listeners and drains battery rapidly",
+      "Mapping all 50 HERE EV stations into domain models every 5 seconds creates severe GC churn; filter raw HereEvStation list first",
+      "Reading animation float state in a root composable body triggers 60-120fps recomposition storm; always isolate in dedicated Composable",
+      "evcs.vn /media endpoint blocks requests with Cloudflare 403; decode double base64 to cpo-prod-s3.vinfastauto.com direct URL instead"
     ]
   }
 }

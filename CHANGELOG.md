@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-06] - Focus Mode (Live DC Telemetry Navigation Tracker) & Audit Hardening
+
+### Added
+- **Focus Mode Subsystem (Phases 01 - 06)**:
+  - **Tier 1 HERE Maps EV API Integration**: Direct OAuth 1.0a HMAC-SHA256 Client Credentials telemetry with VinFast extracted API key fallback (`HereEvApiClient`, `HereOAuthManager`).
+  - **Focus Mode Telemetry Engine**: Headless coroutine polling engine with dynamic distance-based intervals (`15s > 3km`, `10s 1.5-3km`, `5s < 1.5km`), offline detection in underground basements, and 1-tap alternative DC station auto-rerouting (`FocusModeTelemetryEngine`).
+  - **Draggable Floating Capsule Overlay**: Smooth touch-drag system alert window (`WindowManager` overlay) floating above Google Maps with edge-snapping, live status badge, and persistent Foreground Notification fallback (`FocusModeFloatingViewManager`, `FocusModeForegroundService`).
+  - **Vietnamese Voice / Audio Announcements**: Integrated `TextToSpeech` (vi-VN locale) and transient audio ducking (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`) announcing DC saturation/availability shifts hands-free (`FocusModeTtsManager`, `FocusModeVoiceAlertPolicy`).
+  - **Nearby Screen Auto-Scroll**: Smooth list scroll to top upon user-initiated refresh completion with timestamp debouncing (`NearbyUiHelper`).
+  - **Native Detail Sheet Focus Button**: `[⚡ Focus Mode]` primary trigger with onboarding permission dialog (`FocusModePermissionDialog`, `NativeStationDetailSheet`).
+
+### Fixed
+- **System Resource & Performance Audit Hardening (7/7 Fixes)**:
+  - Resolved GPS listener leak and coroutine collector accumulation on repeated service starts (`FocusModeForegroundService`).
+  - Added Android 14 (API 34) Foreground Service type permission guards with `FOREGROUND_SERVICE_TYPE_DATA_SYNC` fallback.
+  - Eliminated Garbage Collection churn and reduced 4G payload by >80% via raw `HereEvStation` matching before domain mapping.
+  - Resolved double-scroll animation race conditions on Nearby screen refresh.
+  - Cached screen metrics on `ACTION_DOWN` to optimize touch event CPU cycles during floating view dragging.
+  - Added atomic `activeUtteranceCount` counter to prevent premature audio focus un-ducking.
+  - Wrapped continuous polling loops in exception guards to prevent silent coroutine cancellation.
+
 ## [2026-09-06] - Performance & Memory Audit & Optimization
 
 ### Fixed

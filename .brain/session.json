@@ -1,82 +1,94 @@
 {
-  "updated_at": "2026-09-06T18:48:00+07:00",
+  "updated_at": "2026-09-06T23:03:00+07:00",
   "working_on": {
-    "feature": "Performance & Memory Audit and Optimization",
-    "task": "Completed performance audit fixes and verified with dedicated test suite and debug APK build",
+    "feature": "Focus Mode & Live DC Telemetry Navigation Tracker",
+    "task": "Completed all 6 phases, performance audit fixes, test suites verification, and GitHub repository sync",
     "status": "completed",
     "files": [
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeFloatingViewManager.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeVoiceAlertPolicy.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeViewLayoutHelper.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeNotificationHelper.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeState.kt",
+      "app/src/main/java/com/evcs/favorites/data/network/here/HereEvApiClient.kt",
+      "app/src/main/java/com/evcs/favorites/data/network/here/HereOAuthManager.kt",
+      "app/src/main/java/com/evcs/favorites/data/network/here/model/HereEvModels.kt",
       "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
       "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-      "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
-      "app/src/test/java/com/evcs/favorites/performance/AuditPerformanceFixTest.kt",
-      "docs/reports/audit_2026-09-06.md",
-      "gradle.properties",
-      "local.properties"
+      "docs/reports/audit_2026-09-06.md"
     ],
     "blockers": [],
-    "notes": "All 4 performance fixes verified: Recomposition storm eliminated, RGB_565 RAM cut, Tab scroll preservation, Firestore redundant write prevention. AuditPerformanceFixTest PASSED 100%, debug APK successfully assembled (16MB)."
+    "notes": "All 6 Focus Mode phases completed & verified. Performance audit performed and 7/7 issues resolved (GPS leak, Android 14 FGS, GC churn, duplicate scroll, touch drag metrics, TTS audio ducking, coroutine protection). APK built and verified on device with live logs, and changes committed & pushed to origin/main."
   },
   "pending_tasks": [],
   "recent_changes": [
     {
-      "timestamp": "2026-09-06T18:47:00+07:00",
-      "type": "performance",
-      "description": "Resolved 4 critical & warning issues from Performance Audit: Isolated RotatingRefreshIcon, added allowRgb565 to StationPhotoCarousel, added SaveableStateProvider & rememberLazyListState to tabs, and optimized FirestoreFavoritesRepository sync writes.",
+      "timestamp": "2026-09-06T22:54:00+07:00",
+      "type": "git",
+      "description": "Committed and pushed full Focus Mode, Live Telemetry, Audit fixes, and Nearby auto-scroll codebase to GitHub repository (skul9x/EV-Plus:main)",
       "files": [
-        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/main/java/com/evcs/favorites/focus/*",
+        "app/src/main/java/com/evcs/favorites/data/network/here/*",
         "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
-        "app/src/test/java/com/evcs/favorites/performance/AuditPerformanceFixTest.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
         "docs/reports/audit_2026-09-06.md"
       ]
     },
     {
-      "timestamp": "2026-09-05T18:35:00+07:00",
-      "type": "feature",
-      "description": "Completed Phase 04: Local-First Firestore Favorites Sync, Profile header with Google Sign-In, and full-app guest-ready favorites persistence",
+      "timestamp": "2026-09-06T22:40:00+07:00",
+      "type": "audit_fix",
+      "description": "Applied Fix All for Performance Audit: GPS listener & Coroutine cleanup in FocusModeForegroundService, Android 14 FGS permission fallback, HERE EV raw filtering to cut GC churn, duplicate scroll animation prevention, display metrics touch caching, and atomic TTS audio ducking counter.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesDataSource.kt",
-        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/FavoritesProfileHeader.kt",
-        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
-        "app/src/main/java/com/evcs/favorites/ui/favorites/FavoritesScreen.kt",
-        "app/src/main/java/com/evcs/favorites/ui/favorites/FavoritesViewModel.kt",
-        "app/src/main/java/com/evcs/favorites/ui/nearby/NearbyViewModel.kt",
-        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
-        "app/src/test/java/com/evcs/favorites/data/repository/LocalFirstFirestoreFavoritesSyncTest.kt"
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
+        "app/src/main/java/com/evcs/favorites/data/network/here/HereEvApiClient.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeFloatingViewManager.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+        "docs/reports/audit_2026-09-06.md"
+      ]
+    },
+    {
+      "timestamp": "2026-09-06T21:30:00+07:00",
+      "type": "feature",
+      "description": "Completed Phase 01 to Phase 06 of Focus Mode & Live Telemetry subsystem",
+      "files": [
+        "plans/260906-1930-focus-mode-and-live-telemetry/*"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "JdkImageTransform failed due to missing jlink in headless JRE 21",
-      "solution": "Downloaded Eclipse Temurin JDK 17 to ~/.jdks and configured org.gradle.java.home in gradle.properties",
+      "error": "Potential GPS listener leak when FocusModeForegroundService receives ACTION_START multiple times",
+      "solution": "Added explicit locationService?.stopLocationUpdates() and stateCollectionJob?.cancel() before reallocating",
       "resolved": true
     },
     {
-      "error": "Animation state reading in NativeStationDetailContent caused 60-120fps recomposition storm of entire bottom sheet",
-      "solution": "Extracted RotatingRefreshIcon into an isolated Composable so animated float is read only inside its own scope",
+      "error": "Android 14 SecurityException when starting FGS with FOREGROUND_SERVICE_TYPE_LOCATION without runtime permission",
+      "solution": "Checked permission dynamically and fell back to FOREGROUND_SERVICE_TYPE_DATA_SYNC with try-catch wrapper",
+      "resolved": true
+    },
+    {
+      "error": "Heavy Garbage Collection churn from mapping 50 HERE EV stations during 5s polling intervals",
+      "solution": "Optimized HereEvApiClient.fetchStationById to filter on raw HereEvStation models first before domain mapping",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Isolate RotatingRefreshIcon in NativeStationDetailSheet",
-      "reason": "Prevents CPU/GPU recomposition storms during station detail refresh"
+      "decision": "Hybrid 2-Tier Architecture for Live DC Telemetry",
+      "reason": "Tier 1 queries HERE EV API (OAuth 1.0a HMAC-SHA256 direct from VinFast credentials) without driver login, falling back to Tier 2 EVCS"
     },
     {
-      "decision": "Use allowRgb565(true) for StationPhotoCarousel thumbnails",
-      "reason": "Reduces bitmap memory consumption from 4 bytes/pixel to 2 bytes/pixel, cutting RAM usage by 50%"
+      "decision": "Dynamic Distance-Based Polling Intervals (15s -> 10s -> 5s)",
+      "reason": "Saves cellular radio power and battery when far away (>3km: 15s, 1.5-3km: 10s) and provides near real-time updates when approaching (<1.5km: 5s)"
     },
     {
-      "decision": "Use SaveableStateProvider(currentTab) in MainActivity",
-      "reason": "Preserves LazyColumn scroll position and UI state when toggling between NEARBY and FAVORITES tabs"
-    },
-    {
-      "decision": "Skip redundant Cloud Firestore write in MERGE conflict resolution if in-sync",
-      "reason": "Conserves Firebase Firestore Free Tier quota and eliminates unnecessary network latency"
+      "decision": "System Alert Window Overlay (TYPE_APPLICATION_OVERLAY) with Notification Fallback",
+      "reason": "Allows real-time station availability capsule to float on top of Google Maps navigation while seamlessly falling back to Foreground Notification if overlay permission is denied"
     }
   ]
 }
