@@ -26,7 +26,7 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # 1. Slugify Repository Name (Ví dụ: "My_Cool App" -> "my-cool-app")
+      # 2. Tự động chuyển đổi tên ứng dụng (Slugify App Name)
       - name: Slugify App Name
         id: slugify
         run: |
@@ -37,57 +37,60 @@ jobs:
           # Chuyển thành chữ thường và thay thế khoảng trắng/gạch dưới thành gạch ngang
           SLUG_NAME=$(echo "$RAW_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[ _]+/-/g')
           echo "SLUG_NAME=$SLUG_NAME" >> $GITHUB_ENV
-          echo "Tên App sau khi chuẩn hóa: $SLUG_NAME"
+          echo "Slugified App Name: $SLUG_NAME"
 
-      # 2. Tự động xác định version kế tiếp từ GitHub Release tag
+      # 3. Tự động tăng phiên bản Release (Auto-Increment Versioning)
       - name: Calculate Next Version Tag
         id: versioning
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          LATEST_TAG=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "")
-          echo "Tag hiện tại trên GitHub: '$LATEST_TAG'"
+          # Lấy tag mới nhất qua GitHub REST API
+          LATEST_TAG=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
+          echo "Latest tag on GitHub: '$LATEST_TAG'"
 
-          if [ -z "$LATEST_TAG" ]; then
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
             NEW_TAG="v1.0"
           else
-            # Tách version (bỏ ký tự 'v' nếu có)
             CLEAN_VER="${LATEST_TAG#v}"
             MAJOR=$(echo "$CLEAN_VER" | cut -d. -f1)
             MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
 
-            # Đảm bảo có giá trị số
             MAJOR=${MAJOR:-1}
             MINOR=${MINOR:-0}
 
-            # Tăng minor version (ví dụ: v1.0 -> v1.1)
             NEW_MINOR=$((MINOR + 1))
             NEW_TAG="v${MAJOR}.${NEW_MINOR}"
           fi
 
           echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
-          echo "Phiên bản Release tiếp theo: $NEW_TAG"
+          echo "Calculated New Version: $NEW_TAG"
 
-      # 3. Giải mã google-services.json từ GitHub Secrets
+      # Khôi phục google-services.json nếu có
       - name: Restore google-services.json
-        if: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
         env:
           GOOGLE_SERVICES_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
-          echo "$GOOGLE_SERVICES_BASE64" | base64 -d > app/google-services.json
+          if [ -n "$GOOGLE_SERVICES_BASE64" ]; then
+            echo "$GOOGLE_SERVICES_BASE64" | base64 -d > app/google-services.json
+            echo "Successfully restored google-services.json"
+          fi
 
-      # 4. Giải mã Keystore từ GitHub Secrets (nếu có)
+      # 4. Giải mã Keystore từ GitHub Secrets
       - name: Restore Release Keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
+            echo "Successfully restored release keystore"
+          fi
 
-      - name: Grant Execute Permission for Gradle Wrapper
+      - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
-      # 5. Build Release APK và ký số
+      # 4. Build & Ký số APK
       - name: Build & Sign Release APK
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -95,7 +98,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -f app/release-keystore.jks ] && [ -n "$STORE_PASSWORD" ]; then
-            echo "Đang build và ký số APK bằng Keystore từ Secrets..."
+            echo "Building and signing release APK..."
             ./gradlew :app:assembleRelease \
               -Pandroid.injected.signing.store.file=$(pwd)/app/release-keystore.jks \
               -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
@@ -103,17 +106,17 @@ jobs:
               -Pandroid.injected.signing.key.password="$KEY_PASSWORD" \
               --stacktrace
           else
-            echo "Không tìm thấy Keystore Secrets, build Release mặc định..."
+            echo "Keystore not provided or incomplete password, building release with default configuration..."
             ./gradlew :app:assembleRelease --stacktrace
           fi
 
-      # 6. Đổi tên APK theo chuẩn <slugified-app-name>-<version>.apk
+      # 5. Đổi tên APK theo chuẩn <slugified-app-name>-<version>.apk
       - name: Rename Output APK
         id: rename_apk
         run: |
           APK_FILE=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
           if [ -z "$APK_FILE" ]; then
-            echo "Lỗi: Không tìm thấy file APK sau khi build!"
+            echo "Error: Output APK file not found!"
             exit 1
           fi
 
@@ -124,9 +127,9 @@ jobs:
 
           echo "FINAL_APK_PATH=$FINAL_APK_PATH" >> $GITHUB_ENV
           echo "FINAL_APK_NAME=$FINAL_APK_NAME" >> $GITHUB_ENV
-          echo "APK đã được đổi tên thành: $FINAL_APK_NAME"
+          echo "Renamed APK to: $FINAL_APK_NAME"
 
-      # 7. Tạo GitHub Release và đính kèm file APK
+      # 5. Upload APK lên GitHub Release
       - name: Create GitHub Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
