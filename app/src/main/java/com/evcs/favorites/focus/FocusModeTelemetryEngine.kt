@@ -81,6 +81,7 @@ class FocusModeTelemetryEngine(
     coroutineScope: CoroutineScope? = null,
     val voiceAlertPolicy: FocusModeVoiceAlertPolicy? = FocusModeVoiceAlertPolicy(
         initialAvailableSlots = FocusModeDcFilter.calculateDcSlots(initialStation).first,
+        initialDistanceKm = initialStation.effectiveDistanceKm,
         clock = clock
     ),
     private val onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null,
@@ -201,6 +202,7 @@ class FocusModeTelemetryEngine(
         coroutineScope: CoroutineScope? = null,
         voiceAlertPolicy: FocusModeVoiceAlertPolicy? = FocusModeVoiceAlertPolicy(
             initialAvailableSlots = FocusModeDcFilter.calculateDcSlots(initialStation).first,
+            initialDistanceKm = initialStation.effectiveDistanceKm,
             clock = clock
         ),
         onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null,
@@ -458,8 +460,8 @@ class FocusModeTelemetryEngine(
             )
 
             voiceAlertPolicy?.let { policy ->
-                val alert = policy.evaluate(availDc, timestamp = lastSuccessfulTelemetryTimestamp)
-                if (alert != null) {
+                val alerts = policy.evaluateAll(_state.value, timestamp = lastSuccessfulTelemetryTimestamp)
+                for (alert in alerts) {
                     AppDebugLogger.log(
                         tag = DebugLogTag.FOCUS_MODE,
                         level = DebugLogLevel.INFO,

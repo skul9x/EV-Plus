@@ -1,5 +1,6 @@
 package com.evcs.favorites.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,28 +23,40 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.evcs.favorites.data.preferences.FocusModePreferences
 import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.domain.model.CustomFilterConfig
+import com.evcs.favorites.focus.FocusModeForegroundService
+import com.evcs.favorites.ui.theme.AppIcons
 import com.evcs.favorites.ui.theme.EmeraldContainerDark
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 
 /**
  * Material 3 [ModalBottomSheet] providing power filter configuration,
- * in-memory real-time diagnostic log viewer, and settings persistence.
+ * Focus Mode Voice Announcement toggle, in-memory real-time diagnostic log viewer,
+ * and settings persistence.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,8 +67,15 @@ fun RoutingSettingsModal(
     onDismiss: () -> Unit,
     customFilterConfig: CustomFilterConfig? = null,
     onSaveCustomFilter: ((CustomFilterConfig) -> Unit)? = null,
+    focusModePreferences: FocusModePreferences? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val focusPrefs = remember(focusModePreferences, context) {
+        focusModePreferences ?: FocusModePreferences.create(context)
+    }
+    val voiceAlertEnabled by focusPrefs.voiceAlertEnabledFlow.collectAsState()
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scrollState = rememberScrollState()
     val customFilterState = rememberCustomFilterFormState(customFilterConfig)
@@ -104,7 +124,7 @@ fun RoutingSettingsModal(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Cấu hình bộ lọc công suất và nhật ký gỡ lỗi",
+                        text = "Cấu hình bộ lọc công suất và cảnh báo giọng nói",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -121,7 +141,18 @@ fun RoutingSettingsModal(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 1. Custom Filter Section
+            // 1. Focus Mode Voice Alert Section
+            FocusModeVoiceAlertCard(
+                isEnabled = voiceAlertEnabled,
+                onCheckedChange = { enabled ->
+                    focusPrefs.setVoiceAlertEnabled(enabled)
+                    FocusModeForegroundService.setAudioMuted(context, !enabled)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 2. Custom Filter Section
             CustomFilterSettingsCard(
                 state = customFilterState,
                 onSaveCustomFilter = { config ->
@@ -131,12 +162,12 @@ fun RoutingSettingsModal(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 2. Debug Log Viewer Section
+            // 3. Debug Log Viewer Section
             DebugLogViewerCard()
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 3. Action Buttons (Save & Dismiss)
+            // 4. Action Buttons (Save & Dismiss)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -154,6 +185,7 @@ fun RoutingSettingsModal(
                 Button(
                     onClick = {
                         onSaveSettings?.invoke(settings)
+                        focusPrefs.setVoiceAlertEnabled(voiceAlertEnabled)
                         if (customFilterState.isValid) {
                             customFilterState.buildConfig()?.let { filterConfig ->
                                 onSaveCustomFilter?.invoke(filterConfig)
@@ -175,6 +207,81 @@ fun RoutingSettingsModal(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * High-contrast Material 3 card container for Focus Mode Voice Announcements toggle switch.
+ */
+@Composable
+fun FocusModeVoiceAlertCard(
+    isEnabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = EmeraldContainerDark
+        ),
+        border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.25f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isEnabled) EmeraldPrimary.copy(alpha = 0.2f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+            ) {
+                Icon(
+                    imageVector = if (isEnabled) AppIcons.VolumeUp else AppIcons.VolumeOff,
+                    contentDescription = null,
+                    tint = if (isEnabled) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Cảnh báo bằng giọng nói (Voice Announcements)",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Tự động giảm âm lượng nhạc xe (Audio Ducking) và thông báo bằng tiếng Việt khi trạm sạc hết chỗ, gợi ý trạm mới hoặc cách trạm 2km.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = EmeraldPrimary,
+                    checkedTrackColor = EmeraldContainerDark,
+                    checkedBorderColor = EmeraldPrimary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            )
         }
     }
 }

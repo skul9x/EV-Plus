@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -22,6 +23,7 @@ import com.evcs.favorites.data.logging.AppDebugLogger
 import com.evcs.favorites.data.logging.DebugLogLevel
 import com.evcs.favorites.data.logging.DebugLogTag
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.data.preferences.FocusModePreferences
 import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.domain.location.LocationService
 import com.evcs.favorites.navigation.MapNavigator
@@ -108,6 +110,17 @@ class FocusModeForegroundService : Service() {
                 action = ACTION_REROUTE,
                 targetClass = FocusModeForegroundService::class.java,
                 payloadJson = json.encodeToString(Station.serializer(), newStation)
+            )
+        }
+
+        /**
+         * Returns an intent specification for audio mute toggle to support deterministic JVM testing.
+         */
+        fun getSetMutedIntentSpec(isMuted: Boolean): FocusServiceIntentSpec {
+            return FocusServiceIntentSpec(
+                action = ACTION_SET_MUTED,
+                targetClass = FocusModeForegroundService::class.java,
+                payloadJson = isMuted.toString()
             )
         }
 
@@ -279,6 +292,11 @@ class FocusModeForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        floatingViewManager?.onConfigurationChanged(newConfig)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         stopFocusMode()
@@ -302,7 +320,13 @@ class FocusModeForegroundService : Service() {
             startLocationUpdates(intervalMs = 10_000L, minUpdateDistanceMeters = 20f)
         }
 
-        val newTtsManager = FocusModeTtsManager(applicationContext)
+        val focusPrefs = FocusModePreferences.create(applicationContext)
+        val isVoiceAlertEnabled = focusPrefs.isVoiceAlertEnabled()
+        val isMuted = !isVoiceAlertEnabled
+
+        val newTtsManager = FocusModeTtsManager(applicationContext).apply {
+            this.isMuted = isMuted
+        }
         ttsManager = newTtsManager
 
         val appContainer = (applicationContext as? EvPlusApplication)?.appContainer
@@ -317,7 +341,9 @@ class FocusModeForegroundService : Service() {
             },
             coroutineScope = serviceScope,
             stationNameResolver = resolver
-        )
+        ).apply {
+            setMuted(isMuted)
+        }
 
         engine = newEngine
         _currentEngine.value = newEngine

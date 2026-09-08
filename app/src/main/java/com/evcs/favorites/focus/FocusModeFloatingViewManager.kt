@@ -2,25 +2,30 @@ package com.evcs.favorites.focus
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.widget.TextViewCompat
 import com.evcs.favorites.util.DebounceHelper
-import kotlin.math.abs
 
 /**
  * Manages the lifecycle, touch gestures, and state rendering of the floating overlay capsule
  * (Android System Alert Overlay) that floats above external navigation apps (e.g. Google Maps).
  *
  * Implements smooth touch dragging, edge-snapping, zero-leak WindowManager removal,
- * and handles Normal, Full (1-tap reroute), and Offline states.
+ * dynamic responsive sizing, orientation handling, and handles Normal, Full (1-tap reroute), and Offline states.
  */
 class FocusModeFloatingViewManager(
     private val context: Context,
@@ -39,13 +44,36 @@ class FocusModeFloatingViewManager(
     private var windowLayoutParams: WindowManager.LayoutParams? = null
     private var isViewAttached = false
 
-    private var stationNameView: TextView? = null
+    private var currentDisplayMode: FocusModeDisplayMode = FocusModeDisplayMode.FULL_HUD
+    val displayMode: FocusModeDisplayMode get() = currentDisplayMode
+
+    private var miniPillContainer: View? = null
+    private var miniPillTextView: TextView? = null
+    private var fullHudContainer: View? = null
+
+    private var stationNameView: AppCompatTextView? = null
     private var statusBadgeView: TextView? = null
+    private var distanceBadgeView: TextView? = null
     private var detailedTiersView: TextView? = null
     private var rerouteButtonView: TextView? = null
+    private var closeButtonView: TextView? = null
+    private var heroMetricContainer: LinearLayout? = null
     private var currentAlternativeStation: AlternativeStationRecommendation? = null
 
     internal var rerouteDebounceHelper = DebounceHelper(1000L)
+
+    val testStationNameView: AppCompatTextView? get() = stationNameView
+    val testStatusBadgeView: TextView? get() = statusBadgeView
+    val testDistanceBadgeView: TextView? get() = distanceBadgeView
+    val testDetailedTiersView: TextView? get() = detailedTiersView
+    val testRerouteButtonView: TextView? get() = rerouteButtonView
+    val testCloseButtonView: TextView? get() = closeButtonView
+    val testHeroMetricContainer: LinearLayout? get() = heroMetricContainer
+    val testMiniPillContainer: View? get() = miniPillContainer
+    val testMiniPillTextView: TextView? get() = miniPillTextView
+    val testFullHudContainer: View? get() = fullHudContainer
+    val testFloatingRootView: View? get() = floatingRootView
+    val testWindowLayoutParams: WindowManager.LayoutParams? get() = windowLayoutParams
 
     fun setRerouteDebounceHelperForTesting(helper: DebounceHelper) {
         rerouteDebounceHelper = helper
@@ -66,6 +94,65 @@ class FocusModeFloatingViewManager(
         get() = isViewAttached
 
     /**
+     * Toggles between MINI_PILL and FULL_HUD display modes with smooth edge-snap recalculation.
+     */
+    fun toggleDisplayMode(): FocusModeDisplayMode {
+        val targetMode = if (currentDisplayMode == FocusModeDisplayMode.FULL_HUD) {
+            FocusModeDisplayMode.MINI_PILL
+        } else {
+            FocusModeDisplayMode.FULL_HUD
+        }
+        setDisplayMode(targetMode)
+        return currentDisplayMode
+    }
+
+    /**
+     * Sets the active display mode (MINI_PILL vs FULL_HUD) and updates layout width and edge snap.
+     */
+    fun setDisplayMode(mode: FocusModeDisplayMode) {
+        currentDisplayMode = mode
+        val root = floatingRootView ?: return
+        val params = windowLayoutParams ?: return
+        val displayMetrics = context.resources.displayMetrics
+        val isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+            (context.resources.configuration.orientation == Configuration.ORIENTATION_UNDEFINED && displayMetrics.widthPixels > displayMetrics.heightPixels)
+
+        val overlayWidth = FocusModeViewLayoutHelper.calculateOverlayWidth(
+            screenWidthPx = displayMetrics.widthPixels,
+            isLandscape = isLandscape,
+            density = displayMetrics.density
+        )
+        val miniPillWidth = FocusModeViewLayoutHelper.calculateMiniPillWidth(displayMetrics.density)
+
+        val oldWidth = params.width
+        val newWidth = if (mode == FocusModeDisplayMode.MINI_PILL) miniPillWidth else overlayWidth
+
+        val adjustedX = FocusModeViewLayoutHelper.calculateAdjustedXOnModeChange(
+            currentX = params.x,
+            oldWidth = oldWidth,
+            newWidth = newWidth,
+            screenWidth = displayMetrics.widthPixels
+        )
+
+        params.width = newWidth
+        params.x = adjustedX
+
+        if (mode == FocusModeDisplayMode.MINI_PILL) {
+            miniPillContainer?.visibility = View.VISIBLE
+            fullHudContainer?.visibility = View.GONE
+        } else {
+            miniPillContainer?.visibility = View.GONE
+            fullHudContainer?.visibility = View.VISIBLE
+        }
+
+        try {
+            windowManager?.updateViewLayout(root, params)
+        } catch (e: Exception) {
+            // Safe handling against transient window manager errors
+        }
+    }
+
+    /**
      * Instantiates and attaches the floating capsule to the WindowManager.
      */
     fun showOverlay(initialState: FocusModeState) {
@@ -75,8 +162,19 @@ class FocusModeFloatingViewManager(
         }
 
         try {
+            val displayMetrics = context.resources.displayMetrics
+            val isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+                (context.resources.configuration.orientation == Configuration.ORIENTATION_UNDEFINED && displayMetrics.widthPixels > displayMetrics.heightPixels)
+            val overlayWidth = FocusModeViewLayoutHelper.calculateOverlayWidth(
+                screenWidthPx = displayMetrics.widthPixels,
+                isLandscape = isLandscape,
+                density = displayMetrics.density
+            )
+            val miniPillWidth = FocusModeViewLayoutHelper.calculateMiniPillWidth(displayMetrics.density)
+            val initialWidth = if (currentDisplayMode == FocusModeDisplayMode.MINI_PILL) miniPillWidth else overlayWidth
+
             val view = buildCapsuleView()
-            val params = FocusModeViewLayoutHelper.createWindowLayoutParams()
+            val params = FocusModeViewLayoutHelper.createWindowLayoutParams(width = initialWidth)
             windowLayoutParams = params
             floatingRootView = view
 
@@ -93,6 +191,63 @@ class FocusModeFloatingViewManager(
     }
 
     /**
+     * Handles screen orientation and configuration changes dynamically.
+     * Re-queries display metrics, recalculates overlay width, re-clamps (x, y) bounds,
+     * and updates the WindowManager layout.
+     */
+    fun onConfigurationChanged(newConfig: Configuration) {
+        if (!isViewAttached || floatingRootView == null) return
+        val params = windowLayoutParams ?: return
+        val displayMetrics = context.resources.displayMetrics
+        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+            (newConfig.orientation == Configuration.ORIENTATION_UNDEFINED && displayMetrics.widthPixels > displayMetrics.heightPixels)
+
+        val newWidth = if (currentDisplayMode == FocusModeDisplayMode.MINI_PILL) {
+            FocusModeViewLayoutHelper.calculateMiniPillWidth(displayMetrics.density)
+        } else {
+            FocusModeViewLayoutHelper.calculateOverlayWidth(
+                screenWidthPx = displayMetrics.widthPixels,
+                isLandscape = isLandscape,
+                density = displayMetrics.density
+            )
+        }
+        params.width = newWidth
+
+        val currentViewWidth = if ((floatingRootView?.width ?: 0) > 0) floatingRootView!!.width else newWidth
+        val currentViewHeight = if ((floatingRootView?.height ?: 0) > 0) {
+            floatingRootView!!.height
+        } else {
+            (FocusModeViewLayoutHelper.MIN_OVERLAY_HEIGHT_DP * displayMetrics.density).toInt()
+        }
+
+        val (clampedX, clampedY) = FocusModeViewLayoutHelper.clampPosition(
+            x = params.x,
+            y = params.y,
+            viewWidth = currentViewWidth,
+            viewHeight = currentViewHeight,
+            screenWidth = displayMetrics.widthPixels,
+            screenHeight = displayMetrics.heightPixels
+        )
+        params.x = clampedX
+        params.y = clampedY
+
+        rerouteButtonView?.let { btn ->
+            val ctaHeight = FocusModeViewLayoutHelper.calculateCtaButtonHeightPx(isLandscape, displayMetrics.density)
+            btn.minimumHeight = ctaHeight
+            btn.layoutParams?.let { lp ->
+                lp.height = ctaHeight
+                btn.layoutParams = lp
+            }
+        }
+
+        try {
+            windowManager?.updateViewLayout(floatingRootView, params)
+        } catch (e: Exception) {
+            // Safe handling against transient window manager errors
+        }
+    }
+
+    /**
      * Updates text, badge colors, and reroute CTA visibility based on new [FocusModeState].
      */
     fun updateView(state: FocusModeState) {
@@ -101,6 +256,17 @@ class FocusModeFloatingViewManager(
         currentAlternativeStation = state.alternativeStation
         val viewState = FocusModeViewLayoutHelper.formatViewState(state)
 
+        // Update Mini Pill HUD
+        val (pillText, pillColor) = FocusModeViewLayoutHelper.formatMiniPillState(state)
+        miniPillTextView?.text = pillText
+        val pillColorInt = when (pillColor) {
+            FocusBadgeColor.GREEN -> Color.parseColor("#4CAF50")
+            FocusBadgeColor.RED -> Color.parseColor("#FF5252")
+            FocusBadgeColor.AMBER -> Color.parseColor("#FFA000")
+        }
+        miniPillTextView?.setTextColor(pillColorInt)
+
+        // Update Full HUD
         stationNameView?.text = viewState.stationName
         statusBadgeView?.text = viewState.badgeText
 
@@ -110,6 +276,13 @@ class FocusModeFloatingViewManager(
             FocusBadgeColor.AMBER -> Color.parseColor("#FFA000")
         }
         statusBadgeView?.setTextColor(badgeColorInt)
+
+        if (viewState.distanceText != null) {
+            distanceBadgeView?.visibility = View.VISIBLE
+            distanceBadgeView?.text = "• ${viewState.distanceText}"
+        } else {
+            distanceBadgeView?.visibility = View.GONE
+        }
 
         if (viewState.detailedTiersText != null) {
             detailedTiersView?.visibility = View.VISIBLE
@@ -148,8 +321,15 @@ class FocusModeFloatingViewManager(
                 windowLayoutParams = null
                 stationNameView = null
                 statusBadgeView = null
+                distanceBadgeView = null
                 detailedTiersView = null
                 rerouteButtonView = null
+                closeButtonView = null
+                heroMetricContainer = null
+                miniPillContainer = null
+                miniPillTextView = null
+                fullHudContainer = null
+                currentDisplayMode = FocusModeDisplayMode.FULL_HUD
                 isViewAttached = false
             }
         }
@@ -157,6 +337,7 @@ class FocusModeFloatingViewManager(
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupTouchListener(view: View, params: WindowManager.LayoutParams) {
+        var downTime = 0L
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
@@ -164,6 +345,14 @@ class FocusModeFloatingViewManager(
         var screenWidth = 0
         var screenHeight = 0
         var isDragging = false
+
+        val density = context.resources.displayMetrics.density
+        val rawTouchSlop = try {
+            ViewConfiguration.get(context).scaledTouchSlop
+        } catch (e: Exception) {
+            12
+        }
+        val touchSlop = FocusModeViewLayoutHelper.calculateEffectiveTouchSlop(rawTouchSlop, density)
 
         view.setOnTouchListener { v, event ->
             when (event.action) {
@@ -175,17 +364,18 @@ class FocusModeFloatingViewManager(
                     initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
+                    downTime = System.currentTimeMillis()
                     isDragging = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - initialTouchX).toInt()
-                    val dy = (event.rawY - initialTouchY).toInt()
+                    val dx = event.rawX - initialTouchX
+                    val dy = event.rawY - initialTouchY
 
-                    if (abs(dx) > 10 || abs(dy) > 10 || isDragging) {
+                    if (isDragging || FocusModeViewLayoutHelper.isDragGesture(dx, dy, touchSlop)) {
                         isDragging = true
-                        val newX = initialX + dx
-                        val newY = initialY + dy
+                        val newX = initialX + dx.toInt()
+                        val newY = initialY + dy.toInt()
                         val (clampedX, clampedY) = FocusModeViewLayoutHelper.clampPosition(
                             x = newX,
                             y = newY,
@@ -207,6 +397,10 @@ class FocusModeFloatingViewManager(
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    val dx = event.rawX - initialTouchX
+                    val dy = event.rawY - initialTouchY
+                    val duration = System.currentTimeMillis() - downTime
+
                     if (isDragging) {
                         val snappedX = FocusModeViewLayoutHelper.calculateSnapToEdgeX(
                             currentX = params.x,
@@ -220,8 +414,10 @@ class FocusModeFloatingViewManager(
                             // Safe snap update
                         }
                         true
-                    } else {
+                    } else if (FocusModeViewLayoutHelper.isTapGesture(dx, dy, duration, touchSlop)) {
                         v.performClick()
+                        true
+                    } else {
                         false
                     }
                 }
@@ -234,8 +430,55 @@ class FocusModeFloatingViewManager(
         val dpDensity = context.resources.displayMetrics.density
         fun dp(px: Int): Int = (px * dpDensity).toInt()
 
-        // Root container: vertical linear layout with dark translucent rounded capsule background
-        val root = LinearLayout(context).apply {
+        // Root container: FrameLayout enclosing both miniPillContainer and fullHudContainer
+        val root = FrameLayout(context).apply {
+            isClickable = true
+            isFocusable = false
+            setOnClickListener {
+                toggleDisplayMode()
+            }
+        }
+
+        // 1. Mini Pill Container: ultra-compact capsule (~80dp x 38dp, 20dp corner radius)
+        val pillW = FocusModeViewLayoutHelper.calculateMiniPillWidth(dpDensity)
+        val pillH = FocusModeViewLayoutHelper.calculateMiniPillHeight(dpDensity)
+        val miniPill = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            val pillBg = GradientDrawable().apply {
+                setColor(Color.parseColor("#E61E1E24"))
+                cornerRadius = dp(FocusModeViewLayoutHelper.MINI_PILL_CORNER_RADIUS_DP).toFloat()
+                setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+            }
+            background = pillBg
+            minimumWidth = pillW
+            minimumHeight = pillH
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.CENTER
+            }
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            visibility = if (currentDisplayMode == FocusModeDisplayMode.MINI_PILL) View.VISIBLE else View.GONE
+            isClickable = false
+        }
+        miniPillContainer = miniPill
+
+        val pillTv = TextView(context).apply {
+            textSize = FocusModeViewLayoutHelper.MINI_PILL_TEXT_SIZE_SP
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            maxLines = 1
+            includeFontPadding = false
+        }
+        miniPillTextView = pillTv
+        miniPill.addView(pillTv)
+        root.addView(miniPill)
+
+        // 2. Full HUD Container: expanded automotive dashboard
+        val fullHud = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             val bgDrawable = GradientDrawable().apply {
                 setColor(Color.parseColor("#E61E1E24"))
@@ -244,104 +487,166 @@ class FocusModeFloatingViewManager(
             }
             background = bgDrawable
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            isClickable = true
-            isFocusable = false
+            minimumHeight = dp(FocusModeViewLayoutHelper.MIN_OVERLAY_HEIGHT_DP)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            visibility = if (currentDisplayMode == FocusModeDisplayMode.FULL_HUD) View.VISIBLE else View.GONE
+            isClickable = false
         }
+        fullHudContainer = fullHud
 
-        // Header row: [Station Name + Badge] and [Close Button 'X']
+        // Header row: Station Name (bounded weight 1f, auto-sizing 13-16sp) + Distance badge + Close button '✕' (>= 48dp)
         val headerRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
 
-        // Left info column
-        val infoCol = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-            layoutParams = LinearLayout.LayoutParams(
-                dp(200),
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val nameTv = TextView(context).apply {
-            textSize = 13f
+        val nameTv = AppCompatTextView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            textSize = 15f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = true
+            setPadding(0, dp(FocusModeViewLayoutHelper.VIETNAMESE_VERTICAL_PADDING_DP), dp(4), dp(FocusModeViewLayoutHelper.VIETNAMESE_VERTICAL_PADDING_DP))
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                this,
+                FocusModeViewLayoutHelper.TITLE_MIN_TEXT_SIZE_SP,
+                FocusModeViewLayoutHelper.TITLE_MAX_TEXT_SIZE_SP,
+                1,
+                TypedValue.COMPLEX_UNIT_SP
+            )
         }
         stationNameView = nameTv
-        infoCol.addView(nameTv)
+        headerRow.addView(nameTv)
 
-        val badgeTv = TextView(context).apply {
+        val distanceTv = TextView(context).apply {
             textSize = 12f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#4CAF50"))
+            setTextColor(Color.parseColor("#AAAAAA"))
             maxLines = 1
-        }
-        statusBadgeView = badgeTv
-        infoCol.addView(badgeTv)
-
-        val tiersTv = TextView(context).apply {
-            textSize = 10.5f
-            setTextColor(Color.parseColor("#CCCCCC"))
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = dp(2)
+                marginStart = dp(4)
+                marginEnd = dp(4)
+                gravity = Gravity.CENTER_VERTICAL
             }
             layoutParams = lp
             visibility = View.GONE
         }
-        detailedTiersView = tiersTv
-        infoCol.addView(tiersTv)
+        distanceBadgeView = distanceTv
+        headerRow.addView(distanceTv)
 
-        headerRow.addView(infoCol)
-
-        // Close [X] button
+        // Close [X] button with minimum 48x48dp automotive touch target
+        val touchTargetPx = FocusModeViewLayoutHelper.calculateMinTouchTargetPx(dpDensity)
         val closeBtn = TextView(context).apply {
             text = "✕"
-            textSize = 15f
+            textSize = 16f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#B0B0B0"))
             gravity = Gravity.CENTER
-            setPadding(dp(8), dp(4), dp(4), dp(4))
+            minimumWidth = touchTargetPx
+            minimumHeight = touchTargetPx
+            layoutParams = LinearLayout.LayoutParams(touchTargetPx, touchTargetPx).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            }
             isClickable = true
             setOnClickListener {
                 onDismiss()
             }
         }
+        closeButtonView = closeBtn
         headerRow.addView(closeBtn)
 
-        root.addView(headerRow)
+        fullHud.addView(headerRow)
 
-        // 1-Tap Reroute button
-        val rerouteBtn = TextView(context).apply {
-            val btnBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#1565C0"))
-                cornerRadius = dp(12).toFloat()
-            }
-            background = btnBg
-            textSize = 11f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+        // Hero Metric Card: Standalone container with prominent 24sp Bold available slots count
+        val (minHeroW, minHeroH) = FocusModeViewLayoutHelper.calculateHeroBadgeDimensions(dpDensity)
+        val heroMetricCard = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumWidth = minHeroW
+            minimumHeight = minHeroH
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(2)
+            }
+            layoutParams = lp
+        }
+        heroMetricContainer = heroMetricCard
+
+        val badgeTv = TextView(context).apply {
+            textSize = FocusModeViewLayoutHelper.HERO_METRIC_TEXT_SIZE_SP
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#4CAF50"))
+            maxLines = 1
+            includeFontPadding = true
+            setPadding(0, dp(2), 0, dp(2))
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        statusBadgeView = badgeTv
+        heroMetricCard.addView(badgeTv)
+
+        fullHud.addView(heroMetricCard)
+
+        // Details row: Charging tier chips / detailedDcTiersText
+        val tiersTv = TextView(context).apply {
+            textSize = 11.5f
+            setTextColor(Color.parseColor("#CCCCCC"))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = true
+            setPadding(0, dp(2), 0, dp(2))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(2)
+                bottomMargin = dp(4)
+            }
+            layoutParams = lp
+            visibility = View.GONE
+        }
+        detailedTiersView = tiersTv
+        fullHud.addView(tiersTv)
+
+        // 1-Tap Reroute button with >= 48dp (56dp in landscape) automotive touch target
+        val isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+            (context.resources.displayMetrics.widthPixels > context.resources.displayMetrics.heightPixels)
+        val ctaHeightPx = FocusModeViewLayoutHelper.calculateCtaButtonHeightPx(isLandscape, dpDensity)
+
+        val rerouteBtn = TextView(context).apply {
+            val btnBg = GradientDrawable().apply {
+                setColor(Color.parseColor("#1565C0"))
+                cornerRadius = dp(14).toFloat()
+            }
+            background = btnBg
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            minimumHeight = ctaHeightPx
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                ctaHeightPx
+            ).apply {
                 topMargin = dp(6)
             }
             layoutParams = lp
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             visibility = View.GONE
             isClickable = true
             setOnClickListener {
@@ -349,7 +654,9 @@ class FocusModeFloatingViewManager(
             }
         }
         rerouteButtonView = rerouteBtn
-        root.addView(rerouteBtn)
+        fullHud.addView(rerouteBtn)
+
+        root.addView(fullHud)
 
         return root
     }

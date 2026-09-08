@@ -18,6 +18,28 @@ All notable changes to this project will be documented in this file.
   - Preserved multi-tier fallback mechanism to generic `geo:` intent and browser routing if Google Maps is absent.
   - Added comprehensive verification suite `FocusModeDirectNavigationTest.kt` (100% PASS).
 
+## [2026-09-08] - Automotive HUD Floating Window & Voice TTS Settings (Phases 01 - 03)
+
+### Added & Enhanced
+- **Phase 01: Dynamic Responsive Sizing, Anti-Clipping & Orientation Handling**:
+  - Dynamically computes floating overlay width based on orientation: 30-34% (clamped [280dp, 440dp]) for landscape/car screens and 80-85% (clamped [280dp, 380dp]) for portrait/phone screens.
+  - Replaces fixed width with `TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration` (13sp-16sp) inside width-constrained containers to prevent Vietnamese diacritic and text truncation.
+  - Features prominent 24sp Bold Hero Metric card for available DC slots.
+  - Enlarges touch targets to >= 48dp - 56dp for automotive safety.
+  - Automatically handles runtime orientation changes and dynamically recalculates dimensions.
+  - Verification: `FocusModeDynamicLayoutScalingTest.kt` (100% PASS).
+- **Phase 02: Mini Pill ⇄ Full HUD 1-Tap Toggle & Touch Gestures**:
+  - Implemented seamless 1-tap transformation between compact "Mini Pill" (~80x38dp) and expanded "Full HUD".
+  - Robust gesture discrimination with `ViewConfiguration.scaledTouchSlop` and duration threshold to separate dragging from tapping.
+  - Preserves edge snap alignment during size transitions.
+  - Verification: `FocusModeDisplayModeToggleTest.kt` (100% PASS).
+- **Phase 03: Voice Alert Settings Persistence, Compose UI & TTS Triggers**:
+  - Persisted user voice announcement preference via `FocusModePreferences` (`KEY_VOICE_ALERT_ENABLED`).
+  - Added high-contrast Material 3 toggle switch in `RoutingSettingsModal`.
+  - Live audio ducking and mute synchronization with `FocusModeForegroundService` and `FocusModeTtsManager`.
+  - Added support for 3 automotive voice scenarios: 0 slots full, alternative station found, and 2km proximity arrival reminder.
+  - Verification: `FocusModeVoiceAlertSettingsTest.kt` & `FocusModeVoiceAlertTest.kt` (100% PASS).
+
 ## [2026-09-08] - Click-Spam Protection, Concurrency & Edge-Case Hardening (Phases 01 - 04)
 
 ### Added & Hardened
