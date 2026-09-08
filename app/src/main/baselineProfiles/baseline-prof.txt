@@ -1,6 +1,6 @@
 HSPLcom/evcs/favorites/MainActivity;-><init>()V
 HSPLcom/evcs/favorites/MainActivity;->onCreate(Landroid/os/Bundle;)V
-HSPLcom/evcs/favorites/ui/screens/FavoritesScreenKt;->*
-HSPLcom/evcs/favorites/ui/screens/NearbyScreenKt;->*
-HSPLcom/evcs/favorites/ui/components/StationCardKt;->*
-HSPLcom/evcs/favorites/domain/location/DistanceCalculator;->*
+HSPLcom/evcs/favorites/ui/screens/FavoritesScreenKt;->**(**)**
+HSPLcom/evcs/favorites/ui/screens/NearbyScreenKt;->**(**)**
+HSPLcom/evcs/favorites/ui/components/StationCardKt;->**(**)**
+HSPLcom/evcs/favorites/domain/location/DistanceCalculator;->**(**)**
