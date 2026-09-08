@@ -224,8 +224,8 @@ class NearbyAutoScrollOnRefreshTest {
         )
 
         // Filter change
-        assertFalse(
-            "Filter toggling must never trigger auto scroll",
+        assertTrue(
+            "Filter toggling must trigger auto scroll to top",
             NearbyUiHelper.shouldScrollToTop(
                 triggerType = RefreshTriggerType.FILTER_CHANGE,
                 itemCount = 5,

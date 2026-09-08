@@ -221,7 +221,8 @@ class ForecastDecommissionViewModelPipelineTest {
             dispatcher = testDispatcher,
             routingPreferencesManager = routingPrefsManager,
             routingCoordinator = fakeCoordinator,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 
@@ -235,7 +236,8 @@ class ForecastDecommissionViewModelPipelineTest {
             filterPreferences = nearbyFilterPrefs,
             smartFilterPreferences = smartFilterPrefs,
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 

@@ -156,10 +156,12 @@ class MapIntentIntegrationTest {
             apiClient = apiClient,
             cacheStorage = sessionStorage
         )
+        MapNavigator.setDebounceHelperForTesting(com.evcs.favorites.util.DebounceHelper(0L))
     }
 
     @After
     fun tearDown() {
+        MapNavigator.resetDebounceForTesting()
         mockServer.shutdown()
     }
 

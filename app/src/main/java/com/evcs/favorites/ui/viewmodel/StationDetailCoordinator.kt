@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Coordinator orchestrating the on-demand EVCS station detail telemetry pipeline.
@@ -23,6 +24,7 @@ import kotlinx.coroutines.withContext
  * Provides:
  * - Instant bottom sheet opening (0ms) with static ports.
  * - Fast HTTP Stage 1 (~150-200ms): Token handshake, live charging ports, ticker sanitization, community rating.
+ * - Stage 2: 24h usage statistics calculation with bounded timeout.
  * - Stage 3: Fire-and-forget sync ping.
  * - Clean lifecycle cancellation upon sheet dismissal with zero background overhead.
  */
@@ -31,7 +33,7 @@ class StationDetailCoordinator(
     private val telemetryRepository: EvcsTelemetryRepository,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
-    @Suppress("UNUSED_PARAMETER") statsTimeoutMs: Long = 4000L
+    private val statsTimeoutMs: Long = 4000L
 ) {
 
     private val _stationDetailState = MutableStateFlow(StationDetailUiState())
@@ -164,7 +166,6 @@ class StationDetailCoordinator(
                     _stationDetailState.update {
                         it.copy(
                             isLoadingTelemetry = false,
-                            isLoadingStats = false,
                             telemetry = telemetry,
                             cleanForecast = telemetry.cleanForecast,
                             portStatuses = livePorts
@@ -179,6 +180,37 @@ class StationDetailCoordinator(
                         } catch (_: Exception) {
                             // Ignored: fire-and-forget
                         }
+                    }
+
+                    // Stage 2: 24h usage statistics calculation with bounded timeout
+                    try {
+                        withTimeoutOrNull(statsTimeoutMs) {
+                            val historyResult = withContext(ioDispatcher) {
+                                telemetryRepository.fetch24hHistory(station.id, tokens.apiToken)
+                            }
+                            if (historyResult.isSuccess) {
+                                val points = historyResult.getOrThrow()
+                                if (points.isNotEmpty()) {
+                                    val stats = telemetryRepository.calculate24hStats(points, station.totalPlugs)
+                                    _stationDetailState.update {
+                                        it.copy(
+                                            isLoadingStats = false,
+                                            stats24h = stats
+                                        )
+                                    }
+                                } else {
+                                    _stationDetailState.update { it.copy(isLoadingStats = false) }
+                                }
+                            } else {
+                                _stationDetailState.update { it.copy(isLoadingStats = false) }
+                            }
+                        } ?: run {
+                            _stationDetailState.update { it.copy(isLoadingStats = false, stats24h = null) }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        _stationDetailState.update { it.copy(isLoadingStats = false, stats24h = null) }
                     }
                 } else {
                     _stationDetailState.update {

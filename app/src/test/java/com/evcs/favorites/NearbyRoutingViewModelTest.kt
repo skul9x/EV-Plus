@@ -234,7 +234,8 @@ class NearbyRoutingViewModelTest {
             routingCoordinator = fakeCoordinator,
             routingPreferencesManager = prefsManager,
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 
@@ -476,6 +477,7 @@ class NearbyRoutingViewModelTest {
         assertTrue((addEvent as NearbyUiEvent.ShowToast).message.contains("yêu thích"))
 
         // 2. Second toggle: Remove from favorites
+        viewModel.resetToastDebounceForTesting()
         viewModel.toggleFavorite(station)
         testScheduler.advanceUntilIdle()
 
@@ -508,17 +510,18 @@ class NearbyRoutingViewModelTest {
         assertEquals(1, fakeLocationService.freshLocationCallCount)
         assertEquals(1, fakeRepository.searchCallCount)
 
-        // Now clear location service to verify refresh does NOT call getFreshLocation
-        fakeLocationService.locationToReturn = null
+        // Refresh queries fresh location
+        val updatedLat = 21.0300
+        val updatedLon = 105.8600
+        fakeLocationService.locationToReturn = createMockLocation(updatedLat, updatedLon)
 
         viewModel.refresh()
         testScheduler.advanceUntilIdle()
 
-        // freshLocationCallCount remains 1 because refresh re-used existing coordinates
-        assertEquals(1, fakeLocationService.freshLocationCallCount)
+        assertEquals(2, fakeLocationService.freshLocationCallCount)
         assertEquals(2, fakeRepository.searchCallCount)
-        assertEquals(userLat, fakeRepository.lastSearchLat!!, 0.0001)
-        assertEquals(userLon, fakeRepository.lastSearchLon!!, 0.0001)
+        assertEquals(updatedLat, fakeRepository.lastSearchLat!!, 0.0001)
+        assertEquals(updatedLon, fakeRepository.lastSearchLon!!, 0.0001)
     }
 
     @Test

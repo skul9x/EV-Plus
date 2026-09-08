@@ -242,7 +242,7 @@ class MultiTierRoutingCoordinatorTest {
         val vincom = results["station_vincom"]
         assertNotNull(vincom)
         assertEquals(RoutingEngineType.HAVERSINE, vincom!!.engineUsed)
-        assertEquals(0L, vincom.durationSeconds)
+        assertTrue("Straight-line estimated duration should be positive", vincom.durationSeconds > 0)
         assertEquals(TrafficCondition.UNKNOWN, vincom.trafficCondition)
         assertTrue("Straight-line distance should be positive", vincom.distanceMeters > 0)
     }
@@ -434,7 +434,7 @@ class MultiTierRoutingCoordinatorTest {
         val vincom = results["station_vincom"]
         assertNotNull(vincom)
         assertEquals(RoutingEngineType.HAVERSINE, vincom!!.engineUsed)
-        assertEquals(0L, vincom.durationSeconds)
+        assertTrue("Straight-line estimated duration should be positive", vincom.durationSeconds > 0)
         assertNull(vincom.staticDurationSeconds)
         assertEquals(TrafficCondition.UNKNOWN, vincom.trafficCondition)
         assertTrue("Distance in meters should be > 0", vincom.distanceMeters > 0)

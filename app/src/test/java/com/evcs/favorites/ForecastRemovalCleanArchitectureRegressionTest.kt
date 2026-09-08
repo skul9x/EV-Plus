@@ -270,7 +270,7 @@ class ForecastRemovalCleanArchitectureRegressionTest {
             "DebugLogTag must not contain FORECAST enum constant",
             logTagNames.contains("FORECAST")
         )
-        assertEquals(listOf("NETWORK", "SEARCH", "FAVORITES", "ROUTING"), logTagNames)
+        assertEquals(listOf("NETWORK", "SEARCH", "FAVORITES", "ROUTING", "FOCUS_MODE"), logTagNames)
 
         // 4. Verify EvcsApiClient and EvcsRepository have zero forecast methods
         val apiClientMethods = EvcsApiClient::class.java.declaredMethods.map { it.name.lowercase() }

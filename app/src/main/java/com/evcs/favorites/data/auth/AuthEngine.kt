@@ -91,7 +91,7 @@ class AuthEngine(
         }
     }
 
-    private val _isLoggedIn = MutableStateFlow(false)
+    private val _isLoggedIn = MutableStateFlow(sessionManager.hasAuthCookie())
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
     /**

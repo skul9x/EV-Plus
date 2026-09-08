@@ -67,11 +67,10 @@ class FirestoreFavoritesRepository(
         const val KEY_OFFLINE_FAVORITES = "evcs_offline_favorites_snapshot"
     }
 
-    private val initialCached = getCachedFavorites()
-    private val _favoritesState = MutableStateFlow<List<Station>>(initialCached)
+    private val _favoritesState = MutableStateFlow<List<Station>>(emptyList())
     val favoritesState: StateFlow<List<Station>> = _favoritesState.asStateFlow()
 
-    private val _favoriteIdsState = MutableStateFlow<Set<String>>(initialCached.map { it.id }.toSet())
+    private val _favoriteIdsState = MutableStateFlow<Set<String>>(emptySet())
     val favoriteIdsState: StateFlow<Set<String>> = _favoriteIdsState.asStateFlow()
 
     private val _isSyncing = MutableStateFlow(false)
@@ -83,15 +82,13 @@ class FirestoreFavoritesRepository(
     private val stateMutex = Mutex()
 
     init {
-        // Step 1: Ensure state is populated if loaded off-thread or updated
-        if (initialCached.isEmpty()) {
-            scope.launch(ioDispatcher) {
-                stateMutex.withLock {
-                    val cached = getCachedFavorites()
-                    if (cached.isNotEmpty() && _favoritesState.value.isEmpty()) {
-                        _favoritesState.value = cached
-                        _favoriteIdsState.value = cached.map { it.id }.toSet()
-                    }
+        // Step 1: Asynchronously load cache off caller/main thread
+        scope.launch(ioDispatcher) {
+            stateMutex.withLock {
+                val cached = getCachedFavorites()
+                if (cached.isNotEmpty() && _favoritesState.value.isEmpty()) {
+                    _favoritesState.value = cached
+                    _favoriteIdsState.value = cached.map { it.id }.toSet()
                 }
             }
         }

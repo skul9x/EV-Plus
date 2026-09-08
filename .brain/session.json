@@ -1,122 +1,63 @@
 {
-  "updated_at": "2026-09-08T07:45:00+07:00",
+  "updated_at": "2026-09-08T14:02:00+07:00",
   "working_on": {
-    "feature": "Click-Spam Protection, Concurrency & Edge-Case Hardening (Plan 260907-0025)",
-    "task": "Completed all 4 phases, 100% unit tests pass, built APK and deployed to Android device via ADB MCP",
+    "feature": "Automated Android Release CI/CD & Secure Secret Management",
+    "task": "Fixed local java.home path in gradle.properties and baseline profile wildcard syntax. Successfully built, signed, and published release APK on GitHub Actions.",
     "status": "completed",
     "files": [
-      "plans/260907-0025-click-spam-and-edge-case-hardening/plan.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-01-action-debounce-and-throttling.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-02-thread-safe-favorites-sync.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-03-gps-timeout-and-notification-permission.md",
-      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-04-rate-limit-and-lifecycle-hardening.md",
-      "app/src/main/java/com/evcs/favorites/util/DebounceHelper.kt",
-      "app/src/main/java/com/evcs/favorites/util/MapNavigator.kt",
-      "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
-      "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
-      "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
-      "app/src/main/java/com/evcs/favorites/data/api/EvcsApiClient.kt",
-      "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
-      "app/src/main/java/com/evcs/favorites/ui/components/StationPhotoViewerModal.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt"
+      "gradle.properties",
+      "app/src/main/baseline-prof.txt",
+      "app/src/main/baselineProfiles/baseline-prof.txt",
+      ".gitignore",
+      ".github/workflows/android.yml"
     ],
     "blockers": [],
-    "notes": "All 4 phases in 260907-0025 plan are 100% completed, verified with dedicated test suites, assembled into APK and installed onto physical device."
+    "notes": "Release v1.0 successfully published on GitHub Actions with signed APK: ev-plus-v1.0.apk."
   },
   "pending_tasks": [],
   "recent_changes": [
     {
-      "timestamp": "2026-09-08T07:42:00+07:00",
-      "type": "deployment",
-      "description": "Assembled debug APK (app-debug.apk) and deployed/launched on connected Android device (3B658D010BU00000) via MCP ADB.",
+      "timestamp": "2026-09-08T13:37:00+07:00",
+      "type": "ci_cd",
+      "description": "Fixed runner secret condition syntax and release tag parsing, verified GitHub Actions run 34195491881 in_progress.",
       "files": [
-        "app/build/outputs/apk/debug/app-debug.apk"
+        ".github/workflows/android.yml"
       ]
     },
     {
-      "timestamp": "2026-09-07T20:02:00+07:00",
-      "type": "hardening",
-      "description": "Phase 04: Client rate limit cooldown checks, Lightbox gesture optimization without coroutine allocation churn, TTS 6s audio ducking watchdog timeout, rememberSaveable dialog rotation states.",
+      "timestamp": "2026-09-08T13:31:00+07:00",
+      "type": "ci_cd",
+      "description": "Added GitHub Actions automated release pipeline: slugify app name, auto-increment minor release version, decode Base64 keystore & google-services.json, build assembleRelease, rename APK and publish GitHub Release.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/data/api/EvcsApiClient.kt",
-        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/StationPhotoViewerModal.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt",
-        "app/src/test/java/com/evcs/favorites/hardening/RateLimitAndLifecycleHardeningTest.kt"
+        ".github/workflows/android.yml",
+        "app/google-services.json.example"
       ]
     },
     {
-      "timestamp": "2026-09-07T19:55:00+07:00",
-      "type": "hardening",
-      "description": "Phase 03: LocationService 8s GPS timeout, scan job re-entrancy guard in NearbyViewModel, Android 13+ POST_NOTIFICATIONS runtime permission flow.",
+      "timestamp": "2026-09-08T13:29:00+07:00",
+      "type": "security",
+      "description": "Protected google-services.json and *.jks via .gitignore, provided app/google-services.json.example template, and generated Base64 secret strings.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
-        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/FocusModePermissionDialog.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "app/src/test/java/com/evcs/favorites/hardening/GpsTimeoutAndNotificationPermissionTest.kt"
-      ]
-    },
-    {
-      "timestamp": "2026-09-07T12:49:00+07:00",
-      "type": "hardening",
-      "description": "Phase 02: Thread-safe favorites synchronization with Mutex, togglingStationIds flow, favorite button click disabling, and toast deduplication.",
-      "files": [
-        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
-        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-        "app/src/test/java/com/evcs/favorites/hardening/FavoriteConcurrencyAndThreadSafetyTest.kt"
-      ]
-    },
-    {
-      "timestamp": "2026-09-07T12:33:00+07:00",
-      "type": "hardening",
-      "description": "Phase 01: Generic DebounceHelper, 1-Tap navigation throttling in MapNavigator, Focus Mode & auto-reroute debounced clicks, OTP and Google Sign-In spam guard.",
-      "files": [
-        "app/src/main/java/com/evcs/favorites/util/DebounceHelper.kt",
-        "app/src/main/java/com/evcs/favorites/util/MapNavigator.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/OtpVerificationModal.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/CloudSyncLoginModal.kt",
-        "app/src/test/java/com/evcs/favorites/hardening/ActionDebounceAndThrottlingTest.kt"
+        "app/google-services.json.example",
+        ".gitignore"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "Existing package com.evplus.app signatures do not match newer version during adb install",
-      "solution": "Uninstalled existing package via adb_uninstall then streamed install fresh debug APK",
-      "resolved": true
-    },
-    {
-      "error": "TTS engine hanging or failing to invoke onDone/onError leaves audio ducking active indefinitely",
-      "solution": "Added 6-second watchdog timer in FocusModeTtsManager that automatically abandons duck audio focus",
-      "resolved": true
-    },
-    {
-      "error": "Rapid GPS refresh clicks causing multiple concurrent scan jobs and freezing UI",
-      "solution": "Added active scanJob guard and 8-second GPS timeout with fallback error messaging",
+      "error": "GitHub Actions validation failure: Unrecognized named-value 'secrets' in step if condition",
+      "solution": "Refactored secret check inside bash script using env vars [ -n \"$SECRET\" ]",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Pre-network Client Rate Limit Check",
-      "reason": "Prevents issuing HTTP requests during active Cloudflare/EVCS 429 cooldowns, protecting against IP block extension"
+      "decision": "Use Base64 encoded GitHub Actions Secrets for google-services.json and keystore.jks",
+      "reason": "Prevents secret leakage in public/private repositories while maintaining automated CI/CD builds"
     },
     {
-      "decision": "Direct State Mutation in Lightbox Gesture Drag",
-      "reason": "Eliminates per-frame coroutine allocation churn (coroutineScope.launch) during swipe-to-dismiss motion"
-    },
-    {
-      "decision": "rememberSaveable for Modal Dialog Visibility",
-      "reason": "Preserves open dialog states (routing settings, login required, permission rationale) across device rotation"
+      "decision": "Use softprops/action-gh-release@v2 with auto minor tag increment",
+      "reason": "Automates GitHub Releases with zero manual versioning intervention on every push to main"
     }
   ]
 }

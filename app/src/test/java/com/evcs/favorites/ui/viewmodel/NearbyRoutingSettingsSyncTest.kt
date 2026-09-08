@@ -180,7 +180,8 @@ class NearbyRoutingSettingsSyncTest {
             routingCoordinator = fakeCoordinator,
             routingPreferencesManager = prefsManager,
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 
@@ -205,7 +206,7 @@ class NearbyRoutingSettingsSyncTest {
 
         assertEquals(3, viewModel.uiState.value.top10DisplayStations.size)
         assertEquals(1, fakeCoordinator.callCount)
-        assertEquals(RoutingEngineMode.AUTO, fakeCoordinator.lastSettings?.preferredEngine)
+        assertEquals(RoutingEngineMode.OSRM_ONLY, fakeCoordinator.lastSettings?.preferredEngine)
 
         // Save new settings directly through RoutingPreferencesManager (e.g. from Settings or another ViewModel)
         val newSettings = RoutingSettings(
@@ -239,21 +240,21 @@ class NearbyRoutingSettingsSyncTest {
 
         // Update settings via NearbyViewModel.updateRoutingSettings
         val updatedSettings = RoutingSettings(
-            preferredEngine = RoutingEngineMode.OSRM_ONLY,
-            googleApiKey = ""
+            preferredEngine = RoutingEngineMode.GOOGLE_ONLY,
+            googleApiKey = "AIzaSyKeyTest"
         )
         val job = viewModel.updateRoutingSettings(updatedSettings)
         job.join()
         advanceUntilIdle()
 
         // Verify settings are persisted to prefsManager
-        assertEquals(RoutingEngineMode.OSRM_ONLY, prefsManager.settings.value.preferredEngine)
-        assertEquals(RoutingEngineMode.OSRM_ONLY, viewModel.routingSettings.value.preferredEngine)
+        assertEquals(RoutingEngineMode.GOOGLE_ONLY, prefsManager.settings.value.preferredEngine)
+        assertEquals(RoutingEngineMode.GOOGLE_ONLY, viewModel.routingSettings.value.preferredEngine)
 
         // Verify routing coordinator re-calculated metrics with new settings
         assertEquals(2, fakeCoordinator.callCount)
-        assertEquals(RoutingEngineMode.OSRM_ONLY, fakeCoordinator.lastSettings?.preferredEngine)
-        assertEquals(RoutingEngineType.OSRM, viewModel.uiState.value.top10DisplayStations[0].drivingMetrics?.engineUsed)
+        assertEquals(RoutingEngineMode.GOOGLE_ONLY, fakeCoordinator.lastSettings?.preferredEngine)
+        assertEquals(RoutingEngineType.GOOGLE, viewModel.uiState.value.top10DisplayStations[0].drivingMetrics?.engineUsed)
     }
 
     @Test

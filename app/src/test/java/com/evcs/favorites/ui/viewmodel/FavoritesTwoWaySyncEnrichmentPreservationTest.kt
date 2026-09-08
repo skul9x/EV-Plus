@@ -184,7 +184,8 @@ class FavoritesTwoWaySyncEnrichmentPreservationTest {
             locationService = fakeLocationService,
             dispatcher = testDispatcher,
             routingCoordinator = fakeCoordinator,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 

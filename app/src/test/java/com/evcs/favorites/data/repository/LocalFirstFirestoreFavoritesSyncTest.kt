@@ -109,6 +109,7 @@ class LocalFirstFirestoreFavoritesSyncTest {
             authService = fakeAuthService,
             ioDispatcher = testDispatcher
         )
+        testScheduler.runCurrent()
 
         // Verify instant 0ms access without any network call
         val initialFavorites = freshRepo.favoritesState.value

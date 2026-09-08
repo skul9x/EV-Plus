@@ -154,7 +154,8 @@ class NearbyViewModelSmartFilterTest {
             smartFilterPreferences = prefs,
             routingCoordinator = MultiTierRoutingCoordinator(),
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 

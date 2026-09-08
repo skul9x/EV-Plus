@@ -268,8 +268,19 @@ class CloudSyncRollbackSafetyTest {
         viewModel.selectStationForDetail(station1)
         assertEquals("ST_VM_1", viewModel.selectedStationForDetail.value?.id)
 
-        // Enqueue server error for removeFavorite
-        mockServer.enqueue(MockResponse().setResponseCode(500).setBody("Cloud sync error"))
+        // Dispatcher to ensure the 500 error targets the remove/save request specifically,
+        // rather than racing with background telemetry fetches from selectStationForDetail
+        mockServer.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                val path = request.path.orEmpty()
+                val body = request.body.clone().readUtf8()
+                return if (path.contains("favorite.html") && body.contains("\"action\":\"save\"")) {
+                    MockResponse().setResponseCode(500).setBody("Cloud sync error")
+                } else {
+                    MockResponse().setResponseCode(200).setBody("{}")
+                }
+            }
+        }
 
         // Attempt to remove ST_VM_1
         viewModel.removeFavorite("ST_VM_1").join()

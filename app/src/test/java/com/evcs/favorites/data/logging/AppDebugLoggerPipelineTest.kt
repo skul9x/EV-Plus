@@ -55,6 +55,7 @@ class AppDebugLoggerPipelineTest {
             )
         }
 
+        AppDebugLogger.flush()
         val logs = AppDebugLogger.getLogs()
         assertEquals(500, logs.size)
         assertEquals(500, AppDebugLogger.logsFlow.value.size)

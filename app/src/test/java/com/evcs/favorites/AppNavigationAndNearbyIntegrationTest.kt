@@ -231,7 +231,8 @@ class AppNavigationAndNearbyIntegrationTest {
             dispatcher = testDispatcher,
             routingPreferencesManager = prefsManager,
             routingCoordinator = fakeCoordinator,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
 
         nearbyViewModel = NearbyViewModel(
@@ -241,7 +242,8 @@ class AppNavigationAndNearbyIntegrationTest {
             routingCoordinator = fakeCoordinator,
             routingPreferencesManager = prefsManager,
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 
@@ -371,7 +373,7 @@ class AppNavigationAndNearbyIntegrationTest {
     fun testSharedRoutingSettingsAcrossScreens() = runTest {
         // Initial settings should have default values
         val initialSettings = prefsManager.settings.value
-        assertEquals(com.evcs.favorites.data.routing.RoutingEngineMode.AUTO, initialSettings.preferredEngine)
+        assertEquals(com.evcs.favorites.data.routing.RoutingEngineMode.OSRM_ONLY, initialSettings.preferredEngine)
         assertTrue(initialSettings.googleApiKey.isEmpty())
 
         // Both ViewModels observe the same routingSettings flow

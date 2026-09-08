@@ -62,7 +62,7 @@ open class EvcsRepository(
     private val delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
-    private val eagerLoadCache: Boolean = false,
+    private val eagerLoadCache: Boolean = true,
     val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null
 ) {
 

@@ -82,7 +82,8 @@ class StationDetailModalTest {
         connectors = "60kW",
         depotStatus = "Normal",
         totalAvailablePlugs = 1,
-        totalPlugs = 2
+        totalPlugs = 2,
+        evse = "Rabbit E-Mobility"
     )
 
     @Before

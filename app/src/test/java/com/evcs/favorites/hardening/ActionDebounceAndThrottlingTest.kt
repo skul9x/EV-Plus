@@ -414,7 +414,8 @@ class ActionDebounceAndThrottlingTest {
             repository = repository,
             authEngine = authEngine,
             locationService = null,
-            dispatcher = testDispatcher
+            dispatcher = testDispatcher,
+            ioDispatcher = testDispatcher
         )
 
         assertFalse("isOtpVerificationInFlight should be false initially", viewModel.isOtpVerificationInFlight)

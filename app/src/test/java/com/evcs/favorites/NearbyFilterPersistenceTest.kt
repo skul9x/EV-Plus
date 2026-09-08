@@ -224,7 +224,8 @@ class NearbyFilterPersistenceTest {
             filterPreferences = filterPreferences,
             routingCoordinator = MultiTierRoutingCoordinator(),
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
 
         assertEquals(
@@ -242,7 +243,8 @@ class NearbyFilterPersistenceTest {
             filterPreferences = null,
             routingCoordinator = MultiTierRoutingCoordinator(),
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
 
         assertTrue(viewModel.uiState.value.selectedWattages.isEmpty())
@@ -308,7 +310,8 @@ class NearbyFilterPersistenceTest {
             filterPreferences = filterPreferences,
             routingCoordinator = MultiTierRoutingCoordinator(),
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
 
         viewModel.toggleWattageFilter(WattageOption.KW_180)
@@ -337,7 +340,8 @@ class NearbyFilterPersistenceTest {
             filterPreferences = filterPreferences,
             routingCoordinator = MultiTierRoutingCoordinator(),
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
         session1ViewModel.toggleWattageFilter(WattageOption.KW_250)
         advanceUntilIdle()
@@ -372,7 +376,8 @@ class NearbyFilterPersistenceTest {
             filterPreferences = session2Preferences,
             routingCoordinator = MultiTierRoutingCoordinator(),
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
 
         // Verify restored filter state in Session 2 immediately upon instantiation

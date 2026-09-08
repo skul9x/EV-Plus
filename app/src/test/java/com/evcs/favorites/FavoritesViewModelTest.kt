@@ -152,7 +152,9 @@ class FavoritesViewModelTest {
             repository = repository,
             authEngine = customAuthEngine,
             locationService = null,
-            dispatcher = testDispatcher
+            dispatcher = testDispatcher,
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 
@@ -163,6 +165,7 @@ class FavoritesViewModelTest {
     @Test
     fun testInitialStateAndLoginFlowTransitionsToRequestingOtpAndSuccess() = runTest(testDispatcher) {
         val viewModel = createViewModel()
+        testScheduler.runCurrent()
 
         // 1. Verify initial state is LoggedOut
         assertEquals(FavoritesUiState.LoggedOut, viewModel.uiState.value)

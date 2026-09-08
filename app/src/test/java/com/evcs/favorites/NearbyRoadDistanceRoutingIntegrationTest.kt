@@ -167,7 +167,8 @@ class NearbyRoadDistanceRoutingIntegrationTest {
             routingPreferencesManager = prefsManager,
             filterPreferences = filterPrefs,
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 

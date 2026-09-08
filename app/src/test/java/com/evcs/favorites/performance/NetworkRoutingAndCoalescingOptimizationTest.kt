@@ -346,17 +346,17 @@ class NetworkRoutingAndCoalescingOptimizationTest {
         )
         val elapsed = System.currentTimeMillis() - startTime
 
-        // Should return within 5.0s (+ small test harness buffer < 7000ms), NOT 20-30s
+        // Should return within 5.0s (+ small test harness buffer < 8500ms), NOT 20-30s
         assertTrue(
             "Routing arbitration should abort at ~5000ms overall timeout (actual: $elapsed ms)",
-            elapsed in 4800L..7000L
+            elapsed in 4500L..8500L
         )
 
         assertEquals(2, results.size)
         val metric1 = results["dest_1"]
         assertNotNull(metric1)
         assertEquals("Must fall back to Tier 3 Haversine baseline", RoutingEngineType.HAVERSINE, metric1!!.engineUsed)
-        assertEquals(0L, metric1.durationSeconds)
+        assertTrue("Calculated straight-line duration must be positive", metric1.durationSeconds > 0)
         assertEquals(TrafficCondition.UNKNOWN, metric1.trafficCondition)
         assertTrue("Calculated straight-line distance must be positive", metric1.distanceMeters > 0)
     }

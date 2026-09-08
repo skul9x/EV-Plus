@@ -100,10 +100,10 @@ class EncryptedSharedPrefsSingletonTest {
 
     @Test
     fun testCrossManagerVisibilityWithSharedStorage() {
-        val sessionManager = SessionManager.create(fakeAppContext)
-        val routingManager = RoutingPreferencesManager.create(fakeAppContext)
-        val filterPreferences = NearbyFilterPreferences.create(fakeAppContext)
         val rawStorage = EncryptedSharedPrefsStorage.getInstance(fakeAppContext)
+        val sessionManager = SessionManager(rawStorage)
+        val routingManager = RoutingPreferencesManager(storage = rawStorage)
+        val filterPreferences = NearbyFilterPreferences(storage = rawStorage)
 
         // 1. Write via SessionManager
         sessionManager.saveAuthCookie("evcs=cookie_token_xyz; Path=/")

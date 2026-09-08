@@ -235,7 +235,8 @@ class SmartFilterColdStartRestorationPipelineTest {
             filterPreferences = NearbyFilterPreferences(legacyPrefsStorage),
             smartFilterPreferences = SmartFilterPreferences(smartPrefsStorage),
             dispatcher = testDispatcher,
-            ioDispatcher = testDispatcher
+            ioDispatcher = testDispatcher,
+            defaultDispatcher = testDispatcher
         )
     }
 

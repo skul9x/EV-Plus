@@ -79,7 +79,7 @@ class RoutingPreferencesManagerTest {
         val settings = manager.settings.value
 
         assertEquals("", settings.googleApiKey)
-        assertEquals(RoutingEngineMode.AUTO, settings.preferredEngine)
+        assertEquals(RoutingEngineMode.OSRM_ONLY, settings.preferredEngine)
         assertTrue(settings.autoFallbackEnabled)
         assertNull(settings.customOsrmServerUrl)
     }
@@ -123,7 +123,7 @@ class RoutingPreferencesManagerTest {
         // Update key
         manager.updateGoogleApiKey("AIzaSyKey111")
         assertEquals("AIzaSyKey111", manager.settings.first().googleApiKey)
-        assertEquals(RoutingEngineMode.AUTO, manager.settings.first().preferredEngine)
+        assertEquals(RoutingEngineMode.OSRM_ONLY, manager.settings.first().preferredEngine)
 
         // Update mode
         manager.updatePreferredEngine(RoutingEngineMode.OSRM_ONLY)

@@ -353,6 +353,7 @@ class FavoritesViewModel(
     fun fetchFavorites(): Job {
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
+        _uiState.value = FavoritesUiState.Loading
         val job = viewModelScope.launch(dispatcher) {
             doFetchFavorites()
         }

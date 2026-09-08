@@ -30,6 +30,16 @@ import org.junit.Test
  */
 class FocusModeDirectNavigationTest {
 
+    @org.junit.Before
+    fun setUp() {
+        MapNavigator.setDebounceHelperForTesting(com.evcs.favorites.util.DebounceHelper(0L))
+    }
+
+    @org.junit.After
+    fun tearDown() {
+        MapNavigator.resetDebounceForTesting()
+    }
+
     private class RecordingTestContext : ContextWrapper(null) {
         val startedActivities = mutableListOf<Intent>()
         val startedServices = mutableListOf<Intent>()

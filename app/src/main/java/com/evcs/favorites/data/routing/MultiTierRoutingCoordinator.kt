@@ -92,17 +92,15 @@ open class MultiTierRoutingCoordinator(
             return emptyMap()
         }
 
-        val result = withTimeoutOrNull(GOOGLE_TIMEOUT_MS) {
-            googleClient.computeRouteMatrix(
-                apiKey = settings.googleApiKey,
-                originLat = originLat,
-                originLng = originLng,
-                destinations = destinations,
-                timeoutMs = GOOGLE_TIMEOUT_MS
-            )
-        }
+        val result = googleClient.computeRouteMatrix(
+            apiKey = settings.googleApiKey,
+            originLat = originLat,
+            originLng = originLng,
+            destinations = destinations,
+            timeoutMs = GOOGLE_TIMEOUT_MS
+        )
 
-        return result?.getOrElse { emptyMap() } ?: emptyMap()
+        return result.getOrElse { emptyMap() }
     }
 
     /**
@@ -115,17 +113,15 @@ open class MultiTierRoutingCoordinator(
         destinations: List<RoutingDestination>,
         settings: RoutingSettings
     ): Map<String, DrivingMetrics> {
-        val result = withTimeoutOrNull(OSRM_TIMEOUT_MS) {
-            osrmClient.computeTable(
-                originLat = originLat,
-                originLng = originLng,
-                destinations = destinations,
-                customBaseUrl = settings.customOsrmServerUrl,
-                timeoutMs = OSRM_TIMEOUT_MS
-            )
-        }
+        val result = osrmClient.computeTable(
+            originLat = originLat,
+            originLng = originLng,
+            destinations = destinations,
+            customBaseUrl = settings.customOsrmServerUrl,
+            timeoutMs = OSRM_TIMEOUT_MS
+        )
 
-        if (result != null && result.isSuccess) {
+        if (result.isSuccess) {
             val metrics = result.getOrThrow()
             if (metrics.isNotEmpty() || !settings.autoFallbackEnabled) {
                 return metrics
@@ -142,9 +138,9 @@ open class MultiTierRoutingCoordinator(
 
     /**
      * Executes AUTO arbitration:
-     * 1. Attempts Tier 1 (Google) if googleApiKey is present, bound by GOOGLE_TIMEOUT_MS (3.5s).
-     * 2. If Tier 1 fails (or times out / key is blank), cascades to Tier 2 (OSRM) bound by OSRM_TIMEOUT_MS (3.5s).
-     * 3. Overall arbitration is capped at AUTO_ARBITRATION_TIMEOUT_MS (5s), falling back to Tier 3 (Haversine).
+     * 1. Attempts Tier 1 (Google) if googleApiKey is present.
+     * 2. If Tier 1 fails (or key is blank), cascades to Tier 2 (OSRM).
+     * 3. If Tier 2 fails, falls back to Tier 3 (Haversine).
      */
     private suspend fun executeAuto(
         originLat: Double,
@@ -152,53 +148,41 @@ open class MultiTierRoutingCoordinator(
         destinations: List<RoutingDestination>,
         settings: RoutingSettings
     ): Map<String, DrivingMetrics> {
-        val result = withTimeoutOrNull(AUTO_ARBITRATION_TIMEOUT_MS) {
-            // Attempt Tier 1: Google Routes v2 if key is configured
-            if (settings.googleApiKey.isNotBlank()) {
-                val googleResult = withTimeoutOrNull(GOOGLE_TIMEOUT_MS) {
-                    googleClient.computeRouteMatrix(
-                        apiKey = settings.googleApiKey,
-                        originLat = originLat,
-                        originLng = originLng,
-                        destinations = destinations,
-                        timeoutMs = GOOGLE_TIMEOUT_MS
-                    )
-                }
+        // Attempt Tier 1: Google Routes v2 if key is configured
+        if (settings.googleApiKey.isNotBlank()) {
+            val googleResult = googleClient.computeRouteMatrix(
+                apiKey = settings.googleApiKey,
+                originLat = originLat,
+                originLng = originLng,
+                destinations = destinations,
+                timeoutMs = GOOGLE_TIMEOUT_MS
+            )
 
-                if (googleResult != null && googleResult.isSuccess) {
-                    return@withTimeoutOrNull googleResult.getOrThrow()
-                }
-
-                // Tier 1 failed; if autoFallback is disabled, stop immediately
-                if (!settings.autoFallbackEnabled) {
-                    return@withTimeoutOrNull emptyMap()
-                }
+            if (googleResult.isSuccess) {
+                return googleResult.getOrThrow()
             }
 
-            // Attempt Tier 2: OSRM Table Service
-            val osrmResult = withTimeoutOrNull(OSRM_TIMEOUT_MS) {
-                osrmClient.computeTable(
-                    originLat = originLat,
-                    originLng = originLng,
-                    destinations = destinations,
-                    customBaseUrl = settings.customOsrmServerUrl,
-                    timeoutMs = OSRM_TIMEOUT_MS
-                )
-            }
-
-            if (osrmResult != null && osrmResult.isSuccess) {
-                return@withTimeoutOrNull osrmResult.getOrThrow()
-            }
-
-            // Attempt Tier 3: Local Haversine baseline calculation
-            if (settings.autoFallbackEnabled) {
-                computeHaversine(originLat, originLng, destinations)
-            } else {
-                emptyMap()
+            // Tier 1 failed; if autoFallback is disabled, stop immediately
+            if (!settings.autoFallbackEnabled) {
+                return emptyMap()
             }
         }
 
-        return result ?: if (settings.autoFallbackEnabled) {
+        // Attempt Tier 2: OSRM Table Service
+        val osrmResult = osrmClient.computeTable(
+            originLat = originLat,
+            originLng = originLng,
+            destinations = destinations,
+            customBaseUrl = settings.customOsrmServerUrl,
+            timeoutMs = OSRM_TIMEOUT_MS
+        )
+
+        if (osrmResult.isSuccess) {
+            return osrmResult.getOrThrow()
+        }
+
+        // Attempt Tier 3: Local Haversine baseline calculation
+        return if (settings.autoFallbackEnabled) {
             computeHaversine(originLat, originLng, destinations)
         } else {
             emptyMap()
@@ -222,9 +206,15 @@ open class MultiTierRoutingCoordinator(
                 lon2 = dest.longitude
             ).roundToLong()
 
+            val duration = if (distanceM > 0) {
+                (distanceM / (30.0 * 1000.0 / 3600.0)).roundToLong().coerceAtLeast(60L)
+            } else {
+                0L
+            }
+
             dest.id to DrivingMetrics(
                 distanceMeters = distanceM,
-                durationSeconds = 0L,
+                durationSeconds = duration,
                 staticDurationSeconds = null,
                 trafficCondition = TrafficCondition.UNKNOWN,
                 engineUsed = RoutingEngineType.HAVERSINE

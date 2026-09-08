@@ -23,6 +23,11 @@
     "database": {
       "cloud": "Cloud Firestore (users/{userId}/userdata/favorites)",
       "local": "Local-First EncryptedSharedPreferences / JSON Cache"
+    },
+    "ci_cd": {
+      "runner": "GitHub Actions (ubuntu-latest)",
+      "workflow": ".github/workflows/android.yml",
+      "features": "Slugify App Name, Auto-Increment Release Tag (v1.0 -> v1.1...), Base64 Secrets Injection (google-services.json & keystore.jks), Auto Signed APK Release via softprops/action-gh-release@v2"
     }
   },
   "database_schema": {
@@ -61,6 +66,7 @@
     }
   ],
   "features": [
+    "Automated GitHub Actions CI/CD Pipeline (Signing, Auto Version Increment, Release Publishing)",
     "Focus Mode (Live DC Telemetry Navigation Tracker) with Draggable Floating Capsule Overlay over Google Maps",
     "Focus Mode evcs.vn Authentic Station Name Resolution (EvcsStationNameResolver) & Name Preservation against Here API generic names",
     "Focus Mode 1-Tap Direct Turn-by-Turn Driving Navigation (google.navigation:q=lat,lon&mode=d)",
@@ -81,6 +87,9 @@
   ],
   "knowledge_items": {
     "patterns": [
+      "Base64 secret encoding & injection during CI/CD execution preventing secret exposure in git repositories",
+      "Injected Gradle signing properties (-Pandroid.injected.signing.store.file=...) for dynamic keystore signing in GitHub Actions",
+      "Automated semantic minor version calculation by inspecting GitHub Release API latest tags",
       "EvcsStationNameResolver in-memory concurrent caching (ConcurrentHashMap + CopyOnWriteArrayList) matching by location ID and coordinate proximity (<= 100m)",
       "Station name preservation in FocusModeTelemetryEngine.pollOnce() protecting authentic evcs.vn names from Here EV generic overwrites",
       "Direct turn-by-turn navigation intent generation (google.navigation:q=lat,lon&mode=d) for zero-tap driving start in Google Maps",
@@ -95,21 +104,17 @@
       "rememberSaveable state preservation for transient dialog visibility across activity configuration changes",
       "Raw HereEvStation direct filtering before domain mapping to eliminate Garbage Collection churn during 5s polling",
       "Display metrics caching on ACTION_DOWN in floating WindowManager touch listeners to save Main Thread CPU cycles",
-      "Atomic activeUtteranceCount counter for TextToSpeech to prevent premature audio focus un-ducking",
-      "NearbyUiHelper pure function decision rules for auto-scrolling with timestamp verification"
+      "NearbyUiHelper pure function decision rules for auto-scrolling with timestamp verification",
+      "AGP 8.2+ Baseline Profile method wildcards require `->**(**)**` rather than bare `->*` to avoid profgen parser StringIndexOutOfBoundsException"
     ],
     "gotchas": [
-      "Here EV API returns generic 'Trạm sạc VinFast' for all stations; polling loops must preserve target.name or query EvcsStationNameResolver to avoid losing specific location names",
-      "Google Maps geo:0,0?q=lat,lon(name) intent lands on an address overview pin screen and requires manual 'Start' tap; use google.navigation:q=lat,lon&mode=d for direct turn-by-turn driving",
-      "FusedLocationProviderClient.getCurrentLocation lacks an internal timeout when GPS hardware is off, hanging coroutines indefinitely without withTimeoutOrNull",
-      "Android 14 crashes with SecurityException if startForeground(FOREGROUND_SERVICE_TYPE_LOCATION) is called without ACCESS_FINE/COARSE_LOCATION; fallback to DATA_SYNC",
-      "On Android 13+ (API 33+), foreground notifications are silently dropped unless Manifest.permission.POST_NOTIFICATIONS is requested at runtime",
-      "Receiving HTTP 429 without checking isGlobalRateLimited() prior to subsequent requests will continue hitting endpoints and lengthen IP blocks",
-      "Launching coroutines on every onVerticalDrag delta frame creates hundreds of instances and GC churn; mutate state directly or use continuous pointerInput",
-      "Calling LocationService.startLocationUpdates repeatedly without stopping old instances leaks FusedLocationClient listeners and drains battery rapidly",
-      "Mapping all 50 HERE EV stations into domain models every 5 seconds creates severe GC churn; filter raw HereEvStation list first",
-      "Reading animation float state in a root composable body triggers 60-120fps recomposition storm; always isolate in dedicated Composable",
-      "evcs.vn /media endpoint blocks requests with Cloudflare 403; decode double base64 to cpo-prod-s3.vinfastauto.com direct URL instead"
+      "Do not commit hardcoded org.gradle.java.home in gradle.properties to ensure CI/CD runner compatibility across environments.",
+      "AGP expandArtProfileWildcards task throws StringIndexOutOfBoundsException if baseline-prof.txt contains legacy `->*` wildcards; use `->**(**)**`.",
+      "GitHub Actions runner does not support 'secrets' context directly inside step 'if' conditions; use environment variables and evaluate inside the run script.",
+      "google-services.json and Keystore files (.jks) must always be kept out of git tracking and added to .gitignore.",
+      "Audio ducking requires AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK; activeUtteranceCount must reach 0 before abandoning focus.",
+      "FusedLocationProviderClient.lastLocation can return null; getCurrentLocation with PRIORITY_HIGH_ACCURACY and cancellation tokens must be used.",
+      "Double tap / fast spam clicks can trigger duplicate navigation intents or rapid Google sign-in launches if not debounced."
     ]
   }
 }

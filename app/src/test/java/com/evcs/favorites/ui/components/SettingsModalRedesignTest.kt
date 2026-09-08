@@ -117,6 +117,7 @@ class SettingsModalRedesignTest {
         )
 
         // Verify log count in flow
+        AppDebugLogger.flush()
         assertEquals(2, AppDebugLogger.logsFlow.value.size)
         assertEquals(2, AppDebugLogger.getLogs().size)
 

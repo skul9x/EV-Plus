@@ -44,6 +44,16 @@ class StationCardRoutingTest {
     private val cyanColor = Color(0xFF06B6D4)
     private val neutralColor = Color(0xFF94A3B8)
 
+    @org.junit.Before
+    fun setUp() {
+        MapNavigator.setDebounceHelperForTesting(com.evcs.favorites.util.DebounceHelper(0L))
+    }
+
+    @org.junit.After
+    fun tearDown() {
+        MapNavigator.resetDebounceForTesting()
+    }
+
     // =========================================================================
     // Part 1: Tier 1 (Google Routes with Live Traffic) Formatting & Color Coding
     // =========================================================================
