@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,8 @@ import com.evcs.favorites.domain.model.CustomFilterMode
 import com.evcs.favorites.domain.model.DcWattageTier
 import com.evcs.favorites.domain.model.QuickChipOption
 import com.evcs.favorites.domain.model.SmartFilterMode
+import com.evcs.favorites.ui.theme.AutomotiveDimens
+import com.evcs.favorites.ui.theme.CAR_CHIP_HEIGHT
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 
 /**
@@ -188,7 +191,8 @@ private fun TopLevelFilterRow(
             },
             modifier = Modifier
                 .weight(if (isCustomActive && customLabel.length > 8) 1.35f else 1f)
-                .height(48.dp),
+                .heightIn(min = AutomotiveDimens.CAR_CHIP_HEIGHT)
+                .height(AutomotiveDimens.CAR_CHIP_HEIGHT),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isCustomActive) EmeraldPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
@@ -237,7 +241,8 @@ private fun TopLevelFilterRow(
             onClick = onDcClick,
             modifier = Modifier
                 .weight(1f)
-                .height(48.dp),
+                .heightIn(min = AutomotiveDimens.CAR_CHIP_HEIGHT)
+                .height(AutomotiveDimens.CAR_CHIP_HEIGHT),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isDcActive) EmeraldPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
@@ -270,7 +275,8 @@ private fun TopLevelFilterRow(
             },
             modifier = Modifier
                 .weight(1f)
-                .height(48.dp),
+                .heightIn(min = AutomotiveDimens.CAR_CHIP_HEIGHT)
+                .height(AutomotiveDimens.CAR_CHIP_HEIGHT),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isAcActive) EmeraldPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
@@ -335,8 +341,9 @@ private fun DcSubFilterRow(
         Button(
             onClick = onBackFromDc,
             modifier = Modifier
-                .height(48.dp)
-                .defaultMinSize(minWidth = 48.dp),
+                .heightIn(min = AutomotiveDimens.CAR_CHIP_HEIGHT)
+                .height(AutomotiveDimens.CAR_CHIP_HEIGHT)
+                .defaultMinSize(minWidth = AutomotiveDimens.CAR_CHIP_HEIGHT),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -401,7 +408,9 @@ private fun DcSubFilterRow(
                         labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.height(48.dp)
+                    modifier = Modifier
+                        .heightIn(min = AutomotiveDimens.CAR_CHIP_HEIGHT)
+                        .height(AutomotiveDimens.CAR_CHIP_HEIGHT)
                 )
             }
         }

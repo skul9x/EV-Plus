@@ -13,10 +13,15 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.evcs.favorites.navigation.AppNavigationRail
+import com.evcs.favorites.ui.layout.AdaptiveLayoutHelper
 import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -46,10 +51,12 @@ import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
 import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.preferences.NearbyFilterPreferences
+import com.evcs.favorites.data.preferences.OrientationPreferences
 import com.evcs.favorites.data.preferences.SmartFilterPreferences
 import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
 import com.evcs.favorites.domain.location.LocationService
+import com.evcs.favorites.util.OrientationHelper
 import com.evcs.favorites.navigation.AppNavigationBar
 import com.evcs.favorites.navigation.AppTab
 import com.evcs.favorites.navigation.MapNavigator
@@ -93,6 +100,7 @@ class MainActivity : ComponentActivity() {
     private val routingPreferencesManager by lazy { RoutingPreferencesManager.create(applicationContext) }
     private val nearbyFilterPreferences by lazy { NearbyFilterPreferences.create(applicationContext) }
     private val smartFilterPreferences by lazy { SmartFilterPreferences.create(applicationContext) }
+    private val orientationPreferences by lazy { OrientationPreferences.create(applicationContext) }
     private val telemetryRepository by lazy {
         com.evcs.favorites.data.repository.EvcsTelemetryRepository(
             com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource(sessionManager)
@@ -124,6 +132,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Enforce startup orientation immediately before setContent to prevent visual flicker or layout jumps
+        requestedOrientation = OrientationHelper.toActivityInfoOrientation(
+            orientationPreferences.getStartupOrientation()
+        )
+
+        // Observe reactive orientation updates dynamically at runtime without requiring app restart
+        lifecycleScope.launch {
+            orientationPreferences.startupOrientationFlow.collect { orientation ->
+                val targetOrientation = OrientationHelper.toActivityInfoOrientation(orientation)
+                if (requestedOrientation != targetOrientation) {
+                    requestedOrientation = targetOrientation
+                }
+            }
+        }
 
         lifecycleScope.launch(Dispatchers.IO) {
             EncryptedSharedPrefsStorage.getInstance(applicationContext).warmUp()
@@ -192,109 +215,133 @@ fun FavoritesApp(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        bottomBar = {
-            AppNavigationBar(
-                currentTab = currentTab,
-                onTabSelected = { currentTab = it }
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = innerPadding.calculateBottomPadding())
-        ) {
-            saveableStateHolder.SaveableStateProvider(currentTab) {
-                when (currentTab) {
-                AppTab.FAVORITES -> {
-                    val selectedStation by viewModel.selectedStationForDetail.collectAsStateWithLifecycle()
-                    val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
-                    val authState by viewModel.authState.collectAsStateWithLifecycle()
-                    val authUser = (authState as? com.evcs.favorites.domain.model.AuthState.Authenticated)?.user ?: viewModel.currentUser
-                    val activity = context as? ComponentActivity
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val effectiveIsLandscape = AdaptiveLayoutHelper.isLandscapeMode(
+            widthDp = maxWidth.value,
+            heightDp = maxHeight.value
+        )
 
-                    val onNavigate: (Station) -> Unit = remember(context) {
-                        { station: Station ->
-                            MapNavigator.navigate(
-                                context = context,
-                                latitude = station.latitude,
-                                longitude = station.longitude,
-                                stationName = station.name
-                            )
-                        }
-                    }
-                    val onRemoveFavorite: (Station) -> Unit = remember(viewModel) {
-                        { station: Station ->
-                            viewModel.removeFavorite(station.id)
-                            Unit
-                        }
-                    }
-                    val onStationClick: (Station) -> Unit = remember(viewModel) {
-                        { station: Station ->
-                            viewModel.selectStationForDetail(station)
-                        }
-                    }
-
-                    val togglingStationIds by viewModel.togglingStationIds.collectAsStateWithLifecycle()
-
-                    FavoritesScreen(
-                        uiState = uiState,
-                        onRefresh = { viewModel.refresh() },
-                        onLogout = { viewModel.logout(activity) },
-                        onNavigateClick = onNavigate,
-                        onRemoveFavoriteClick = onRemoveFavorite,
-                        onStationClick = onStationClick,
-                        selectedStationForDetail = selectedStation,
-                        togglingStationIds = togglingStationIds,
-                        onDismissDetail = {
-                            viewModel.dismissStationDetail()
-                        },
-                        stationDetailState = stationDetailState,
-                        onRefreshDetail = {
-                            viewModel.refreshStationDetail()
-                        },
-                        cookieHeader = viewModel.getCookieHeader(),
-                        routingSettings = routingSettings,
-                        onSaveRoutingSettings = { viewModel.updateRoutingSettings(it) },
-                        onValidateGoogleApiKey = { viewModel.validateGoogleApiKey(it) },
-                        authUser = authUser,
-                        onSignInClick = {
-                            activity?.let { act ->
-                                act.lifecycleScope.launch {
-                                    viewModel.authService?.signInWithGoogle(act)
-                                }
-                            }
-                        },
-                        onSignOutClick = {
-                            activity?.let { act ->
-                                act.lifecycleScope.launch {
-                                    viewModel.authService?.signOut(act)
-                                }
-                            }
-                        }
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                if (!effectiveIsLandscape) {
+                    AppNavigationBar(
+                        currentTab = currentTab,
+                        onTabSelected = { currentTab = it }
+                    )
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.background
+        ) { innerPadding ->
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = innerPadding.calculateBottomPadding())
+            ) {
+                if (effectiveIsLandscape) {
+                    AppNavigationRail(
+                        currentTab = currentTab,
+                        onTabSelected = { currentTab = it }
                     )
                 }
 
-                AppTab.NEARBY -> {
-                    if (nearbyViewModel != null) {
-                        NearbyScreen(
-                            viewModel = nearbyViewModel,
-                            onNavigateToLogin = {
-                                currentTab = AppTab.FAVORITES
-                            },
-                            cookieHeader = viewModel.getCookieHeader(),
-                            routingSettings = routingSettings,
-                            onSaveRoutingSettings = { nearbyViewModel.updateRoutingSettings(it) },
-                            onValidateGoogleApiKey = { nearbyViewModel.validateGoogleApiKey(it) }
-                        )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    saveableStateHolder.SaveableStateProvider(currentTab) {
+                        when (currentTab) {
+                            AppTab.FAVORITES -> {
+                                val selectedStation by viewModel.selectedStationForDetail.collectAsStateWithLifecycle()
+                                val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
+                                val authState by viewModel.authState.collectAsStateWithLifecycle()
+                                val authUser = (authState as? com.evcs.favorites.domain.model.AuthState.Authenticated)?.user ?: viewModel.currentUser
+                                val activity = context as? ComponentActivity
+
+                                val onNavigate: (Station) -> Unit = remember(context) {
+                                    { station: Station ->
+                                        MapNavigator.navigate(
+                                            context = context,
+                                            latitude = station.latitude,
+                                            longitude = station.longitude,
+                                            stationName = station.name
+                                        )
+                                    }
+                                }
+                                val onRemoveFavorite: (Station) -> Unit = remember(viewModel) {
+                                    { station: Station ->
+                                        viewModel.removeFavorite(station.id)
+                                        Unit
+                                    }
+                                }
+                                val onStationClick: (Station) -> Unit = remember(viewModel) {
+                                    { station: Station ->
+                                        viewModel.selectStationForDetail(station)
+                                    }
+                                }
+
+                                val togglingStationIds by viewModel.togglingStationIds.collectAsStateWithLifecycle()
+
+                                FavoritesScreen(
+                                    uiState = uiState,
+                                    onRefresh = { viewModel.refresh() },
+                                    onLogout = { viewModel.logout(activity) },
+                                    onNavigateClick = onNavigate,
+                                    onRemoveFavoriteClick = onRemoveFavorite,
+                                    onStationClick = onStationClick,
+                                    selectedStationForDetail = selectedStation,
+                                    togglingStationIds = togglingStationIds,
+                                    onDismissDetail = {
+                                        viewModel.dismissStationDetail()
+                                    },
+                                    stationDetailState = stationDetailState,
+                                    onRefreshDetail = {
+                                        viewModel.refreshStationDetail()
+                                    },
+                                    cookieHeader = viewModel.getCookieHeader(),
+                                    routingSettings = routingSettings,
+                                    onSaveRoutingSettings = { viewModel.updateRoutingSettings(it) },
+                                    onValidateGoogleApiKey = { viewModel.validateGoogleApiKey(it) },
+                                    authUser = authUser,
+                                    onSignInClick = {
+                                        activity?.let { act ->
+                                            act.lifecycleScope.launch {
+                                                viewModel.authService?.signInWithGoogle(act)
+                                            }
+                                        }
+                                    },
+                                    onSignOutClick = {
+                                        activity?.let { act ->
+                                            act.lifecycleScope.launch {
+                                                viewModel.authService?.signOut(act)
+                                            }
+                                        }
+                                    },
+                                    isLandscape = effectiveIsLandscape
+                                )
+                            }
+
+                            AppTab.NEARBY -> {
+                                if (nearbyViewModel != null) {
+                                    NearbyScreen(
+                                        viewModel = nearbyViewModel,
+                                        onNavigateToLogin = {
+                                            currentTab = AppTab.FAVORITES
+                                        },
+                                        cookieHeader = viewModel.getCookieHeader(),
+                                        routingSettings = routingSettings,
+                                        onSaveRoutingSettings = { nearbyViewModel.updateRoutingSettings(it) },
+                                        onValidateGoogleApiKey = { nearbyViewModel.validateGoogleApiKey(it) },
+                                        isLandscape = effectiveIsLandscape
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-    }
 
         // Location Permission Rationale Dialog (Favorites screen)
         if (showPermissionRationale) {

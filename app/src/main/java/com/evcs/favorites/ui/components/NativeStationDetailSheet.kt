@@ -36,8 +36,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import com.evcs.favorites.ui.theme.AutomotiveDimens
+import com.evcs.favorites.ui.theme.CAR_BUTTON_HEIGHT
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -243,11 +248,19 @@ object NativeStationDetailSheetHelper {
 
     const val LABEL_NAVIGATE = "Chỉ đường"
     const val LABEL_FOCUS_MODE = "⚡ Focus Mode"
+    const val LABEL_NAVIGATE_AND_TRACK = "⚡ DẪN ĐƯỜNG & THEO DÕI"
     const val LABEL_FAVORITE = "Yêu thích"
     const val LABEL_SAVED = "Đã lưu"
     const val LABEL_SHARE = "Chia sẻ"
     const val DESC_UNFAVORITE = "Bỏ yêu thích"
     const val DESC_FOCUS_MODE = "Kích hoạt Chế độ Focus Mode"
+
+    val CAR_BUTTON_HEIGHT: Dp = AutomotiveDimens.CAR_BUTTON_HEIGHT
+    val CAR_BUTTON_TEXT_SIZE: TextUnit = 16.sp
+    val CAR_BUTTON_FONT_WEIGHT: FontWeight = FontWeight.Bold
+
+    const val CAR_BUTTON_HEIGHT_DP: Float = 56f
+    const val CAR_BUTTON_TEXT_SIZE_SP: Float = 16f
 
     const val PRIMARY_NAV_WEIGHT = 1.3f
     const val SECONDARY_FAVORITE_WEIGHT = 1.0f
@@ -880,10 +893,10 @@ fun NativeStationDetailContent(
                 IconButton(
                     onClick = onRefresh,
                     enabled = refreshSpec.isEnabled,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT)
                 ) {
                     Box(
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT),
                         contentAlignment = Alignment.Center
                     ) {
                         RotatingRefreshIcon(refreshSpec = refreshSpec)
@@ -892,17 +905,17 @@ fun NativeStationDetailContent(
 
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT)
                 ) {
                     Box(
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Đóng",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -1024,114 +1037,62 @@ fun NativeStationDetailContent(
 
         // ---------------------------------------------------------------------
         // ---------------------------------------------------------------------
-        // 4. Quick Action Row: Chỉ đường & ⚡ Focus Mode (Navigation), Yêu thích & Chia sẻ
+        // 4. Quick Action Row: ⚡ DẪN ĐƯỜNG & THEO DÕI (Primary CTA >= 56dp), Yêu thích & Chia sẻ (>= 56dp)
         // ---------------------------------------------------------------------
-        val navDebounce = remember { DebounceHelper(1000L) }
         val focusDebounce = remember { DebounceHelper(1000L) }
 
-        val onNavClick: () -> Unit = remember(onNavigate, station, navDebounce) {
-            {
-                navDebounce.runIfAllowed {
-                    onNavigate(station)
-                }
-                Unit
-            }
-        }
-        val onFocusClick: () -> Unit = remember(onStartFocusMode, station, focusDebounce) {
+        val onCombinedNavClick: () -> Unit = remember(onStartFocusMode, onNavigate, station, focusDebounce) {
             {
                 focusDebounce.runIfAllowed {
-                    onStartFocusMode?.invoke(station)
+                    if (onStartFocusMode != null) {
+                        onStartFocusMode(station)
+                    } else {
+                        onNavigate(station)
+                    }
                 }
                 Unit
             }
         }
         val onFavClick = remember(onToggleFavorite, station) { { onToggleFavorite(station) } }
         val onShareClick = remember(onShare, station) { { onShare(station) } }
-        val hasDcCharging = remember(station.powers) {
-            NativeStationDetailSheetHelper.hasDcCharging(station)
-        }
 
-        // Primary Navigation Actions: Chỉ đường & ⚡ Focus Mode
-        Row(
+        // Primary Automotive Action Button: ⚡ DẪN ĐƯỜNG & THEO DÕI (Height >= 56dp, 16sp Bold)
+        Button(
+            onClick = onCombinedNavClick,
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = EmeraldPrimary,
+                contentColor = Color.White
+            ),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
         ) {
-            // Primary Pill: Chỉ đường
-            Button(
-                onClick = onNavClick,
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = EmeraldPrimary,
-                    contentColor = Color.White
+            Icon(
+                imageVector = AppIcons.Bolt,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = NativeStationDetailSheetHelper.LABEL_NAVIGATE_AND_TRACK,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = NativeStationDetailSheetHelper.CAR_BUTTON_FONT_WEIGHT,
+                    fontSize = NativeStationDetailSheetHelper.CAR_BUTTON_TEXT_SIZE
                 ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                modifier = if (hasDcCharging) {
-                    Modifier
-                        .weight(1f, fill = true)
-                        .wrapContentHeight()
-                } else {
-                    Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight()
-                }
-            ) {
-                Icon(
-                    imageVector = AppIcons.Navigation,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = NativeStationDetailSheetHelper.LABEL_NAVIGATE,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            if (hasDcCharging) {
-                // Primary Pill: ⚡ Focus Mode (Adjacent to Chỉ đường)
-                Button(
-                    onClick = onFocusClick,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = EmeraldContainerDark,
-                        contentColor = EmeraldPrimaryLight
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1f, fill = true)
-                        .wrapContentHeight()
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Bolt,
-                        contentDescription = null,
-                        tint = EmeraldPrimaryLight,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = NativeStationDetailSheetHelper.LABEL_FOCUS_MODE,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
 
-        // Secondary Actions: Yêu thích & Chia sẻ
+        // Secondary Actions: Yêu thích & Chia sẻ (Height >= 56dp)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight(),
+                .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1146,33 +1107,35 @@ fun NativeStationDetailContent(
                 )
             }
 
-            // Secondary Pill: Yêu thích
+            // Secondary Pill: Yêu thích (>= 56dp)
             FilledTonalButton(
                 onClick = { if (!isToggleInProgress) onFavClick() },
                 enabled = favoriteSpec.isEnabled,
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = favoriteSpec.containerColor,
                     contentColor = favoriteSpec.contentColor,
                     disabledContainerColor = favoriteSpec.containerColor.copy(alpha = 0.5f),
                     disabledContentColor = favoriteSpec.contentColor.copy(alpha = 0.4f)
                 ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                 modifier = Modifier
                     .weight(1f, fill = true)
-                    .wrapContentHeight()
+                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
             ) {
                 Icon(
                     imageVector = if (favoriteSpec.isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = favoriteSpec.contentDescription,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(22.dp),
                     tint = if (isToggleInProgress) favoriteSpec.contentColor.copy(alpha = 0.4f) else favoriteSpec.contentColor
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = favoriteSpec.label,
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
                     ),
                     color = if (isToggleInProgress) favoriteSpec.contentColor.copy(alpha = 0.4f) else favoriteSpec.contentColor,
                     maxLines = 1,
@@ -1180,30 +1143,32 @@ fun NativeStationDetailContent(
                 )
             }
 
-            // Secondary Pill: Chia sẻ
+            // Secondary Pill: Chia sẻ (>= 56dp)
             FilledTonalButton(
                 onClick = onShareClick,
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = surfaceVariant,
                     contentColor = onSurfaceVariant
                 ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                 modifier = Modifier
                     .weight(1f, fill = true)
-                    .wrapContentHeight()
+                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
             ) {
                 Icon(
                     imageVector = Icons.Default.Share,
                     contentDescription = NativeStationDetailSheetHelper.LABEL_SHARE,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(22.dp),
                     tint = onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = NativeStationDetailSheetHelper.LABEL_SHARE,
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

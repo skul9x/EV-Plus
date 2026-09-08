@@ -37,11 +37,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.PowerPort
@@ -52,6 +55,10 @@ import com.evcs.favorites.data.routing.DrivingMetrics
 import com.evcs.favorites.data.routing.RoutingEngineType
 import com.evcs.favorites.data.routing.TrafficCondition
 import com.evcs.favorites.domain.location.formattedDistance
+import com.evcs.favorites.ui.theme.AutomotiveDimens
+import com.evcs.favorites.ui.theme.CAR_BUTTON_HEIGHT
+import com.evcs.favorites.ui.theme.CAR_CARD_MIN_HEIGHT
+import com.evcs.favorites.ui.theme.CAR_HERO_METRIC_TEXT_SIZE
 import com.evcs.favorites.ui.theme.DarkOutline
 import com.evcs.favorites.ui.theme.DarkOnSurfaceVariant
 import com.evcs.favorites.ui.theme.DistancePillBg
@@ -71,6 +78,46 @@ import com.evcs.favorites.ui.theme.UltraPurple
 import java.util.Locale
 
 /**
+ * Helper object providing touch-target sizes, typography specifications,
+ * and Hero Metric string formatting for automotive car mode.
+ */
+object StationCardHelper {
+    val HERO_METRIC_FONT_SIZE: TextUnit = AutomotiveDimens.CAR_HERO_METRIC_TEXT_SIZE
+    val HERO_METRIC_FONT_WEIGHT: FontWeight = FontWeight.Bold
+    val CAR_BUTTON_HEIGHT: Dp = AutomotiveDimens.CAR_BUTTON_HEIGHT
+    val PORTRAIT_BUTTON_HEIGHT: Dp = 44.dp
+    val CAR_CARD_MIN_HEIGHT: Dp = AutomotiveDimens.CAR_CARD_MIN_HEIGHT
+
+    const val HERO_METRIC_FONT_SIZE_SP: Float = 24f
+    const val CAR_BUTTON_HEIGHT_DP: Float = 56f
+    const val PORTRAIT_BUTTON_HEIGHT_DP: Float = 44f
+    const val CAR_CARD_MIN_HEIGHT_DP: Float = 76f
+
+    fun resolveButtonHeight(isCarMode: Boolean): Dp {
+        return if (isCarMode) CAR_BUTTON_HEIGHT else PORTRAIT_BUTTON_HEIGHT
+    }
+
+    fun resolveButtonHeightDp(isCarMode: Boolean): Float {
+        return if (isCarMode) CAR_BUTTON_HEIGHT_DP else PORTRAIT_BUTTON_HEIGHT_DP
+    }
+
+    fun formatHeroMetric(
+        totalAvailablePlugs: Int,
+        totalPlugs: Int,
+        depotStatus: String = "Normal"
+    ): String {
+        return when {
+            depotStatus.equals("Maintaining", ignoreCase = true) -> "🟡 BẢO TRÌ"
+            depotStatus.equals("OutOfService", ignoreCase = true) -> "🔴 TẠM DỪNG"
+            totalPlugs > 0 && totalAvailablePlugs == 0 -> "🔴 0/$totalPlugs HẾT CỔNG"
+            totalAvailablePlugs > 0 -> "🟢 $totalAvailablePlugs/$totalPlugs TRỐNG"
+            totalPlugs == 0 && depotStatus.equals("Normal", ignoreCase = true) -> "🟢 SẴN SÀNG"
+            else -> "⚡ ĐÃ LƯU"
+        }
+    }
+}
+
+/**
  * Individual charging station card displaying real-time power metrics,
  * live slot availability, distance pill, and 1-tap navigation button.
  */
@@ -84,13 +131,20 @@ fun StationCard(
     isFavorite: Boolean = false,
     isToggleInProgress: Boolean = false,
     onStationClick: (Station) -> Unit = {},
+    isSelected: Boolean = false,
+    isCarMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = AutomotiveDimens.CAR_CARD_MIN_HEIGHT)
             .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) EmeraldPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                shape = RoundedCornerShape(16.dp)
+            )
             .clickable { onStationClick(station) },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
@@ -103,6 +157,26 @@ fun StationCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            // In car / landscape mode, display prominent 24sp Bold Hero Metric
+            if (isCarMode) {
+                val heroMetricText = remember(station.depotStatus, station.totalAvailablePlugs, station.totalPlugs) {
+                    StationCardHelper.formatHeroMetric(
+                        totalAvailablePlugs = station.totalAvailablePlugs,
+                        totalPlugs = station.totalPlugs,
+                        depotStatus = station.depotStatus
+                    )
+                }
+                Text(
+                    text = heroMetricText,
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontSize = StationCardHelper.HERO_METRIC_FONT_SIZE,
+                        fontWeight = StationCardHelper.HERO_METRIC_FONT_WEIGHT
+                    ),
+                    color = if (station.totalAvailablePlugs > 0) EmeraldPrimary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+
             // Header Row: Station Name + Status Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -255,6 +329,9 @@ fun StationCard(
 
             // Action Buttons Row: 1-Tap "Chỉ đường" Button + Heart Favorite or Trash Action
             val navDebounce = remember { DebounceHelper(1000L) }
+            val buttonHeight = StationCardHelper.resolveButtonHeight(isCarMode)
+            val iconButtonSize = if (isCarMode) AutomotiveDimens.CAR_BUTTON_HEIGHT else 48.dp
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -269,18 +346,19 @@ fun StationCard(
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
+                        .height(buttonHeight)
                 ) {
                     Icon(
                         imageVector = AppIcons.Navigation,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(if (isCarMode) 22.dp else 18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Chỉ đường",
                         style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            fontSize = if (isCarMode) 16.sp else 14.sp
                         )
                     )
                 }
@@ -295,7 +373,7 @@ fun StationCard(
                         onClick = { if (!isToggleInProgress) onFavoriteClick(station) },
                         enabled = !isToggleInProgress,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(iconButtonSize)
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = if (isToggleInProgress) 0.25f else 0.5f))
                     ) {
@@ -303,7 +381,7 @@ fun StationCard(
                             imageVector = heartState.icon,
                             contentDescription = heartState.contentDescription,
                             tint = if (isToggleInProgress) heartState.tintColor.copy(alpha = 0.4f) else heartState.tintColor,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(if (isCarMode) 28.dp else 24.dp)
                         )
                     }
                 } else if (onRemoveFavoriteClick != null) {
@@ -313,7 +391,7 @@ fun StationCard(
                         onClick = { if (!isToggleInProgress) onRemoveFavoriteClick(station) },
                         enabled = !isToggleInProgress,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(iconButtonSize)
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = if (isToggleInProgress) 0.25f else 0.5f))
                     ) {
@@ -321,7 +399,7 @@ fun StationCard(
                             imageVector = AppIcons.DeleteOutline,
                             contentDescription = "Xóa yêu thích",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isToggleInProgress) 0.3f else 0.7f),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(if (isCarMode) 24.dp else 20.dp)
                         )
                     }
                 }

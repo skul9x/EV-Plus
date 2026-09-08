@@ -63,3 +63,18 @@ val StatusOfflineContainer = Color(0x26EF4444)
 val DistancePillBg = Color(0xFF0F2922)
 val DistancePillBorder = Color(0xFF10B981)
 val DistancePillText = Color(0xFF34D399)
+
+// =============================================================================
+// Automotive High-Contrast Dark Palette
+// Enforces WCAG AAA contrast ratio (>= 7:1) for safety-critical driving info
+// =============================================================================
+val CarDarkBackground = Color(0xFF121216) // Deep obsidian reducing cabin glare
+val CarDarkSurface = Color(0xFF1B1B22) // Distinct card surface
+val CarDarkSurfaceVariant = Color(0xFF242430)
+val CarDarkOutline = Color(0xFF2E2E3E)
+val CarAccentGreen = Color(0xFF00E676) // High-visibility neon emerald for available status & primary CTA
+val CarAccentCyan = Color(0xFF00E5FF) // High-visibility electric cyan for navigation and tech indicators
+val CarStatusOffline = Color(0xFFFF3B30) // High-visibility alert red for full/offline stations
+val CarStatusWarning = Color(0xFFFF9500) // Vivid amber for maintaining stations
+val CarTextPrimary = Color(0xFFFFFFFF) // Crisp pure white text
+

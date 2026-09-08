@@ -12,7 +12,30 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
+val CarDarkColorScheme = darkColorScheme(
+    primary = CarAccentGreen,
+    onPrimary = Color.Black,
+    primaryContainer = EmeraldContainerDark,
+    onPrimaryContainer = CarAccentGreen,
+    secondary = CarAccentCyan,
+    onSecondary = Color.Black,
+    secondaryContainer = ElectricCyanContainerDark,
+    onSecondaryContainer = CarAccentCyan,
+    tertiary = UltraPurple,
+    onTertiary = Color.White,
+    tertiaryContainer = UltraPurpleContainerDark,
+    onTertiaryContainer = UltraPurpleLight,
+    background = CarDarkBackground,
+    onBackground = CarTextPrimary,
+    surface = CarDarkSurface,
+    onSurface = CarTextPrimary,
+    surfaceVariant = CarDarkSurfaceVariant,
+    onSurfaceVariant = Color(0xFFCBD5E1),
+    outline = CarDarkOutline,
+    outlineVariant = CarDarkOutline
+)
+
+val DarkColorScheme = darkColorScheme(
     primary = EmeraldPrimary,
     onPrimary = Color.White,
     primaryContainer = EmeraldContainerDark,
@@ -25,13 +48,13 @@ private val DarkColorScheme = darkColorScheme(
     onTertiary = Color.White,
     tertiaryContainer = UltraPurpleContainerDark,
     onTertiaryContainer = UltraPurpleLight,
-    background = DarkBackground,
-    onBackground = DarkOnSurface,
-    surface = DarkSurface,
-    onSurface = DarkOnSurface,
-    surfaceVariant = DarkSurfaceVariant,
+    background = CarDarkBackground,
+    onBackground = CarTextPrimary,
+    surface = CarDarkSurface,
+    onSurface = CarTextPrimary,
+    surfaceVariant = CarDarkSurfaceVariant,
     onSurfaceVariant = DarkOnSurfaceVariant,
-    outline = DarkOutline,
+    outline = CarDarkOutline,
     outlineVariant = DarkOutlineVariant
 )
 
@@ -61,9 +84,14 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun EvcsFavoritesTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    isCarMode: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = when {
+        isCarMode -> CarDarkColorScheme
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -71,7 +99,7 @@ fun EvcsFavoritesTheme(
             val window = (view.context as? Activity)?.window
             if (window != null) {
                 window.statusBarColor = colorScheme.background.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme && !isCarMode
             }
         }
     }
