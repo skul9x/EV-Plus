@@ -26,6 +26,8 @@ import com.evcs.favorites.ui.components.NearbyUiHelper
 import com.evcs.favorites.ui.components.RefreshTriggerType
 import com.evcs.favorites.ui.state.NearbyUiEvent
 import com.evcs.favorites.ui.state.NearbyUiState
+import com.evcs.favorites.util.DebounceHelper
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -130,6 +132,33 @@ class NearbyViewModel(
     )
     val uiState: StateFlow<NearbyUiState> = _uiState.asStateFlow()
 
+    private val _togglingStationIds = MutableStateFlow<Set<String>>(emptySet())
+    val togglingStationIds: StateFlow<Set<String>> = _togglingStationIds.asStateFlow()
+
+    private val toggleJobs = ConcurrentHashMap<String, Job>()
+
+    internal var toastDebounceHelper: DebounceHelper = DebounceHelper(intervalMs = 300L)
+    private var lastToastMessage: String? = null
+    private var lastToastTimestamp: Long = 0L
+
+    private suspend fun emitToastDebounced(message: String) {
+        val now = System.currentTimeMillis()
+        if (message == lastToastMessage && (now - lastToastTimestamp) < 500L) {
+            return
+        }
+        if (toastDebounceHelper.runIfAllowed { }) {
+            lastToastMessage = message
+            lastToastTimestamp = now
+            _events.send(NearbyUiEvent.ShowToast(message))
+        }
+    }
+
+    fun resetToastDebounceForTesting() {
+        lastToastMessage = null
+        lastToastTimestamp = 0L
+        toastDebounceHelper.reset()
+    }
+
     private val _events = Channel<NearbyUiEvent>(Channel.BUFFERED)
     val events: Flow<NearbyUiEvent> = _events.receiveAsFlow()
 
@@ -202,7 +231,8 @@ class NearbyViewModel(
                 _uiState.update {
                     it.copy(
                         isLocating = false,
-                        errorMessage = "Không thể xác định vị trí hiện tại"
+                        isSearching = false,
+                        errorMessage = "Không thể lấy vị trí hiện tại. Vui lòng kiểm tra GPS và thử lại."
                     )
                 }
                 return@launch
@@ -486,32 +516,47 @@ class NearbyViewModel(
      * - If authenticated, toggles favorite via [EvcsRepository] and emits [NearbyUiEvent.ShowToast].
      */
     fun toggleFavorite(station: Station): Job {
+        if (_togglingStationIds.value.contains(station.id)) {
+            return toggleJobs[station.id] ?: Job().apply { complete() }
+        }
+
         if (repository.firestoreFavoritesRepository == null && !sessionManager.hasAuthCookie()) {
             return viewModelScope.launch(dispatcher) {
                 _events.send(NearbyUiEvent.ShowLoginRequired(station.name))
             }
         }
 
-        return viewModelScope.launch(dispatcher) {
-            val isFavorite = _uiState.value.favoriteStationIds.contains(station.id)
-            val result = if (isFavorite) {
-                repository.removeFavoriteStation(station.id)
-            } else {
-                repository.addFavoriteStation(station)
-            }
+        _togglingStationIds.update { it + station.id }
+        _uiState.update { it.copy(togglingStationIds = _togglingStationIds.value) }
 
-            if (result.isSuccess) {
-                val msg = if (isFavorite) {
-                    "Đã xóa khỏi danh sách yêu thích"
+        val job = viewModelScope.launch(dispatcher) {
+            try {
+                val isFavorite = _uiState.value.favoriteStationIds.contains(station.id)
+                val result = if (isFavorite) {
+                    repository.removeFavoriteStation(station.id)
                 } else {
-                    "Đã thêm vào danh sách yêu thích"
+                    repository.addFavoriteStation(station)
                 }
-                _events.send(NearbyUiEvent.ShowToast(msg))
-            } else {
-                val errorMsg = result.exceptionOrNull()?.message ?: "Thao tác không thành công"
-                _events.send(NearbyUiEvent.ShowToast(errorMsg))
+
+                if (result.isSuccess) {
+                    val msg = if (isFavorite) {
+                        "Đã xóa khỏi danh sách yêu thích"
+                    } else {
+                        "Đã thêm vào danh sách yêu thích"
+                    }
+                    emitToastDebounced(msg)
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "Thao tác không thành công"
+                    emitToastDebounced(errorMsg)
+                }
+            } finally {
+                _togglingStationIds.update { it - station.id }
+                _uiState.update { it.copy(togglingStationIds = _togglingStationIds.value) }
+                toggleJobs.remove(station.id)
             }
         }
+        toggleJobs[station.id] = job
+        return job
     }
 
     /**
@@ -552,6 +597,11 @@ class NearbyViewModel(
      * @param triggerType Indicates if this refresh was explicitly requested by user or by passive background/polling.
      */
     fun refresh(triggerType: RefreshTriggerType = RefreshTriggerType.USER_REFRESH): Job {
+        scanJob?.let { activeJob ->
+            if (activeJob.isActive && (_uiState.value.isLocating || _uiState.value.isSearching)) {
+                return activeJob
+            }
+        }
         scanJob?.cancel()
         routingJob?.cancel()
         routingDebounceJob?.cancel()
@@ -844,6 +894,7 @@ class NearbyViewModel(
         scanJob?.cancel()
         routingJob?.cancel()
         routingDebounceJob?.cancel()
+        toggleJobs.clear()
         stationDetailCoordinator.dismissStationDetail()
     }
 

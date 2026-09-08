@@ -178,20 +178,20 @@ fun StationPhotoViewerModal(
         val pagerState = rememberPagerState(initialPage = safeInitialPage) { images.size }
         val density = LocalDensity.current
 
-        // Swipe-to-dismiss vertical translation state
-        val dismissAnimatable = remember { Animatable(0f) }
+        // Swipe-to-dismiss vertical translation state mutated directly during drag (zero allocation churn)
+        var dismissOffsetY by remember { mutableFloatStateOf(0f) }
         val dismissThresholdPx = with(density) { StationPhotoViewerHelper.DISMISS_DRAG_THRESHOLD_DP.dp.toPx() }
 
         // Progressive alpha fade based on downward drag
-        val currentAlpha = remember(dismissAnimatable.value) {
-            StationPhotoViewerHelper.calculateDismissAlpha(dismissAnimatable.value, maxDrag = dismissThresholdPx * 2f)
+        val currentAlpha = remember(dismissOffsetY) {
+            StationPhotoViewerHelper.calculateDismissAlpha(dismissOffsetY, maxDrag = dismissThresholdPx * 2f)
         }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(StationPhotoViewerHelper.BACKDROP_COLOR.copy(alpha = currentAlpha))
-                .offset { IntOffset(0, dismissAnimatable.value.roundToInt()) }
+                .offset { IntOffset(0, dismissOffsetY.roundToInt()) }
         ) {
             // Horizontal Pager of Zoomable Photos
             HorizontalPager(
@@ -201,17 +201,17 @@ fun StationPhotoViewerModal(
                 ZoomablePhotoItem(
                     imageUrl = images[page],
                     onDismissDrag = { deltaY ->
-                        coroutineScope.launch {
-                            val newY = (dismissAnimatable.value + deltaY).coerceAtLeast(0f)
-                            dismissAnimatable.snapTo(newY)
-                        }
+                        // Directly mutate offset state without launching a coroutine per drag delta
+                        dismissOffsetY = (dismissOffsetY + deltaY).coerceAtLeast(0f)
                     },
                     onDismissDragEnd = {
-                        if (dismissAnimatable.value >= dismissThresholdPx) {
+                        if (dismissOffsetY >= dismissThresholdPx) {
                             onDismiss()
                         } else {
                             coroutineScope.launch {
-                                dismissAnimatable.animateTo(0f, animationSpec = tween(200))
+                                Animatable(dismissOffsetY).animateTo(0f, animationSpec = tween(200)) {
+                                    dismissOffsetY = value
+                                }
                             }
                         }
                     }

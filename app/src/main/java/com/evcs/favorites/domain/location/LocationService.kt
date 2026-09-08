@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
@@ -28,7 +29,8 @@ import kotlin.coroutines.resume
  */
 open class LocationService(
     private val context: Context? = null,
-    private val fusedLocationClient: FusedLocationProviderClient? = context?.let { LocationServices.getFusedLocationProviderClient(it) }
+    private val fusedLocationClient: FusedLocationProviderClient? = context?.let { LocationServices.getFusedLocationProviderClient(it) },
+    private val locationProvider: (suspend () -> Location?)? = null
 ) {
     private val _locationState = MutableStateFlow<Location?>(null)
 
@@ -46,7 +48,7 @@ open class LocationService(
      * Checks whether the app currently holds fine or coarse location runtime permission.
      */
     open fun hasLocationPermission(): Boolean {
-        val ctx = context ?: return false
+        val ctx = context ?: return (locationProvider != null)
         val fineGranted = ContextCompat.checkSelfPermission(
             ctx,
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -76,45 +78,67 @@ open class LocationService(
 
     /**
      * Fetches a single fresh location update using [Priority.PRIORITY_BALANCED_POWER_ACCURACY]
+     * for low battery consumption with default 8s timeout.
+     */
+    open suspend fun getFreshLocation(): Location? = getFreshLocation(timeoutMs = 8_000L)
+
+    /**
+     * Fetches a single fresh location update using [Priority.PRIORITY_BALANCED_POWER_ACCURACY]
      * for low battery consumption. If fresh location fails, falls back to last known location.
+     * Enforces a configurable timeout (default 8 seconds) to prevent caller freezing.
      *
-     * @return Fresh or cached [Location], or null if permissions are absent or location is disabled.
+     * @param timeoutMs Timeout limit in milliseconds (default 8,000ms).
+     * @return Fresh or cached [Location], or null if permissions are absent, location is disabled, or acquisition times out.
      */
     @SuppressLint("MissingPermission")
-    open suspend fun getFreshLocation(): Location? {
-        val client = fusedLocationClient ?: return null
+    open suspend fun getFreshLocation(timeoutMs: Long): Location? {
         if (!hasLocationPermission()) {
             return null
         }
 
-        return suspendCancellableCoroutine { continuation ->
-            val cancellationTokenSource = CancellationTokenSource()
-            continuation.invokeOnCancellation {
-                cancellationTokenSource.cancel()
+        val customProvider = locationProvider
+        if (customProvider != null) {
+            return withTimeoutOrNull(timeoutMs) {
+                val loc = customProvider()
+                if (loc != null) {
+                    _locationState.value = loc
+                }
+                loc
             }
+        }
 
-            client.getCurrentLocation(
-                Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-                cancellationTokenSource.token
-            ).addOnSuccessListener { location ->
-                if (location != null) {
-                    _locationState.value = location
+        val client = fusedLocationClient ?: return null
+
+        return withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine { continuation ->
+                val cancellationTokenSource = CancellationTokenSource()
+                continuation.invokeOnCancellation {
+                    cancellationTokenSource.cancel()
                 }
-                if (continuation.isActive) {
-                    continuation.resume(location)
-                }
-            }.addOnFailureListener {
-                // Fallback to last known location
-                client.lastLocation.addOnSuccessListener { lastLoc ->
-                    if (lastLoc != null) {
-                        _locationState.value = lastLoc
+
+                client.getCurrentLocation(
+                    Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    cancellationTokenSource.token
+                ).addOnSuccessListener { location ->
+                    if (location != null) {
+                        _locationState.value = location
                     }
                     if (continuation.isActive) {
-                        continuation.resume(lastLoc)
+                        continuation.resume(location)
                     }
                 }.addOnFailureListener {
-                    if (continuation.isActive) {
-                        continuation.resume(null)
+                    // Fallback to last known location
+                    client.lastLocation.addOnSuccessListener { lastLoc ->
+                        if (lastLoc != null) {
+                            _locationState.value = lastLoc
+                        }
+                        if (continuation.isActive) {
+                            continuation.resume(lastLoc)
+                        }
+                    }.addOnFailureListener {
+                        if (continuation.isActive) {
+                            continuation.resume(null)
+                        }
                     }
                 }
             }

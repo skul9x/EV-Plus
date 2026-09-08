@@ -8,6 +8,12 @@ import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
@@ -18,19 +24,24 @@ import java.util.UUID
  * 1. Initialize Android TextToSpeech with Vietnamese locale (`vi-VN`), falling back to default TTS locale
  *    if the Vietnamese language pack is not installed.
  * 2. Transient audio ducking (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`) so navigation apps or music smoothly duck volume during speech and restore afterward.
- * 3. Announcement queueing before TTS initialization completes.
- * 4. Audio mute/unmute preference control.
- * 5. Complete release of TTS and audio focus resources on service shutdown.
+ * 3. Fallback watchdog timeout to automatically abandon duck focus if TTS engine fails to fire onDone/onError within 6 seconds.
+ * 4. Announcement queueing before TTS initialization completes.
+ * 5. Audio mute/unmute preference control.
+ * 6. Complete release of TTS and audio focus resources on service shutdown.
  */
 class FocusModeTtsManager(
     context: Context,
     private val audioManager: AudioManager? = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager,
-    initTtsImmediately: Boolean = true
+    initTtsImmediately: Boolean = true,
+    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+    val watchdogTimeoutMs: Long = WATCHDOG_TIMEOUT_MS,
+    private val onDuckFocusAbandoned: (() -> Unit)? = null
 ) : TextToSpeech.OnInitListener {
 
     companion object {
         val VIETNAMESE_LOCALE: Locale = Locale("vi", "VN")
         const val UTTERANCE_ID_PREFIX = "evplus_focus_tts_"
+        const val WATCHDOG_TIMEOUT_MS = 6000L
     }
 
     private val appContext = context.applicationContext
@@ -40,6 +51,8 @@ class FocusModeTtsManager(
     private val activeUtteranceCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     private var audioFocusRequest: AudioFocusRequest? = null
+    private var watchdogJob: Job? = null
+    private var isDuckFocusHeld = false
 
     var isMuted: Boolean = false
         set(value) {
@@ -51,6 +64,15 @@ class FocusModeTtsManager(
 
     val isInitialized: Boolean
         get() = isTtsInitialized
+
+    val isAudioDuckingActive: Boolean
+        get() = isDuckFocusHeld
+
+    val isWatchdogActive: Boolean
+        get() = watchdogJob?.isActive == true
+
+    val activeUtterances: Int
+        get() = activeUtteranceCount.get()
 
     init {
         initAudioFocusRequest()
@@ -91,7 +113,8 @@ class FocusModeTtsManager(
 
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
-                    // Audio focus ducking active
+                    // Audio focus ducking active; ensure watchdog is running
+                    startWatchdog()
                 }
 
                 override fun onDone(utteranceId: String?) {
@@ -161,6 +184,7 @@ class FocusModeTtsManager(
 
         activeUtteranceCount.incrementAndGet()
         requestDuckAudioFocus()
+        startWatchdog()
 
         val utteranceId = "$UTTERANCE_ID_PREFIX${UUID.randomUUID()}"
         val params = Bundle()
@@ -174,17 +198,43 @@ class FocusModeTtsManager(
     }
 
     /**
+     * Starts watchdog timer to automatically abandon duck focus after [timeoutMs]
+     * if the TTS engine hangs or fails to call onDone/onError.
+     */
+    fun startWatchdog(timeoutMs: Long = watchdogTimeoutMs): Job {
+        watchdogJob?.cancel()
+        return coroutineScope.launch {
+            delay(timeoutMs)
+            if (activeUtteranceCount.get() > 0) {
+                activeUtteranceCount.set(0)
+                abandonDuckAudioFocus()
+            }
+        }.also { watchdogJob = it }
+    }
+
+    /**
+     * Cancels active watchdog timer.
+     */
+    fun cancelWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+    }
+
+    /**
      * Requests transient audio ducking focus.
      */
     fun requestDuckAudioFocus(): Boolean {
+        isDuckFocusHeld = true
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (audioManager == null) {
+                true
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 audioFocusRequest?.let {
-                    audioManager?.requestAudioFocus(it) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                    audioManager.requestAudioFocus(it) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
                 } ?: false
             } else {
                 @Suppress("DEPRECATION")
-                audioManager?.requestAudioFocus(
+                audioManager.requestAudioFocus(
                     null,
                     AudioManager.STREAM_MUSIC,
                     AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
@@ -199,6 +249,8 @@ class FocusModeTtsManager(
      * Releases transient audio ducking focus and restores background audio volume.
      */
     fun abandonDuckAudioFocus() {
+        cancelWatchdog()
+        isDuckFocusHeld = false
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 audioFocusRequest?.let {
@@ -210,12 +262,14 @@ class FocusModeTtsManager(
             }
         } catch (_: Exception) {
         }
+        onDuckFocusAbandoned?.invoke()
     }
 
     /**
      * Stops ongoing speech and abandons audio focus ducking.
      */
     fun stop() {
+        cancelWatchdog()
         activeUtteranceCount.set(0)
         try {
             textToSpeech?.stop()
@@ -228,6 +282,7 @@ class FocusModeTtsManager(
      * Shuts down TTS engine and releases all audio and system resources.
      */
     fun shutdown() {
+        cancelWatchdog()
         isTtsInitialized = false
         activeUtteranceCount.set(0)
         synchronized(pendingSpeechQueue) {

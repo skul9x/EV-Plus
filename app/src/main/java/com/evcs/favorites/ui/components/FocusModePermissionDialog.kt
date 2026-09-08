@@ -1,7 +1,9 @@
 package com.evcs.favorites.ui.components
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -27,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.evcs.favorites.ui.theme.AppIcons
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 
@@ -45,10 +49,26 @@ data class OverlaySettingsIntentSpec(
 object FocusModePermissionDialogHelper {
 
     const val TITLE = "Kích hoạt Chế độ Focus Mode"
-    const val DESCRIPTION = "Để hiển thị trạng thái cổng sạc theo thời gian thực đè lên Google Maps khi đang lái xe, ứng dụng cần quyền 'Hiển thị trên các ứng dụng khác'.\n\nNếu bạn không muốn cấp quyền, Focus Mode vẫn hoạt động bình thường qua Thanh thông báo."
+    const val DESCRIPTION = "Để hiển thị trạng thái cổng sạc theo thời gian thực đè lên Google Maps khi đang lái xe, ứng dụng cần quyền 'Hiển thị trên các ứng dụng khác'.\n\nNếu bạn không muốn cấp quyền, Focus Mode vẫn hoạt động bình thường qua Thanh thông báo (cần quyền thông báo trên Android 13+)."
     const val BTN_GRANT_PERMISSION = "Cấp quyền (Cửa sổ nổi)"
     const val BTN_NOTIFICATION_FALLBACK = "Dùng thông báo (Không cần quyền)"
     const val ACTION_MANAGE_OVERLAY_PERMISSION = "android.settings.action.MANAGE_OVERLAY_PERMISSION"
+
+    /**
+     * Checks whether the application currently holds notification permission.
+     * On Android 13+ (API 33+), checks Manifest.permission.POST_NOTIFICATIONS.
+     * On older Android versions, checks if system notifications are enabled.
+     */
+    fun hasNotificationPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
+        }
+    }
 
     /**
      * Builds intent specification for launching Android overlay permissions screen.

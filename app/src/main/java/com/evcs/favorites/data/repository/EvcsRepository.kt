@@ -624,14 +624,40 @@ open class EvcsRepository(
     open suspend fun searchNearbyVinFast(
         lat: Double,
         lon: Double
-    ): Result<List<Station>> = singleFlight.execute("search_${"%.4f".format(Locale.US, lat)}_${"%.4f".format(Locale.US, lon)}") {
-        searchNearbyVinFastInternal(lat, lon)
+    ): Result<List<Station>> {
+        if (isGlobalRateLimited()) {
+            val repoBlocked = globalRateLimitedUntil.get()
+            val apiBlocked = apiClient.globalRateLimitedUntil.get()
+            val blockedUntil = maxOf(repoBlocked, apiBlocked)
+            val remainingSeconds = ((blockedUntil - System.currentTimeMillis() + 999L) / 1000L).coerceAtLeast(1L)
+            return Result.failure(
+                RateLimitException(
+                    retryAfterSeconds = remainingSeconds,
+                    message = "Search nearby VinFast rate limited: Cooldown active for ${remainingSeconds}s"
+                )
+            )
+        }
+        return singleFlight.execute("search_${"%.4f".format(Locale.US, lat)}_${"%.4f".format(Locale.US, lon)}") {
+            searchNearbyVinFastInternal(lat, lon)
+        }
     }
 
     private suspend fun searchNearbyVinFastInternal(
         lat: Double,
         lon: Double
     ): Result<List<Station>> = withContext(Dispatchers.IO) {
+        if (isGlobalRateLimited()) {
+            val repoBlocked = globalRateLimitedUntil.get()
+            val apiBlocked = apiClient.globalRateLimitedUntil.get()
+            val blockedUntil = maxOf(repoBlocked, apiBlocked)
+            val remainingSeconds = ((blockedUntil - System.currentTimeMillis() + 999L) / 1000L).coerceAtLeast(1L)
+            return@withContext Result.failure(
+                RateLimitException(
+                    retryAfterSeconds = remainingSeconds,
+                    message = "Search nearby VinFast rate limited: Cooldown active for ${remainingSeconds}s"
+                )
+            )
+        }
         val searchResult = apiClient.searchStations(latitude = lat, longitude = lon)
         if (searchResult.isFailure) {
             return@withContext Result.failure(

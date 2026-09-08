@@ -67,6 +67,20 @@ import com.evcs.favorites.ui.theme.EmeraldPrimary
 import com.evcs.favorites.ui.theme.EmeraldPrimaryLight
 import com.evcs.favorites.ui.theme.StatusOffline
 import com.evcs.favorites.ui.theme.StatusOfflineContainer
+import com.evcs.favorites.util.DebounceHelper
+
+/**
+ * Pure helper for OTP validation logic and race condition prevention.
+ */
+object LoginScreenHelper {
+    fun isOtpSubmitEnabled(otpLength: Int, isVerifying: Boolean): Boolean {
+        return otpLength == 6 && !isVerifying
+    }
+
+    fun shouldAutoSubmit(otpLength: Int, isVerifying: Boolean): Boolean {
+        return otpLength == 6 && !isVerifying
+    }
+}
 
 /**
  * Modern, high-performance Login screen supporting Email OTP authentication.
@@ -96,6 +110,18 @@ fun LoginScreen(
 
     val isStepOtp = stepOtpActive || uiState is FavoritesUiState.RequestingOtp || uiState is FavoritesUiState.VerifyingOtp
     val isLoading = uiState is FavoritesUiState.VerifyingOtp
+
+    val otpDebounce = remember { DebounceHelper(1000L) }
+    val submitOtp: (String) -> Unit = remember(onVerifyOtp, isLoading, otpDebounce) {
+        { code ->
+            if (LoginScreenHelper.isOtpSubmitEnabled(code.length, isLoading)) {
+                focusManager.clearFocus()
+                otpDebounce.runIfAllowed {
+                    onVerifyOtp(code)
+                }
+            }
+        }
+    }
 
     Surface(
         modifier = modifier
@@ -293,9 +319,8 @@ fun LoginScreen(
                         // Limit to 6 numeric characters
                         if (input.length <= 6 && input.all { it.isDigit() }) {
                             otpInput = input
-                            if (input.length == 6) {
-                                focusManager.clearFocus()
-                                onVerifyOtp(input)
+                            if (LoginScreenHelper.shouldAutoSubmit(input.length, isLoading)) {
+                                submitOtp(input)
                             }
                         }
                     },
@@ -321,8 +346,7 @@ fun LoginScreen(
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {
-                            focusManager.clearFocus()
-                            if (otpInput.length == 6) onVerifyOtp(otpInput)
+                            submitOtp(otpInput)
                         }
                     ),
                     shape = RoundedCornerShape(14.dp),
@@ -337,10 +361,9 @@ fun LoginScreen(
 
                 Button(
                     onClick = {
-                        focusManager.clearFocus()
-                        if (otpInput.length == 6) onVerifyOtp(otpInput)
+                        submitOtp(otpInput)
                     },
-                    enabled = otpInput.length == 6 && !isLoading,
+                    enabled = LoginScreenHelper.isOtpSubmitEnabled(otpInput.length, isLoading),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = EmeraldPrimary,
                         disabledContainerColor = EmeraldPrimary.copy(alpha = 0.35f),

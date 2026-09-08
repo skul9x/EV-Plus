@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToLong
 
 /**
@@ -130,6 +131,16 @@ class FavoritesViewModel(
      */
     val email: String
         get() = pendingEmail.ifBlank { authEngine.sessionManager.userEmail.orEmpty() }
+
+    private val isVerifyingOtp = AtomicBoolean(false)
+
+    val isOtpVerificationInFlight: Boolean
+        get() = isVerifyingOtp.get()
+
+    private val _togglingStationIds = MutableStateFlow<Set<String>>(emptySet())
+    val togglingStationIds: StateFlow<Set<String>> = _togglingStationIds.asStateFlow()
+
+    private val removeJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
     init {
         favoritesLoadJob = viewModelScope.launch(ioDispatcher) {
@@ -255,8 +266,13 @@ class FavoritesViewModel(
     /**
      * Verifies the entered OTP numeric code.
      * Transitions state to [FavoritesUiState.VerifyingOtp] and, upon success, loads favorites.
+     * Guards against duplicate concurrent verification invocations.
      */
     fun verifyOtp(otpCode: String, explicitEmail: String? = null): Job {
+        if (!isVerifyingOtp.compareAndSet(false, true)) {
+            return Job().apply { complete() }
+        }
+
         val trimmedOtp = otpCode.trim()
         val targetEmail = explicitEmail?.trim()?.ifBlank { null }
             ?: pendingEmail.ifBlank { authEngine.sessionManager.userEmail.orEmpty() }
@@ -264,12 +280,16 @@ class FavoritesViewModel(
         _uiState.value = FavoritesUiState.VerifyingOtp
 
         return viewModelScope.launch(dispatcher) {
-            val result = authEngine.verifyOtp(targetEmail, trimmedOtp)
-            if (result.isSuccess) {
-                fetchFavorites().join()
-            } else {
-                val errorMsg = result.exceptionOrNull()?.message ?: "Xác thực mã OTP không thành công"
-                _uiState.value = FavoritesUiState.Error(errorMsg)
+            try {
+                val result = authEngine.verifyOtp(targetEmail, trimmedOtp)
+                if (result.isSuccess) {
+                    fetchFavorites().join()
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "Xác thực mã OTP không thành công"
+                    _uiState.value = FavoritesUiState.Error(errorMsg)
+                }
+            } finally {
+                isVerifyingOtp.set(false)
             }
         }
     }
@@ -654,8 +674,15 @@ class FavoritesViewModel(
      * Restores the station and detail selection if the repository operation fails and rolls back.
      */
     fun removeFavorite(stationId: String): Job {
+        if (_togglingStationIds.value.contains(stationId)) {
+            return removeJobs[stationId] ?: Job().apply { complete() }
+        }
+
         val removedStation = (_uiState.value as? FavoritesUiState.Success)?.stations?.find { it.id == stationId }
         val removedSelected = _selectedStationForDetail.value?.takeIf { it.id == stationId }
+
+        _togglingStationIds.update { it + stationId }
+
         routingCache.remove(stationId)
         if (_selectedStationForDetail.value?.id == stationId) {
             _selectedStationForDetail.value = null
@@ -669,25 +696,32 @@ class FavoritesViewModel(
                 currentState
             }
         }
-        return viewModelScope.launch(dispatcher) {
-            val result = repository.removeFavoriteStation(stationId)
-            if (result.isFailure && removedStation != null) {
-                _uiState.update { currentState ->
-                    if (currentState is FavoritesUiState.Success && currentState.stations.none { it.id == stationId }) {
-                        val restoredStations = sortStations(currentState.stations + removedStation)
-                        currentState.copy(
-                            stations = restoredStations,
-                            selectedStationForDetail = currentState.selectedStationForDetail ?: removedSelected
-                        )
-                    } else {
-                        currentState
+        val job = viewModelScope.launch(dispatcher) {
+            try {
+                val result = repository.removeFavoriteStation(stationId)
+                if (result.isFailure && removedStation != null) {
+                    _uiState.update { currentState ->
+                        if (currentState is FavoritesUiState.Success && currentState.stations.none { it.id == stationId }) {
+                            val restoredStations = sortStations(currentState.stations + removedStation)
+                            currentState.copy(
+                                stations = restoredStations,
+                                selectedStationForDetail = currentState.selectedStationForDetail ?: removedSelected
+                            )
+                        } else {
+                            currentState
+                        }
+                    }
+                    if (removedSelected != null && _selectedStationForDetail.value == null) {
+                        _selectedStationForDetail.value = removedSelected
                     }
                 }
-                if (removedSelected != null && _selectedStationForDetail.value == null) {
-                    _selectedStationForDetail.value = removedSelected
-                }
+            } finally {
+                _togglingStationIds.update { it - stationId }
+                removeJobs.remove(stationId)
             }
         }
+        removeJobs[stationId] = job
+        return job
     }
 
     /**
@@ -743,6 +777,7 @@ class FavoritesViewModel(
         super.onCleared()
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
+        removeJobs.clear()
         stationDetailCoordinator.dismissStationDetail()
     }
 

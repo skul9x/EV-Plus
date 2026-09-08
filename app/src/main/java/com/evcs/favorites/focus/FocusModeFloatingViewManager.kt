@@ -12,6 +12,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.evcs.favorites.util.DebounceHelper
 import kotlin.math.abs
 
 /**
@@ -43,6 +44,23 @@ class FocusModeFloatingViewManager(
     private var detailedTiersView: TextView? = null
     private var rerouteButtonView: TextView? = null
     private var currentAlternativeStation: AlternativeStationRecommendation? = null
+
+    internal var rerouteDebounceHelper = DebounceHelper(1000L)
+
+    fun setRerouteDebounceHelperForTesting(helper: DebounceHelper) {
+        rerouteDebounceHelper = helper
+    }
+
+    fun setAlternativeStationForTesting(station: AlternativeStationRecommendation?) {
+        currentAlternativeStation = station
+    }
+
+    fun triggerReroute(): Boolean {
+        val alt = currentAlternativeStation ?: return false
+        return rerouteDebounceHelper.runIfAllowed {
+            onReroute(alt)
+        }
+    }
 
     val isAttached: Boolean
         get() = isViewAttached
@@ -327,9 +345,7 @@ class FocusModeFloatingViewManager(
             visibility = View.GONE
             isClickable = true
             setOnClickListener {
-                currentAlternativeStation?.let { alt ->
-                    onReroute(alt)
-                }
+                triggerReroute()
             }
         }
         rerouteButtonView = rerouteBtn

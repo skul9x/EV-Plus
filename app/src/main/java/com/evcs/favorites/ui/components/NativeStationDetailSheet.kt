@@ -1,11 +1,15 @@
 package com.evcs.favorites.ui.components
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.evcs.favorites.focus.FocusModeForegroundService
 import com.evcs.favorites.focus.FocusServiceIntentSpec
+import com.evcs.favorites.util.DebounceHelper
 import kotlinx.serialization.json.Json
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -144,6 +148,7 @@ data class FavoriteButtonSpec(
     val label: String,
     val contentDescription: String,
     val isFavorite: Boolean,
+    val isEnabled: Boolean = true,
     val containerColor: Color,
     val contentColor: Color
 )
@@ -278,6 +283,7 @@ object NativeStationDetailSheetHelper {
      */
     fun resolveFavoriteButtonSpec(
         isFavorite: Boolean,
+        isToggleInProgress: Boolean = false,
         surfaceVariant: Color = Color(0xFFE7E0EC),
         onSurfaceVariant: Color = Color(0xFF49454F)
     ): FavoriteButtonSpec {
@@ -286,6 +292,7 @@ object NativeStationDetailSheetHelper {
                 label = LABEL_SAVED,
                 contentDescription = DESC_UNFAVORITE,
                 isFavorite = true,
+                isEnabled = !isToggleInProgress,
                 containerColor = EmeraldContainerDark,
                 contentColor = EmeraldPrimaryLight
             )
@@ -294,6 +301,7 @@ object NativeStationDetailSheetHelper {
                 label = LABEL_FAVORITE,
                 contentDescription = LABEL_FAVORITE,
                 isFavorite = false,
+                isEnabled = !isToggleInProgress,
                 containerColor = surfaceVariant,
                 contentColor = onSurfaceVariant
             )
@@ -594,6 +602,22 @@ object NativeStationDetailSheetHelper {
     }
 
     /**
+     * Checks if notification permission is granted.
+     */
+    fun hasNotificationPermission(context: Context): Boolean {
+        return FocusModePermissionDialogHelper.hasNotificationPermission(context)
+    }
+
+    /**
+     * Determines whether POST_NOTIFICATIONS permission must be requested before
+     * entering notification fallback mode on Android 13+ (API 33+).
+     */
+    fun shouldRequestNotificationPermission(context: Context): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !hasNotificationPermission(context)
+    }
+
+    /**
      * Opens system overlay settings targeting this application.
      */
     fun openOverlaySettings(context: Context) {
@@ -618,24 +642,37 @@ object NativeStationDetailSheetHelper {
         )
     }
 
+    internal var focusDebounceHelper = DebounceHelper(1000L)
+
+    fun setFocusDebounceHelperForTesting(helper: DebounceHelper) {
+        focusDebounceHelper = helper
+    }
+
+    fun resetFocusDebounceForTesting() {
+        focusDebounceHelper = DebounceHelper(1000L)
+    }
+
     /**
      * Activates Focus Mode: starts FocusModeForegroundService and launches Google Maps navigation.
+     * Guarded with DebounceHelper to prevent duplicate foreground service starts and duplicate navigations.
      */
     fun startFocusMode(
         context: Context,
         station: Station,
         intentLauncher: ((Intent) -> Unit)? = null
-    ) {
-        try {
-            val serviceIntent = FocusModeForegroundService.createStartIntent(context, station)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
-        } catch (_: Exception) {}
+    ): Boolean {
+        return focusDebounceHelper.runIfAllowed {
+            try {
+                val serviceIntent = FocusModeForegroundService.createStartIntent(context, station)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+            } catch (_: Exception) {}
 
-        launchNavigation(context, station, intentLauncher)
+            launchNavigation(context, station, intentLauncher)
+        }
     }
 }
 
@@ -658,6 +695,7 @@ fun NativeStationDetailSheet(
     onDismiss: () -> Unit,
     onRefresh: () -> Unit,
     isFavorite: Boolean = false,
+    isToggleInProgress: Boolean = false,
     onNavigate: ((Station) -> Unit)? = null,
     onToggleFavorite: ((Station) -> Unit)? = null,
     onShare: ((Station) -> Unit)? = null,
@@ -717,6 +755,12 @@ fun NativeStationDetailSheet(
         }
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        handleStartFocusMode(station)
+    }
+
     val handleFocusModeClick: (Station) -> Unit = remember(handleStartFocusMode, context) {
         { st ->
             if (NativeStationDetailSheetHelper.canDrawOverlays(context)) {
@@ -735,7 +779,11 @@ fun NativeStationDetailSheet(
             },
             onUseNotificationFallback = {
                 showOverlayPermissionDialog = false
-                handleStartFocusMode(station)
+                if (NativeStationDetailSheetHelper.shouldRequestNotificationPermission(context)) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    handleStartFocusMode(station)
+                }
             },
             onDismiss = {
                 showOverlayPermissionDialog = false
@@ -756,6 +804,7 @@ fun NativeStationDetailSheet(
             station = station,
             uiState = uiState,
             isFavorite = isFavorite,
+            isToggleInProgress = isToggleInProgress,
             onRefresh = onRefresh,
             onDismiss = handleDismiss,
             onNavigate = handleNavigate,
@@ -777,6 +826,7 @@ fun NativeStationDetailContent(
     station: Station,
     uiState: StationDetailUiState,
     isFavorite: Boolean,
+    isToggleInProgress: Boolean = false,
     onRefresh: () -> Unit,
     onDismiss: () -> Unit,
     onNavigate: (Station) -> Unit,
@@ -976,10 +1026,22 @@ fun NativeStationDetailContent(
         // ---------------------------------------------------------------------
         // 4. Quick Action Row: Chỉ đường & ⚡ Focus Mode (Navigation), Yêu thích & Chia sẻ
         // ---------------------------------------------------------------------
-        val onNavClick = remember(onNavigate, station) { { onNavigate(station) } }
-        val onFocusClick: () -> Unit = remember(onStartFocusMode, station) {
+        val navDebounce = remember { DebounceHelper(1000L) }
+        val focusDebounce = remember { DebounceHelper(1000L) }
+
+        val onNavClick: () -> Unit = remember(onNavigate, station, navDebounce) {
             {
-                onStartFocusMode?.invoke(station)
+                navDebounce.runIfAllowed {
+                    onNavigate(station)
+                }
+                Unit
+            }
+        }
+        val onFocusClick: () -> Unit = remember(onStartFocusMode, station, focusDebounce) {
+            {
+                focusDebounce.runIfAllowed {
+                    onStartFocusMode?.invoke(station)
+                }
                 Unit
             }
         }
@@ -1075,9 +1137,10 @@ fun NativeStationDetailContent(
         ) {
             val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
             val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-            val favoriteSpec = remember(isFavorite, surfaceVariant, onSurfaceVariant) {
+            val favoriteSpec = remember(isFavorite, isToggleInProgress, surfaceVariant, onSurfaceVariant) {
                 NativeStationDetailSheetHelper.resolveFavoriteButtonSpec(
                     isFavorite = isFavorite,
+                    isToggleInProgress = isToggleInProgress,
                     surfaceVariant = surfaceVariant,
                     onSurfaceVariant = onSurfaceVariant
                 )
@@ -1085,11 +1148,14 @@ fun NativeStationDetailContent(
 
             // Secondary Pill: Yêu thích
             FilledTonalButton(
-                onClick = onFavClick,
+                onClick = { if (!isToggleInProgress) onFavClick() },
+                enabled = favoriteSpec.isEnabled,
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = favoriteSpec.containerColor,
-                    contentColor = favoriteSpec.contentColor
+                    contentColor = favoriteSpec.contentColor,
+                    disabledContainerColor = favoriteSpec.containerColor.copy(alpha = 0.5f),
+                    disabledContentColor = favoriteSpec.contentColor.copy(alpha = 0.4f)
                 ),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                 modifier = Modifier
@@ -1100,7 +1166,7 @@ fun NativeStationDetailContent(
                     imageVector = if (favoriteSpec.isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = favoriteSpec.contentDescription,
                     modifier = Modifier.size(18.dp),
-                    tint = favoriteSpec.contentColor
+                    tint = if (isToggleInProgress) favoriteSpec.contentColor.copy(alpha = 0.4f) else favoriteSpec.contentColor
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
@@ -1108,6 +1174,7 @@ fun NativeStationDetailContent(
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold
                     ),
+                    color = if (isToggleInProgress) favoriteSpec.contentColor.copy(alpha = 0.4f) else favoriteSpec.contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

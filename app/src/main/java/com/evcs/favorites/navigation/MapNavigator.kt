@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.evcs.favorites.util.DebounceHelper
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -34,6 +35,16 @@ object MapNavigator {
 
     const val ACTION_VIEW = "android.intent.action.VIEW"
     const val GOOGLE_MAPS_PACKAGE = "com.google.android.apps.maps"
+
+    internal var debounceHelper = DebounceHelper(1000L)
+
+    fun setDebounceHelperForTesting(helper: DebounceHelper) {
+        debounceHelper = helper
+    }
+
+    fun resetDebounceForTesting() {
+        debounceHelper = DebounceHelper(1000L)
+    }
 
     /**
      * Encodes station label for inclusion in Geo URI query parameters.
@@ -144,6 +155,20 @@ object MapNavigator {
      * @return true if an intent was successfully dispatched; false otherwise.
      */
     fun navigate(
+        context: Context,
+        latitude: Double,
+        longitude: Double,
+        stationName: String? = null,
+        intentLauncher: ((Intent) -> Unit)? = null
+    ): Boolean {
+        var dispatched = false
+        val allowed = debounceHelper.runIfAllowed {
+            dispatched = doNavigate(context, latitude, longitude, stationName, intentLauncher)
+        }
+        return allowed && dispatched
+    }
+
+    private fun doNavigate(
         context: Context,
         latitude: Double,
         longitude: Double,

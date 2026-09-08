@@ -48,7 +48,8 @@ data class NearbyUiState(
     val isDcSubFilterVisible: Boolean = false,
     val savedCustomConfig: CustomFilterConfig? = null,
     val showCustomConfigPrompt: Boolean = false,
-    val lastRefreshTimestamp: Long = 0L
+    val lastRefreshTimestamp: Long = 0L,
+    val togglingStationIds: Set<String> = emptySet()
 ) {
     /**
      * Dynamic feedback string for the info pill above stations list.

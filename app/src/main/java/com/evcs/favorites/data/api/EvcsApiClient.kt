@@ -213,6 +213,17 @@ open class EvcsApiClient(
         return blockedUntil > 0L && System.currentTimeMillis() < blockedUntil
     }
 
+    fun checkRateLimitOrThrow() {
+        if (isGlobalRateLimited()) {
+            val blockedUntil = globalRateLimitedUntil.get()
+            val remainingSeconds = ((blockedUntil - System.currentTimeMillis() + 999L) / 1000L).coerceAtLeast(1L)
+            throw RateLimitException(
+                retryAfterSeconds = remainingSeconds,
+                message = "Client rate limited: Cooldown active for ${remainingSeconds}s"
+            )
+        }
+    }
+
     fun resetRateLimitCooldown() {
         globalRateLimitedUntil.set(0L)
     }
@@ -222,6 +233,7 @@ open class EvcsApiClient(
      */
     open suspend fun fetchFavorites(): Result<FavoritesResponse> = withContext(Dispatchers.IO) {
         try {
+            checkRateLimitOrThrow()
             val url = "$baseUrl/favorite.html"
             val requestBuilder = Request.Builder()
                 .url(url)
@@ -284,6 +296,7 @@ open class EvcsApiClient(
         csrf: String = sessionManager.csrfToken.orEmpty()
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            checkRateLimitOrThrow()
             val url = "$baseUrl/favorite.html"
             val payload = SaveFavoritesRequest(
                 action = "save",
@@ -336,6 +349,7 @@ open class EvcsApiClient(
         token: String = DEFAULT_SEARCH_TOKEN
     ): Result<List<SearchStationRaw>> = withContext(Dispatchers.IO) {
         try {
+            checkRateLimitOrThrow()
             val url = "$baseUrl/search?t=$token"
             val payload = SearchRequest(
                 latitude = latitude,
@@ -403,6 +417,7 @@ open class EvcsApiClient(
         evse: String = "VinFast"
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
+            checkRateLimitOrThrow()
             val url = StationUrlBuilder.buildStationDetailUrl(stationName, locationId, baseUrl, evse)
             val requestBuilder = Request.Builder()
                 .url(url)

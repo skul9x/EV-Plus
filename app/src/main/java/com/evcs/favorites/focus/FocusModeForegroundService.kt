@@ -1,5 +1,6 @@
 package com.evcs.favorites.focus
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,10 +8,13 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.evcs.favorites.EvPlusApplication
 import com.evcs.favorites.MainActivity
 import com.evcs.favorites.R
@@ -170,6 +174,27 @@ class FocusModeForegroundService : Service() {
             }
             context.startService(intent)
         }
+
+        /**
+         * Verifies whether notification permission is granted on the current OS version.
+         */
+        fun hasNotificationPermission(context: Context): Boolean {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                NotificationManagerCompat.from(context).areNotificationsEnabled()
+            }
+        }
+    }
+
+    /**
+     * Checks whether the service currently has permission to dispatch notifications.
+     */
+    fun hasNotificationPermission(): Boolean {
+        return hasNotificationPermission(applicationContext)
     }
 
     private val serviceJob = SupervisorJob()
@@ -350,7 +375,17 @@ class FocusModeForegroundService : Service() {
                     state = state,
                     isFallbackMode = !canDrawNow
                 )
-                notificationManager?.notify(NOTIFICATION_ID, updatedNotification)
+                if (hasNotificationPermission()) {
+                    try {
+                        notificationManager?.notify(NOTIFICATION_ID, updatedNotification)
+                    } catch (e: Exception) {
+                        AppDebugLogger.log(
+                            tag = DebugLogTag.FOCUS_MODE,
+                            level = DebugLogLevel.WARN,
+                            message = "Focus Mode Service: Failed to dispatch notification: ${e.message}"
+                        )
+                    }
+                }
             }
         }
 

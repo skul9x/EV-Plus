@@ -42,6 +42,10 @@ import com.evcs.favorites.ui.theme.EmeraldContainerDark
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 import com.evcs.favorites.ui.theme.StatusAvailable
 
+object FavoritesProfileHeaderHelper {
+    fun isSignInButtonEnabled(isSigningIn: Boolean): Boolean = !isSigningIn
+}
+
 /**
  * Account and Profile header displayed at the top of FavoritesScreen.
  *
@@ -55,6 +59,7 @@ fun FavoritesProfileHeader(
     onSignOutClick: () -> Unit,
     syncStatusText: String = "Đã đồng bộ",
     isSyncing: Boolean = false,
+    isSigningIn: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val isAuthenticated = authUser != null && !authUser.isAnonymous
@@ -119,15 +124,25 @@ fun FavoritesProfileHeader(
 
                 Button(
                     onClick = onSignInClick,
+                    enabled = FavoritesProfileHeaderHelper.isSignInButtonEnabled(isSigningIn),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = EmeraldPrimary,
+                        disabledContainerColor = EmeraldPrimary.copy(alpha = 0.5f),
                         contentColor = Color.White
                     ),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
+                    if (isSigningIn) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
                     Text(
-                        text = "Đăng nhập",
+                        text = if (isSigningIn) "Đang đăng nhập..." else "Đăng nhập",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }

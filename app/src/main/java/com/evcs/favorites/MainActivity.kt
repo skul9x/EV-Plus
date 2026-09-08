@@ -166,8 +166,8 @@ fun FavoritesApp(
     val routingSettings by viewModel.routingSettings.collectAsStateWithLifecycle()
 
     var currentTab by rememberSaveable { mutableStateOf(AppTab.NEARBY) }
-    var showPermissionRationale by remember { mutableStateOf(false) }
-    var rationaleDismissed by remember { mutableStateOf(false) }
+    var showPermissionRationale by rememberSaveable { mutableStateOf(false) }
+    var rationaleDismissed by rememberSaveable { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -238,6 +238,8 @@ fun FavoritesApp(
                         }
                     }
 
+                    val togglingStationIds by viewModel.togglingStationIds.collectAsStateWithLifecycle()
+
                     FavoritesScreen(
                         uiState = uiState,
                         onRefresh = { viewModel.refresh() },
@@ -246,6 +248,7 @@ fun FavoritesApp(
                         onRemoveFavoriteClick = onRemoveFavorite,
                         onStationClick = onStationClick,
                         selectedStationForDetail = selectedStation,
+                        togglingStationIds = togglingStationIds,
                         onDismissDetail = {
                             viewModel.dismissStationDetail()
                         },

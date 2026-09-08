@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.util.DebounceHelper
 import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.data.routing.DrivingMetrics
 import com.evcs.favorites.data.routing.RoutingEngineType
@@ -81,6 +82,7 @@ fun StationCard(
     onRemoveFavoriteClick: ((Station) -> Unit)? = null,
     onFavoriteClick: ((Station) -> Unit)? = null,
     isFavorite: Boolean = false,
+    isToggleInProgress: Boolean = false,
     onStationClick: (Station) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -252,13 +254,14 @@ fun StationCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             // Action Buttons Row: 1-Tap "Chỉ đường" Button + Heart Favorite or Trash Action
+            val navDebounce = remember { DebounceHelper(1000L) }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
-                    onClick = { onNavigateClick(station) },
+                    onClick = { navDebounce.runIfAllowed { onNavigateClick(station) } },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = EmeraldPrimary,
                         contentColor = Color.White
@@ -289,16 +292,17 @@ fun StationCard(
                         NearbyUiHelper.resolveFavoriteIconState(isFavorite)
                     }
                     IconButton(
-                        onClick = { onFavoriteClick(station) },
+                        onClick = { if (!isToggleInProgress) onFavoriteClick(station) },
+                        enabled = !isToggleInProgress,
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = if (isToggleInProgress) 0.25f else 0.5f))
                     ) {
                         Icon(
                             imageVector = heartState.icon,
                             contentDescription = heartState.contentDescription,
-                            tint = heartState.tintColor,
+                            tint = if (isToggleInProgress) heartState.tintColor.copy(alpha = 0.4f) else heartState.tintColor,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -306,16 +310,17 @@ fun StationCard(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     IconButton(
-                        onClick = { onRemoveFavoriteClick(station) },
+                        onClick = { if (!isToggleInProgress) onRemoveFavoriteClick(station) },
+                        enabled = !isToggleInProgress,
                         modifier = Modifier
                             .size(44.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = if (isToggleInProgress) 0.25f else 0.5f))
                     ) {
                         Icon(
                             imageVector = AppIcons.DeleteOutline,
                             contentDescription = "Xóa yêu thích",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isToggleInProgress) 0.3f else 0.7f),
                             modifier = Modifier.size(20.dp)
                         )
                     }

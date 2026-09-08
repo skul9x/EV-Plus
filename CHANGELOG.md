@@ -18,16 +18,31 @@ All notable changes to this project will be documented in this file.
   - Preserved multi-tier fallback mechanism to generic `geo:` intent and browser routing if Google Maps is absent.
   - Added comprehensive verification suite `FocusModeDirectNavigationTest.kt` (100% PASS).
 
-## [2026-09-07] - Click-Spam Protection, Concurrency & Edge-Case Hardening Plan
+## [2026-09-08] - Click-Spam Protection, Concurrency & Edge-Case Hardening (Phases 01 - 04)
 
-### Added
-- **Click-Spam & Edge-Case Hardening Architecture (`plans/260907-0025-click-spam-and-edge-case-hardening/`)**:
-  - Comprehensive 4-phase hardening plan covering:
-    - **Phase 01**: Generic `DebounceHelper`, 1-Tap navigation throttling in `MapNavigator`, debounced Focus Mode & reroute clicks, OTP auto-submit double-click protection, and Google Sign-In button disabling.
-    - **Phase 02**: Coroutine `Mutex` synchronization in `FirestoreFavoritesRepository`, in-flight station toggle tracking (`togglingStationIds`), toast notification spam suppression, and UI button disabling.
-    - **Phase 03**: 8-second GPS acquisition timeout in `LocationService.getFreshLocation()`, re-entrant scan job guard on refresh, and runtime `POST_NOTIFICATIONS` permission flow for Android 13+ (API 33+).
-    - **Phase 04**: Pre-network HTTP 429 rate limit cooldown checks in `EvcsApiClient` & `EvcsRepository`, lightbox continuous gesture optimization (zero per-frame coroutine allocations), TTS audio ducking 6s watchdog timeout, and `rememberSaveable` dialog state preservation across rotations.
-  - Verification strategy: Strictly **one** dedicated comprehensive unit test file per phase, verified via `./gradlew testDebugUnitTest`.
+### Added & Hardened
+- **Phase 01: Action Debounce & Throttling Engine**:
+  - Implemented `DebounceHelper` (`debounceLatest`, `throttleFirst`, `ClickGuard`) across navigation triggers, Focus Mode start, auto-reroute, and authentication submit actions.
+  - Added fast double-tap / spam protection in `MapNavigator`, OTP auto-submit, and Google One Tap sign-in.
+  - Verification: `ActionDebounceAndThrottlingTest.kt` (100% PASS).
+- **Phase 02: Thread-Safe Favorites Synchronization & Rapid-Click Guard**:
+  - Added coroutine `Mutex` synchronization in `FirestoreFavoritesRepository` to prevent concurrent write race conditions.
+  - Exposed `togglingStationIds` flow to track in-flight favorite mutations and disable favorite button during sync.
+  - Suppressed duplicate toast spam and guaranteed rollback on cloud sync failure.
+  - Verification: `FavoriteConcurrencyAndThreadSafetyTest.kt` (100% PASS).
+- **Phase 03: GPS Timeout, Scan Guard & Android 13+ Notification Permissions**:
+  - Added strict 8-second GPS acquisition timeout (`withTimeoutOrNull`) in `LocationService.getFreshLocation()` with user-friendly Vietnamese fallback.
+  - Enforced active scan job guard in `NearbyViewModel.refresh()` and `scanNearbyStations()`.
+  - Implemented runtime `POST_NOTIFICATIONS` permission check and rationale flow for Android 13+ (API 33+) before starting foreground service.
+  - Verification: `GpsTimeoutAndNotificationPermissionTest.kt` (100% PASS).
+- **Phase 04: Client Rate Limit Cooldown & Lifecycle Hardening**:
+  - Enforced client-side pre-network rate limit checks in `EvcsApiClient` and `EvcsRepository.searchNearbyVinFast()` to prevent extending Cloudflare/EVCS IP blocks.
+  - Eliminated per-frame coroutine allocation churn in `StationPhotoViewerModal` lightbox drag gestures.
+  - Added 6-second watchdog timeout in `FocusModeTtsManager` to automatically release audio ducking focus if 3rd-party TTS engines hang.
+  - Migrated modal dialog visibility flags (`showRoutingSettings`, `showLoginRequiredDialog`, `showPermissionRationale`) to `rememberSaveable` to preserve states across screen rotations.
+  - Verification: `RateLimitAndLifecycleHardeningTest.kt` (100% PASS).
+- **Build & Device Deployment**:
+  - Successfully assembled debug APK (`app-debug.apk`) and installed/launched via ADB MCP on device `3B658D010BU00000`.
 
 ## [2026-09-06] - Focus Mode 20kW DC Support, Auto-Scroll Filter Fix & AC-Only Sheet Refinement
 

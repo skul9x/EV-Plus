@@ -1,101 +1,122 @@
 {
-  "updated_at": "2026-09-07T01:06:00+07:00",
+  "updated_at": "2026-09-08T07:45:00+07:00",
   "working_on": {
-    "feature": "Focus Mode evcs.vn Station Name & 1-Tap Direct Turn-by-Turn Navigation",
-    "task": "Completed Phase 01 & Phase 02 with 100% test pass rate",
+    "feature": "Click-Spam Protection, Concurrency & Edge-Case Hardening (Plan 260907-0025)",
+    "task": "Completed all 4 phases, 100% unit tests pass, built APK and deployed to Android device via ADB MCP",
     "status": "completed",
     "files": [
-      "plans/260907-0055-focus-mode-name-and-navigation-fix/plan.md",
-      "plans/260907-0055-focus-mode-name-and-navigation-fix/phase-01-turn-by-turn-direct-navigation.md",
-      "plans/260907-0055-focus-mode-name-and-navigation-fix/phase-02-evcs-station-name-resolution.md",
-      "app/src/main/java/com/evcs/favorites/focus/EvcsStationNameResolver.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeState.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeViewLayoutHelper.kt",
-      "app/src/main/java/com/evcs/favorites/focus/FocusModeNotificationHelper.kt",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/plan.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-01-action-debounce-and-throttling.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-02-thread-safe-favorites-sync.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-03-gps-timeout-and-notification-permission.md",
+      "plans/260907-0025-click-spam-and-edge-case-hardening/phase-04-rate-limit-and-lifecycle-hardening.md",
+      "app/src/main/java/com/evcs/favorites/util/DebounceHelper.kt",
+      "app/src/main/java/com/evcs/favorites/util/MapNavigator.kt",
+      "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
+      "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
+      "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
       "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
-      "app/src/main/java/com/evcs/favorites/di/AppContainer.kt",
-      "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt"
+      "app/src/main/java/com/evcs/favorites/data/api/EvcsApiClient.kt",
+      "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
+      "app/src/main/java/com/evcs/favorites/ui/components/StationPhotoViewerModal.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+      "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt"
     ],
     "blockers": [],
-    "notes": "Both phases in 260907-0055 plan are 100% completed and verified via dedicated single test files."
+    "notes": "All 4 phases in 260907-0025 plan are 100% completed, verified with dedicated test suites, assembled into APK and installed onto physical device."
   },
-  "pending_tasks": [
-    {
-      "plan": "260907-0025-click-spam-and-edge-case-hardening",
-      "phase": "01",
-      "task": "Phase 01: Action Debounce & Throttling Engine",
-      "verification_test": "ActionDebounceAndThrottlingTest.kt",
-      "status": "pending"
-    },
-    {
-      "plan": "260907-0025-click-spam-and-edge-case-hardening",
-      "phase": "02",
-      "task": "Phase 02: Thread-Safe Favorites Synchronization & Rapid-Click Guard",
-      "verification_test": "FavoriteConcurrencyAndThreadSafetyTest.kt",
-      "status": "pending"
-    },
-    {
-      "plan": "260907-0025-click-spam-and-edge-case-hardening",
-      "phase": "03",
-      "task": "Phase 03: GPS Timeout, Scan Guard & Android 13+ Notification Permissions",
-      "verification_test": "GpsTimeoutAndNotificationPermissionTest.kt",
-      "status": "pending"
-    },
-    {
-      "plan": "260907-0025-click-spam-and-edge-case-hardening",
-      "phase": "04",
-      "task": "Phase 04: Client Rate Limit & Lifecycle Edge Cases",
-      "verification_test": "RateLimitAndLifecycleHardeningTest.kt",
-      "status": "pending"
-    }
-  ],
+  "pending_tasks": [],
   "recent_changes": [
     {
-      "timestamp": "2026-09-07T01:05:00+07:00",
-      "type": "feature",
-      "description": "Implemented EvcsStationNameResolver and station name preservation during live telemetry polling & auto-reroute recommendation candidate enrichment.",
+      "timestamp": "2026-09-08T07:42:00+07:00",
+      "type": "deployment",
+      "description": "Assembled debug APK (app-debug.apk) and deployed/launched on connected Android device (3B658D010BU00000) via MCP ADB.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/focus/EvcsStationNameResolver.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeTelemetryEngine.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeState.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeViewLayoutHelper.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeNotificationHelper.kt",
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
-        "app/src/main/java/com/evcs/favorites/di/AppContainer.kt",
-        "app/src/test/java/com/evcs/favorites/focus/FocusModeEvcsStationNameTest.kt"
+        "app/build/outputs/apk/debug/app-debug.apk"
       ]
     },
     {
-      "timestamp": "2026-09-07T00:55:00+07:00",
-      "type": "feature",
-      "description": "Implemented 1-Tap Direct Turn-by-Turn Driving Navigation on Focus Mode activation (google.navigation:q=lat,lon&mode=d).",
+      "timestamp": "2026-09-07T20:02:00+07:00",
+      "type": "hardening",
+      "description": "Phase 04: Client rate limit cooldown checks, Lightbox gesture optimization without coroutine allocation churn, TTS 6s audio ducking watchdog timeout, rememberSaveable dialog rotation states.",
       "files": [
+        "app/src/main/java/com/evcs/favorites/data/api/EvcsApiClient.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/StationPhotoViewerModal.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeTtsManager.kt",
+        "app/src/test/java/com/evcs/favorites/hardening/RateLimitAndLifecycleHardeningTest.kt"
+      ]
+    },
+    {
+      "timestamp": "2026-09-07T19:55:00+07:00",
+      "type": "hardening",
+      "description": "Phase 03: LocationService 8s GPS timeout, scan job re-entrancy guard in NearbyViewModel, Android 13+ POST_NOTIFICATIONS runtime permission flow.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeForegroundService.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/FocusModePermissionDialog.kt",
         "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
-        "app/src/test/java/com/evcs/favorites/focus/FocusModeDirectNavigationTest.kt"
+        "app/src/test/java/com/evcs/favorites/hardening/GpsTimeoutAndNotificationPermissionTest.kt"
+      ]
+    },
+    {
+      "timestamp": "2026-09-07T12:49:00+07:00",
+      "type": "hardening",
+      "description": "Phase 02: Thread-safe favorites synchronization with Mutex, togglingStationIds flow, favorite button click disabling, and toast deduplication.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/data/repository/FirestoreFavoritesRepository.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+        "app/src/test/java/com/evcs/favorites/hardening/FavoriteConcurrencyAndThreadSafetyTest.kt"
+      ]
+    },
+    {
+      "timestamp": "2026-09-07T12:33:00+07:00",
+      "type": "hardening",
+      "description": "Phase 01: Generic DebounceHelper, 1-Tap navigation throttling in MapNavigator, Focus Mode & auto-reroute debounced clicks, OTP and Google Sign-In spam guard.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/util/DebounceHelper.kt",
+        "app/src/main/java/com/evcs/favorites/util/MapNavigator.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/NativeStationDetailSheet.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/OtpVerificationModal.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/CloudSyncLoginModal.kt",
+        "app/src/test/java/com/evcs/favorites/hardening/ActionDebounceAndThrottlingTest.kt"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "Here EV API returns generic 'Trạm sạc VinFast' for all stations, wiping out authentic evcs.vn station names during polling",
-      "solution": "Preserve authentic non-generic target.name in pollOnce() and resolve generic names with EvcsStationNameResolver",
+      "error": "Existing package com.evplus.app signatures do not match newer version during adb install",
+      "solution": "Uninstalled existing package via adb_uninstall then streamed install fresh debug APK",
       "resolved": true
     },
     {
-      "error": "Google Maps geo:0,0?q=... preview pin screen required extra tap on 'Bắt đầu'",
-      "solution": "Dispatch direct turn-by-turn intent google.navigation:q=lat,lon&mode=d with Maps package target",
+      "error": "TTS engine hanging or failing to invoke onDone/onError leaves audio ducking active indefinitely",
+      "solution": "Added 6-second watchdog timer in FocusModeTtsManager that automatically abandons duck audio focus",
+      "resolved": true
+    },
+    {
+      "error": "Rapid GPS refresh clicks causing multiple concurrent scan jobs and freezing UI",
+      "solution": "Added active scanJob guard and 8-second GPS timeout with fallback error messaging",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "EvcsStationNameResolver In-Memory Concurrent Caching",
-      "reason": "Prevents redundant network queries when polling or evaluating multiple nearby candidates"
+      "decision": "Pre-network Client Rate Limit Check",
+      "reason": "Prevents issuing HTTP requests during active Cloudflare/EVCS 429 cooldowns, protecting against IP block extension"
     },
     {
-      "decision": "Proximity & Location ID Dual Matching",
-      "reason": "Allows resolving station names even if Here EV API uses a proprietary UUID rather than evcs.vn location ID (<= 100m match)"
+      "decision": "Direct State Mutation in Lightbox Gesture Drag",
+      "reason": "Eliminates per-frame coroutine allocation churn (coroutineScope.launch) during swipe-to-dismiss motion"
+    },
+    {
+      "decision": "rememberSaveable for Modal Dialog Visibility",
+      "reason": "Preserves open dialog states (routing settings, login required, permission rationale) across device rotation"
     }
   ]
 }

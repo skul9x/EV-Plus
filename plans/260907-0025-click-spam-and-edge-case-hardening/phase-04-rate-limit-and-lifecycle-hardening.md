@@ -1,6 +1,6 @@
 # Phase 04: Client Rate Limit & Lifecycle Edge Cases
 
-Status: ⬜ Pending
+Status: ✅ Completed
 Dependencies: [Phase 03: GPS Timeout, Scan Guard & Android 13+ Notification Permissions](file:///home/skul9x/Desktop/Test_Code/EV-Plus-main/plans/260907-0025-click-spam-and-edge-case-hardening/phase-03-gps-timeout-and-notification-permission.md)
 
 ## Objective
@@ -8,23 +8,23 @@ Enforce client-side rate limit validation prior to issuing network requests to p
 
 ## Requirements
 ### Functional
-- [ ] Client-Side Rate Limit Enforcement: `EvcsApiClient` must check `isGlobalRateLimited()` at the start of `searchStations()`, `fetchFavorites()`, and `saveFavorites()`. If currently in cooldown, immediately fail with `RateLimitException` without opening an HTTP connection or making unnecessary network round-trips.
-- [ ] `EvcsRepository.searchNearbyVinFast()` must similarly check `isGlobalRateLimited()` before triggering network operations.
-- [ ] State Preservation across Rotations: Replace `remember` with `rememberSaveable` for modal dialog visibility (`showRoutingSettings`, `showLoginRequiredDialog`, `showPermissionRationale`) in `NearbyScreen` and `MainActivity`.
-- [ ] Lightbox Gesture Performance: Eliminate per-frame coroutine allocation (`coroutineScope.launch`) inside `onDismissDrag` by directly updating animation state via a continuous drag-tracking pattern.
-- [ ] TTS Audio Focus Safety: Enforce a fallback watchdog timeout in `FocusModeTtsManager` so if a 3rd-party TTS engine fails to fire `onDone` or `onError`, audio ducking focus is automatically abandoned within 6 seconds, preventing permanently ducked vehicle audio.
+- [x] Client-Side Rate Limit Enforcement: `EvcsApiClient` must check `isGlobalRateLimited()` at the start of `searchStations()`, `fetchFavorites()`, and `saveFavorites()`. If currently in cooldown, immediately fail with `RateLimitException` without opening an HTTP connection or making unnecessary network round-trips.
+- [x] `EvcsRepository.searchNearbyVinFast()` must similarly check `isGlobalRateLimited()` before triggering network operations.
+- [x] State Preservation across Rotations: Replace `remember` with `rememberSaveable` for modal dialog visibility (`showRoutingSettings`, `showLoginRequiredDialog`, `showPermissionRationale`) in `NearbyScreen` and `MainActivity`.
+- [x] Lightbox Gesture Performance: Eliminate per-frame coroutine allocation (`coroutineScope.launch`) inside `onDismissDrag` by directly updating animation state via a continuous drag-tracking pattern.
+- [x] TTS Audio Focus Safety: Enforce a fallback watchdog timeout in `FocusModeTtsManager` so if a 3rd-party TTS engine fails to fire `onDone` or `onError`, audio ducking focus is automatically abandoned within 6 seconds, preventing permanently ducked vehicle audio.
 
 ### Non-Functional
-- [ ] Zero memory leaks and zero unnecessary coroutine allocations during gesture drag interactions.
-- [ ] Deterministic simulation of rate-limit cooldown, gesture drag, and rotation lifecycle in unit tests.
+- [x] Zero memory leaks and zero unnecessary coroutine allocations during gesture drag interactions.
+- [x] Deterministic simulation of rate-limit cooldown, gesture drag, and rotation lifecycle in unit tests.
 
 ## Implementation Steps
-1. [ ] Add `if (isGlobalRateLimited()) throw RateLimitException(...)` check at the entrance of `EvcsApiClient.searchStations`, `fetchFavorites`, and `saveFavorites`.
-2. [ ] Add pre-network rate-limit check in `EvcsRepository.searchNearbyVinFast`.
-3. [ ] In `StationPhotoViewerModal.kt`, update `detectVerticalDragGestures` to mutate an offset state directly or use an interactive pointer drag listener without launching a new coroutine on every single motion delta.
-4. [ ] In `NearbyScreen.kt` and `MainActivity.kt`, migrate transient dialog flags from `remember` to `rememberSaveable`.
-5. [ ] In `FocusModeTtsManager.kt`, add a watchdog timeout job that calls `abandonDuckAudioFocus()` after 6 seconds of speech execution if not already completed.
-6. [ ] Create single comprehensive test file:
+1. [x] Add `if (isGlobalRateLimited()) throw RateLimitException(...)` check at the entrance of `EvcsApiClient.searchStations`, `fetchFavorites`, and `saveFavorites`.
+2. [x] Add pre-network rate-limit check in `EvcsRepository.searchNearbyVinFast`.
+3. [x] In `StationPhotoViewerModal.kt`, update `detectVerticalDragGestures` to mutate an offset state directly or use an interactive pointer drag listener without launching a new coroutine on every single motion delta.
+4. [x] In `NearbyScreen.kt` and `MainActivity.kt`, migrate transient dialog flags from `remember` to `rememberSaveable`.
+5. [x] In `FocusModeTtsManager.kt`, add a watchdog timeout job that calls `abandonDuckAudioFocus()` after 6 seconds of speech execution if not already completed.
+6. [x] Create single comprehensive test file:
    - `app/src/test/java/com/evcs/favorites/hardening/RateLimitAndLifecycleHardeningTest.kt`
 
 ## Files to Create/Modify
@@ -37,9 +37,9 @@ Enforce client-side rate limit validation prior to issuing network requests to p
 - `app/src/test/java/com/evcs/favorites/hardening/RateLimitAndLifecycleHardeningTest.kt` [NEW] - Comprehensive test file for Phase 04.
 
 ## Test Criteria
-- [ ] Run `./gradlew testDebugUnitTest --tests "com.evcs.favorites.hardening.RateLimitAndLifecycleHardeningTest"`
-- [ ] 100% tests pass.
-- [ ] Strictly only this single test is executed for Phase 04 verification.
+- [x] Run `./gradlew testDebugUnitTest --tests "com.evcs.favorites.hardening.RateLimitAndLifecycleHardeningTest"`
+- [x] 100% tests pass.
+- [x] Strictly only this single test is executed for Phase 04 verification.
 
 ---
 All Phases Complete!

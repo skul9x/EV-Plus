@@ -92,6 +92,8 @@ fun FavoritesScreen(
     onSignInClick: () -> Unit = {},
     onSignOutClick: () -> Unit = onLogout,
     isSyncing: Boolean = false,
+    isSigningIn: Boolean = false,
+    togglingStationIds: Set<String> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     var showRoutingSettings by remember { mutableStateOf(false) }
@@ -215,7 +217,8 @@ fun FavoritesScreen(
                             authUser = authUser,
                             onSignInClick = onSignInClick,
                             onSignOutClick = onSignOutClick,
-                            isSyncing = isSyncing
+                            isSyncing = isSyncing,
+                            togglingStationIds = togglingStationIds
                         )
                     }
 
@@ -230,7 +233,8 @@ fun FavoritesScreen(
                             authUser = authUser,
                             onSignInClick = onSignInClick,
                             onSignOutClick = onSignOutClick,
-                            isSyncing = isSyncing
+                            isSyncing = isSyncing,
+                            togglingStationIds = togglingStationIds
                         )
                     }
 
@@ -258,6 +262,7 @@ fun FavoritesScreen(
                 onDismiss = onDismissDetail,
                 onRefresh = onRefreshDetail,
                 isFavorite = true,
+                isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
                 onNavigate = onNavigateClick,
                 onToggleFavorite = onToggleFavoriteDetail ?: onRemoveFavoriteClick,
                 onShare = onShareDetail
@@ -293,6 +298,8 @@ private fun FavoritesListContent(
     onSignInClick: () -> Unit = {},
     onSignOutClick: () -> Unit = {},
     isSyncing: Boolean = false,
+    isSigningIn: Boolean = false,
+    togglingStationIds: Set<String> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -311,7 +318,8 @@ private fun FavoritesListContent(
             authUser = authUser,
             onSignInClick = onSignInClick,
             onSignOutClick = onSignOutClick,
-            isSyncing = isSyncing
+            isSyncing = isSyncing,
+            isSigningIn = isSigningIn
         )
 
         if (stations.isEmpty()) {
@@ -331,6 +339,7 @@ private fun FavoritesListContent(
                         station = station,
                         onNavigateClick = onNavigateClick,
                         onRemoveFavoriteClick = onRemoveFavoriteClick,
+                        isToggleInProgress = togglingStationIds.contains(station.id),
                         onStationClick = onStationClick
                     )
                 }

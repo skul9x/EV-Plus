@@ -58,6 +58,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -113,8 +114,8 @@ fun NearbyScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val stationDetailState by viewModel.stationDetailState.collectAsStateWithLifecycle()
 
-    var showRoutingSettings by remember { mutableStateOf(false) }
-    var showLoginRequiredDialog by remember { mutableStateOf(false) }
+    var showRoutingSettings by rememberSaveable { mutableStateOf(false) }
+    var showLoginRequiredDialog by rememberSaveable { mutableStateOf(false) }
 
     val onNavigateClick: (Station) -> Unit = remember(context) {
         { station: Station ->
@@ -402,6 +403,7 @@ fun NearbyScreen(
                 onDismiss = { viewModel.dismissStationDetail() },
                 onRefresh = { viewModel.refreshStationDetail() },
                 isFavorite = isCurrentStationFavorite,
+                isToggleInProgress = stationDetailState.station?.id?.let { uiState.togglingStationIds.contains(it) } ?: false,
                 onNavigate = onNavigateClick,
                 onToggleFavorite = onFavoriteClick
             )
@@ -710,6 +712,7 @@ private fun NearbyResultContent(
                         onNavigateClick = onNavigateClick,
                         onFavoriteClick = onFavoriteClick,
                         isFavorite = uiState.favoriteStationIds.contains(station.id),
+                        isToggleInProgress = uiState.togglingStationIds.contains(station.id),
                         onStationClick = onStationClick
                     )
                 }
