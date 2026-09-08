@@ -19,7 +19,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.MarqueeAnimationMode
+import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -265,6 +268,12 @@ object NativeStationDetailSheetHelper {
     const val PRIMARY_NAV_WEIGHT = 1.3f
     const val SECONDARY_FAVORITE_WEIGHT = 1.0f
     const val SECONDARY_SHARE_WEIGHT = 0.9f
+
+    const val MARQUEE_ITERATIONS: Int = Int.MAX_VALUE
+    const val MARQUEE_INITIAL_DELAY_MS: Int = 2000
+    const val MARQUEE_VELOCITY_DP: Float = 35f
+    val MARQUEE_VELOCITY: Dp = 35.dp
+    const val MARQUEE_SPACING_FRACTION: Float = 0.25f
 
     /**
      * Determines whether a station has at least one DC charging port capable of fast charging.
@@ -833,7 +842,7 @@ fun NativeStationDetailSheet(
  * Scrollable content container for native station detail sheet.
  * Guarantees zero text clipping through wrapContentHeight and auto-wrapping layouts.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun NativeStationDetailContent(
     station: Station,
@@ -846,23 +855,31 @@ fun NativeStationDetailContent(
     onToggleFavorite: (Station) -> Unit,
     onShare: (Station) -> Unit,
     onStartFocusMode: ((Station) -> Unit)? = null,
+    isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(bottom = if (isLandscape) 16.dp else 24.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isLandscape) 12.dp else 16.dp)
     ) {
         // ---------------------------------------------------------------------
-        // 1. Top Action Bar: Station Icon + Reload + Close Buttons
+        // 1. Top Action Bar: Station Icon + Centered Distance/ETA + Reload/Close
         // ---------------------------------------------------------------------
         val refreshSpec = NativeStationDetailSheetHelper.resolveRefreshButtonSpec(
             isRefreshing = uiState.isRefreshing,
             normalTint = MaterialTheme.colorScheme.onSurfaceVariant,
             refreshingTint = EmeraldPrimary
         )
+
+        val distanceEtaText = remember(station.drivingMetrics, station.distanceKm) {
+            NativeStationDetailSheetHelper.formatDistanceEta(station)
+        }
+        val ratingText = remember(uiState.rating) {
+            NativeStationDetailSheetHelper.formatRatingBadge(uiState.rating)
+        }
 
         Row(
             modifier = Modifier
@@ -886,6 +903,37 @@ fun NativeStationDetailContent(
                 )
             }
 
+            // Centered Distance & ETA badge in Top Bar (Phương án 1: Tối ưu cho xe hơi)
+            if (!distanceEtaText.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.35f)),
+                        modifier = Modifier.wrapContentHeight()
+                    ) {
+                        Text(
+                            text = distanceEtaText,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -903,47 +951,29 @@ fun NativeStationDetailContent(
                     }
                 }
 
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT)
-                ) {
-                    Box(
-                        modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT),
-                        contentAlignment = Alignment.Center
+                if (!isLandscape) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Đóng",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Box(
+                            modifier = Modifier.size(AutomotiveDimens.CAR_BUTTON_HEIGHT),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Đóng",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 }
             }
         }
 
         // ---------------------------------------------------------------------
-        // 1.5. Photo Carousel (Auto-collapses to zero height when empty)
-        // ---------------------------------------------------------------------
-        var activeLightboxIndex by remember { mutableStateOf<Int?>(null) }
-
-        if (activeLightboxIndex != null && station.images.isNotEmpty()) {
-            StationPhotoViewerModal(
-                images = station.images,
-                initialIndex = activeLightboxIndex ?: 0,
-                onDismiss = { activeLightboxIndex = null }
-            )
-        }
-
-        if (NativeStationDetailSheetHelper.shouldShowCarousel(station.images)) {
-            StationPhotoCarousel(
-                images = station.images,
-                onImageClick = { index -> activeLightboxIndex = index }
-            )
-        }
-
-        // ---------------------------------------------------------------------
-        // 2. Station Header: Name & Address
+        // 2. Station Header: Name & Address (+ Community Rating)
         // ---------------------------------------------------------------------
         Column(
             modifier = Modifier
@@ -958,84 +988,93 @@ fun NativeStationDetailContent(
                     fontSize = 20.sp
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                softWrap = false,
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
+                    .basicMarquee(
+                        iterations = NativeStationDetailSheetHelper.MARQUEE_ITERATIONS,
+                        delayMillis = NativeStationDetailSheetHelper.MARQUEE_INITIAL_DELAY_MS,
+                        velocity = NativeStationDetailSheetHelper.MARQUEE_VELOCITY,
+                        spacing = MarqueeSpacing.fractionOfContainer(NativeStationDetailSheetHelper.MARQUEE_SPACING_FRACTION)
+                    )
             )
 
             Text(
                 text = station.address,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                softWrap = false,
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
+                    .basicMarquee(
+                        iterations = NativeStationDetailSheetHelper.MARQUEE_ITERATIONS,
+                        delayMillis = NativeStationDetailSheetHelper.MARQUEE_INITIAL_DELAY_MS,
+                        velocity = NativeStationDetailSheetHelper.MARQUEE_VELOCITY,
+                        spacing = MarqueeSpacing.fractionOfContainer(NativeStationDetailSheetHelper.MARQUEE_SPACING_FRACTION)
+                    )
             )
-        }
 
-        // ---------------------------------------------------------------------
-        // 3. Badges Row: Distance/ETA & Community Rating
-        // ---------------------------------------------------------------------
-        val distanceEtaText = remember(station.drivingMetrics, station.distanceKm) {
-            NativeStationDetailSheetHelper.formatDistanceEta(station)
-        }
-        val ratingText = remember(uiState.rating) {
-            NativeStationDetailSheetHelper.formatRatingBadge(uiState.rating)
-        }
-
-        if (!distanceEtaText.isNullOrBlank() || !ratingText.isNullOrBlank()) {
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .wrapContentHeight(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                if (!distanceEtaText.isNullOrBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.wrapContentHeight()
-                    ) {
-                        Text(
-                            text = distanceEtaText,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                if (!ratingText.isNullOrBlank()) {
-                    val isDark = isSystemInDarkTheme()
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFFEF3C7).copy(alpha = if (isDark) 0.15f else 0.8f),
-                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
-                        modifier = Modifier.wrapContentHeight()
-                    ) {
-                        Text(
-                            text = ratingText,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isDark) Color(0xFFFDE68A) else Color(0xFF92400E)
-                            ),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+            if (!ratingText.isNullOrBlank()) {
+                val isDark = isSystemInDarkTheme()
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFEF3C7).copy(alpha = if (isDark) 0.15f else 0.8f),
+                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .wrapContentHeight()
+                        .padding(top = 2.dp)
+                ) {
+                    Text(
+                        text = ratingText,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDark) Color(0xFFFDE68A) else Color(0xFF92400E)
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
 
         // ---------------------------------------------------------------------
+        // 3. Charging Ports Section (Hero)
+        // ---------------------------------------------------------------------
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (uiState.portStatuses.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    uiState.portStatuses.forEach { portStatus ->
+                        PortStatusPill(
+                            portStatus = portStatus,
+                            depotStatus = station.depotStatus
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "Đang cập nhật danh sách cổng sạc...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         // ---------------------------------------------------------------------
         // 4. Quick Action Row: ⚡ DẪN ĐƯỜNG & THEO DÕI (Primary CTA >= 56dp), Yêu thích & Chia sẻ (>= 56dp)
         // ---------------------------------------------------------------------
@@ -1177,53 +1216,32 @@ fun NativeStationDetailContent(
         }
 
         // ---------------------------------------------------------------------
-        // 5. Charging Ports Section (Hero)
-        // ---------------------------------------------------------------------
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Cổng sạc",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            if (uiState.portStatuses.isNotEmpty()) {
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    uiState.portStatuses.forEach { portStatus ->
-                        PortStatusPill(
-                            portStatus = portStatus,
-                            depotStatus = station.depotStatus
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = "Đang cập nhật danh sách cổng sạc...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // ---------------------------------------------------------------------
-        // 6. Live Forecast Capsule (Visible strictly when cleanForecast != null)
+        // 5. Live Forecast Capsule (Visible strictly when cleanForecast != null)
         // ---------------------------------------------------------------------
         if (!uiState.cleanForecast.isNullOrBlank()) {
             LiveForecastCapsule(
                 cleanForecast = uiState.cleanForecast,
                 modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        // ---------------------------------------------------------------------
+        // 6. Photo Carousel (Auto-collapses to zero height when empty, placed at bottom)
+        // ---------------------------------------------------------------------
+        var activeLightboxIndex by remember { mutableStateOf<Int?>(null) }
+
+        if (activeLightboxIndex != null && station.images.isNotEmpty()) {
+            StationPhotoViewerModal(
+                images = station.images,
+                initialIndex = activeLightboxIndex ?: 0,
+                onDismiss = { activeLightboxIndex = null }
+            )
+        }
+
+        if (NativeStationDetailSheetHelper.shouldShowCarousel(station.images)) {
+            StationPhotoCarousel(
+                images = station.images,
+                onImageClick = { index -> activeLightboxIndex = index }
             )
         }
     }

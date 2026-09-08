@@ -604,8 +604,9 @@ class FocusModeFloatingViewManager(
 
         // Details row: Charging tier chips / detailedDcTiersText
         val tiersTv = TextView(context).apply {
-            textSize = 11.5f
-            setTextColor(Color.parseColor("#CCCCCC"))
+            textSize = FocusModeViewLayoutHelper.DETAILED_TIERS_TEXT_SIZE_SP
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
             includeFontPadding = true

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -133,6 +136,7 @@ fun StationCard(
     onStationClick: (Station) -> Unit = {},
     isSelected: Boolean = false,
     isCarMode: Boolean = false,
+    isCompact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -148,15 +152,18 @@ fun StationCard(
             .clickable { onStationClick(station) },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+            containerColor = if (isSelected && isCompact) EmeraldPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 2.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+        if (isCompact) {
+            CompactStationCardContent(station = station)
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
             // In car / landscape mode, display prominent 24sp Bold Hero Metric
             if (isCarMode) {
                 val heroMetricText = remember(station.depotStatus, station.totalAvailablePlugs, station.totalPlugs) {
@@ -404,6 +411,116 @@ fun StationCard(
                     }
                 }
             }
+        }
+    }
+}
+}
+
+/**
+ * Compact horizontal Station Card content designed for Automotive Landscape Master List.
+ * Highlights station name, journey ETA/distance, and live available plug status pill.
+ * Height is constrained (~76dp) to allow 3-4 stations simultaneously visible on automotive displays.
+ */
+@Composable
+private fun CompactStationCardContent(
+    station: Station,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f, fill = true),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = station.name,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            val journeyBadgeInfo = remember(station.drivingMetrics, station.distanceKm) {
+                formatJourneyBadge(station.drivingMetrics, station.distanceKm)
+            }
+            val subtitleText = when {
+                journeyBadgeInfo.text.isNotBlank() -> journeyBadgeInfo.text
+                station.distanceKm != null -> String.format(Locale.US, "%.1f km", station.distanceKm)
+                else -> "VinFast EVCS"
+            }
+
+            Text(
+                text = subtitleText,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp
+                ),
+                color = if (journeyBadgeInfo.text.isNotBlank() && journeyBadgeInfo.contentColor != DarkOnSurfaceVariant) {
+                    journeyBadgeInfo.contentColor
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        CompactAvailabilityBadge(station = station)
+    }
+}
+
+/**
+ * Compact pill badge indicating plug availability for automotive master list.
+ */
+@Composable
+fun CompactAvailabilityBadge(
+    station: Station,
+    modifier: Modifier = Modifier
+) {
+    val (label, bg, textCol) = when {
+        station.depotStatus.equals("Maintaining", ignoreCase = true) -> Triple("BẢO TRÌ", StatusMaintainingContainer, StatusMaintaining)
+        station.depotStatus.equals("OutOfService", ignoreCase = true) -> Triple("TẠM DỪNG", StatusOfflineContainer, StatusOffline)
+        station.totalPlugs > 0 && station.totalAvailablePlugs == 0 -> Triple("0/${station.totalPlugs} TRỐNG", StatusBusyContainer, StatusBusy)
+        station.totalPlugs > 0 -> Triple("${station.totalAvailablePlugs}/${station.totalPlugs} TRỐNG", StatusAvailableContainer, StatusAvailable)
+        station.totalAvailablePlugs > 0 -> Triple("${station.totalAvailablePlugs} TRỐNG", StatusAvailableContainer, StatusAvailable)
+        else -> Triple("SẴN SÀNG", StatusAvailableContainer, StatusAvailable)
+    }
+
+    Surface(
+        modifier = modifier.wrapContentHeight(),
+        shape = RoundedCornerShape(20.dp),
+        color = bg,
+        border = BorderStroke(1.dp, textCol.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(textCol)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                ),
+                color = textCol,
+                maxLines = 1
+            )
         }
     }
 }

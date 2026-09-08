@@ -410,62 +410,28 @@ fun FavoritesScreen(
                             MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
                         )
                     ) {
+                        val activeStationForDetail = selectedStationForDetail
                         if (activeStationForDetail != null) {
-                            val effectiveDetailState = if (stationDetailState.station != null) {
+                            val effectiveDetailState = if (stationDetailState.station?.id == activeStationForDetail.id) {
                                 stationDetailState
                             } else {
                                 stationDetailState.copy(station = activeStationForDetail)
                             }
 
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = 8.dp)
-                            ) {
-                                // Prominent Automotive Action Button: ⚡ DẪN ĐƯỜNG & THEO DÕI
-                                Button(
-                                    onClick = { handleStartFocusModeAndNavigate(activeStationForDetail) },
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = EmeraldPrimary,
-                                        contentColor = Color.White
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                                        .height(56.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = AppIcons.Bolt,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "⚡ DẪN ĐƯỜNG & THEO DÕI",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp
-                                        )
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                NativeStationDetailContent(
-                                    station = activeStationForDetail,
-                                    uiState = effectiveDetailState,
-                                    isFavorite = true,
-                                    isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
-                                    onRefresh = onRefreshDetail,
-                                    onDismiss = onDismissDetail,
-                                    onNavigate = memoizedNavigateClick,
-                                    onToggleFavorite = onToggleFavoriteDetail ?: memoizedRemoveFavoriteClick,
-                                    onShare = onShareClick,
-                                    onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
+                            NativeStationDetailContent(
+                                station = activeStationForDetail,
+                                uiState = effectiveDetailState,
+                                isFavorite = true,
+                                isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
+                                onRefresh = onRefreshDetail,
+                                onDismiss = onDismissDetail,
+                                onNavigate = memoizedNavigateClick,
+                                onToggleFavorite = onToggleFavoriteDetail ?: memoizedRemoveFavoriteClick,
+                                onShare = onShareClick,
+                                onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
+                                isLandscape = true,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         } else {
                             FavoritesDetailEmptyState(
                                 isEmptyList = (uiState as? FavoritesUiState.Success)?.stations?.isEmpty() ?: true
@@ -629,8 +595,8 @@ private fun FavoritesListContent(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(if (isLandscape) 8.dp else 16.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isLandscape) 8.dp else 12.dp)
             ) {
                 items(
                     items = stations,
@@ -644,7 +610,8 @@ private fun FavoritesListContent(
                         isToggleInProgress = togglingStationIds.contains(station.id),
                         onStationClick = onStationClick,
                         isSelected = isLandscape && station.id == selectedStationId,
-                        isCarMode = isLandscape
+                        isCarMode = isLandscape,
+                        isCompact = isLandscape
                     )
                 }
             }

@@ -75,6 +75,7 @@ object FocusModeViewLayoutHelper {
 
     const val VIETNAMESE_VERTICAL_PADDING_DP = 4
     const val HERO_METRIC_TEXT_SIZE_SP = 24f
+    const val DETAILED_TIERS_TEXT_SIZE_SP = 16f
     const val TITLE_MIN_TEXT_SIZE_SP = 13
     const val TITLE_MAX_TEXT_SIZE_SP = 16
 

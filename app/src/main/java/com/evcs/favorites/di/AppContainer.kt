@@ -2,11 +2,14 @@ package com.evcs.favorites.di
 
 import android.content.Context
 import com.evcs.favorites.data.api.EvcsApiClient
+import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
 import com.evcs.favorites.data.auth.InMemorySessionStorage
+import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionManager
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.data.network.here.HereOAuthManager
+import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.focus.EvcsStationNameResolver
 import com.evcs.favorites.focus.FocusModeTelemetryEngine
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +23,8 @@ interface AppContainer {
     val hereEvApiClient: HereEvApiClient
     val evcsApiClient: EvcsApiClient
     val evcsStationNameResolver: EvcsStationNameResolver
+    val sessionManager: SessionManager
+    val evcsRepository: EvcsRepository
 
     fun createFocusModeTelemetryEngine(
         initialStation: Station,
@@ -41,14 +46,28 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
         HereEvApiClient(oauthManager = hereOAuthManager)
     }
 
-    override val evcsApiClient: EvcsApiClient by lazy {
-        val sessionManager = context?.let { SessionManager.create(it) }
+    override val sessionManager: SessionManager by lazy {
+        context?.let { SessionManager.create(it) }
             ?: SessionManager(InMemorySessionStorage())
+    }
+
+    override val evcsApiClient: EvcsApiClient by lazy {
         EvcsApiClient(sessionManager = sessionManager)
     }
 
     override val evcsStationNameResolver: EvcsStationNameResolver by lazy {
         EvcsStationNameResolver(apiClient = evcsApiClient)
+    }
+
+    override val evcsRepository: EvcsRepository by lazy {
+        val cacheStorage = context?.let { PlainSharedPrefsStorage.getInstance(it) }
+        val legacyStorage = context?.let { EncryptedSharedPrefsStorage.getInstance(it) }
+        EvcsRepository(
+            apiClient = evcsApiClient,
+            cacheStorage = cacheStorage,
+            legacyStorage = legacyStorage,
+            autoResolveCoordinates = true
+        )
     }
 
     override fun createFocusModeTelemetryEngine(

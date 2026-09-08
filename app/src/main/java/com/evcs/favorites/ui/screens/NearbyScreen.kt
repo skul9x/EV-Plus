@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -433,7 +435,8 @@ fun NearbyScreen(
                                 onAcFilterClick = onAcFilterClick,
                                 onSelectDcTier = onSelectDcTier,
                                 onBackFromDc = onBackFromDc,
-                                onClearFilters = onClearFilters
+                                onClearFilters = onClearFilters,
+                                isLandscape = false
                             )
                         }
 
@@ -493,7 +496,8 @@ fun NearbyScreen(
                                     onAcFilterClick = onAcFilterClick,
                                     onSelectDcTier = onSelectDcTier,
                                     onBackFromDc = onBackFromDc,
-                                    onClearFilters = onClearFilters
+                                    onClearFilters = onClearFilters,
+                                    isLandscape = true
                                 )
                             }
                             !uiState.hasSearched && (uiState.isLocating || uiState.isSearching) -> {
@@ -535,55 +539,20 @@ fun NearbyScreen(
                     ) {
                         val currentStation = stationDetailState.station
                         if (currentStation != null) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = 8.dp)
-                            ) {
-                                // Prominent Automotive Action Button: ⚡ DẪN ĐƯỜNG & THEO DÕI
-                                Button(
-                                    onClick = { handleStartFocusModeAndNavigate(currentStation) },
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = EmeraldPrimary,
-                                        contentColor = Color.White
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                                        .height(56.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = AppIcons.Bolt,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "⚡ DẪN ĐƯỜNG & THEO DÕI",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp
-                                        )
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                NativeStationDetailContent(
-                                    station = currentStation,
-                                    uiState = stationDetailState,
-                                    isFavorite = uiState.favoriteStationIds.contains(currentStation.id),
-                                    isToggleInProgress = uiState.togglingStationIds.contains(currentStation.id),
-                                    onRefresh = { viewModel.refreshStationDetail() },
-                                    onDismiss = { viewModel.dismissStationDetail() },
-                                    onNavigate = onNavigateClick,
-                                    onToggleFavorite = onFavoriteClick,
-                                    onShare = onShareClick,
-                                    onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
+                            NativeStationDetailContent(
+                                station = currentStation,
+                                uiState = stationDetailState,
+                                isFavorite = uiState.favoriteStationIds.contains(currentStation.id),
+                                isToggleInProgress = uiState.togglingStationIds.contains(currentStation.id),
+                                onRefresh = { viewModel.refreshStationDetail() },
+                                onDismiss = { viewModel.dismissStationDetail() },
+                                onNavigate = onNavigateClick,
+                                onToggleFavorite = onFavoriteClick,
+                                onShare = onShareClick,
+                                onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
+                                isLandscape = true,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         } else {
                             NearbyDetailEmptyState(
                                 isEmptyResults = uiState.hasSearched && uiState.top10DisplayStations.isEmpty()
@@ -739,6 +708,7 @@ private fun NearbyInitialHeroContent(
     onSelectDcTier: (DcWattageTier) -> Unit,
     onBackFromDc: () -> Unit,
     onClearFilters: () -> Unit,
+    isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -756,20 +726,24 @@ private fun NearbyInitialHeroContent(
             onSelectDcTier = onSelectDcTier,
             onBackFromDc = onBackFromDc,
             onClearFilter = onClearFilters,
-            modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
+            modifier = Modifier.padding(top = if (isLandscape) 4.dp else 10.dp, bottom = if (isLandscape) 4.dp else 6.dp)
         )
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = if (isLandscape) 16.dp else 32.dp, vertical = if (isLandscape) 8.dp else 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            val iconContainerSize = if (isLandscape) 52.dp else 110.dp
+            val innerIconSize = if (isLandscape) 28.dp else 56.dp
+
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(110.dp)
+                    .size(iconContainerSize)
                     .clip(CircleShape)
                     .background(EmeraldContainerDark.copy(alpha = 0.6f))
             ) {
@@ -777,34 +751,36 @@ private fun NearbyInitialHeroContent(
                     imageVector = AppIcons.NearMe,
                     contentDescription = null,
                     tint = EmeraldPrimary,
-                    modifier = Modifier.size(56.dp)
+                    modifier = Modifier.size(innerIconSize)
                 )
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(if (isLandscape) 8.dp else 28.dp))
 
             Text(
                 text = "Tìm trạm sạc quanh đây",
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp
+                    fontSize = if (isLandscape) 17.sp else 22.sp
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            if (!isLandscape) {
+                Spacer(modifier = Modifier.height(10.dp))
 
-            Text(
-                text = "Quét các trạm sạc VinFast gần bạn nhất còn cổng trống với khoảng cách và thời gian lái xe thực tế.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+                Text(
+                    text = "Quét các trạm sạc VinFast gần bạn nhất còn cổng trống với khoảng cách và thời gian lái xe thực tế.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(if (isLandscape) 14.dp else 32.dp))
 
             Button(
                 onClick = onScanClick,
@@ -819,7 +795,7 @@ private fun NearbyInitialHeroContent(
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(if (isLandscape) 48.dp else 54.dp)
             ) {
                 Icon(
                     imageVector = AppIcons.NearMe,
@@ -831,7 +807,7 @@ private fun NearbyInitialHeroContent(
                     text = "Nhấn để tìm trạm quanh đây",
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = if (isLandscape) 14.sp else 16.sp
                     )
                 )
             }
@@ -974,8 +950,8 @@ private fun NearbyResultContent(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(if (isLandscape) 8.dp else 16.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isLandscape) 8.dp else 12.dp)
             ) {
                 items(
                     items = uiState.top10DisplayStations,
@@ -990,7 +966,8 @@ private fun NearbyResultContent(
                         isToggleInProgress = uiState.togglingStationIds.contains(station.id),
                         onStationClick = onStationClick,
                         isSelected = isLandscape && station.id == selectedStationId,
-                        isCarMode = isLandscape
+                        isCarMode = isLandscape,
+                        isCompact = isLandscape
                     )
                 }
             }
