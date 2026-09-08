@@ -88,7 +88,9 @@ jobs:
           fi
 
       - name: Grant Execute Permission for Gradlew
-        run: chmod +x gradlew
+        run: |
+          chmod +x gradlew
+          sed -i '/org.gradle.java.home/d' gradle.properties || true
 
       # 4. Build & Ký số APK
       - name: Build & Sign Release APK
