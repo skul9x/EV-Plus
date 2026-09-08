@@ -1,9 +1,11 @@
 package com.evcs.favorites.car
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.car.app.CarContext
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.data.routing.RouteSessionData
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -185,4 +187,83 @@ object CarNavigationDispatcher {
         CarFocusModeBridge.rerouteFocusMode(carContext, newStation)
         return dispatchedInCar
     }
+
+    /**
+     * Produces in-car head unit navigation intent descriptor for the current leg of a route session.
+     */
+    fun getRouteNavigationIntentSpec(routeSession: RouteSessionData): CarNavigationIntentSpec {
+        return getCarNavigationIntentSpec(routeSession.currentTargetStation)
+    }
+
+    /**
+     * Produces mobile fallback navigation intent descriptor for the current leg of a route session.
+     */
+    fun getFallbackRouteNavigationIntentSpec(routeSession: RouteSessionData): CarNavigationIntentSpec {
+        return getFallbackNavigationIntentSpec(routeSession.currentTargetStation)
+    }
+
+    /**
+     * Starts multi-stop route navigation on the vehicle screen via [CarContext.startCarApp],
+     * dispatching Leg 1 and initializing [CarFocusModeBridge] with the complete itinerary.
+     */
+    fun startRouteNavigation(carContext: CarContext, routeSession: RouteSessionData): Boolean {
+        val targetStation = routeSession.currentTargetStation
+        val dispatched = startNavigation(carContext, targetStation)
+        CarFocusModeBridge.startRouteFocusMode(carContext, routeSession)
+        return dispatched
+    }
+
+    /**
+     * Advances multi-stop route navigation to the next waypoint on the vehicle screen.
+     */
+    fun advanceRouteNavigation(carContext: CarContext, updatedSession: RouteSessionData): Boolean {
+        val targetStation = updatedSession.currentTargetStation
+        val dispatched = rerouteNavigation(carContext, targetStation)
+        CarFocusModeBridge.advanceRouteFocusMode(carContext, updatedSession)
+        return dispatched
+    }
+
+    /**
+     * Dispatches multi-stop navigation from mobile UI, launching external navigation app
+     * and starting [FocusModeForegroundService] with the complete route session itinerary.
+     */
+    fun dispatchRouteNavigation(context: Context?, routeSession: RouteSessionData): Boolean {
+        val fallbackSpec = getFallbackRouteNavigationIntentSpec(routeSession)
+        if (testActivitySpecLauncher != null) {
+            testActivitySpecLauncher?.invoke(fallbackSpec)
+        } else if (testActivityLauncher != null) {
+            testActivityLauncher?.invoke(fallbackSpec.toIntent())
+        } else if (context != null) {
+            try {
+                val fallbackIntent = fallbackSpec.toIntent().apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallbackIntent)
+            } catch (_: Exception) {}
+        }
+        CarFocusModeBridge.startRouteFocusMode(context, routeSession)
+        return true
+    }
+
+    /**
+     * Dispatches waypoint progression from mobile UI, updating navigation to the next leg.
+     */
+    fun dispatchAdvanceRouteLeg(context: Context?, updatedSession: RouteSessionData): Boolean {
+        val fallbackSpec = getFallbackRouteNavigationIntentSpec(updatedSession)
+        if (testActivitySpecLauncher != null) {
+            testActivitySpecLauncher?.invoke(fallbackSpec)
+        } else if (testActivityLauncher != null) {
+            testActivityLauncher?.invoke(fallbackSpec.toIntent())
+        } else if (context != null) {
+            try {
+                val fallbackIntent = fallbackSpec.toIntent().apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallbackIntent)
+            } catch (_: Exception) {}
+        }
+        CarFocusModeBridge.advanceRouteFocusMode(context, updatedSession)
+        return true
+    }
 }
+

@@ -14,7 +14,7 @@ import com.evcs.favorites.ui.theme.EmeraldPrimary
 
 /**
  * Material 3 NavigationBar providing intuitive bottom navigation between
- * Nearby and Favorites charging screens with EV Emerald styling and active pill indicators.
+ * Nearby, Favorites, and Route charging screens with EV Emerald styling and active pill indicators.
  */
 @Composable
 fun AppNavigationBar(

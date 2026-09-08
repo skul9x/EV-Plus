@@ -798,5 +798,115 @@ object AppIcons {
             close()
         }
     }
+
+    val Route: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+        buildIcon("Route", autoMirror = false) {
+            moveTo(19.0f, 15.18f)
+            verticalLineTo(7.0f)
+            curveToRelative(0.0f, -2.21f, -1.79f, -4.0f, -4.0f, -4.0f)
+            reflectiveCurveToRelative(-4.0f, 1.79f, -4.0f, 4.0f)
+            verticalLineToRelative(10.0f)
+            curveToRelative(0.0f, 1.1f, -0.9f, 2.0f, -2.0f, 2.0f)
+            reflectiveCurveToRelative(-2.0f, -0.9f, -2.0f, -2.0f)
+            verticalLineTo(8.82f)
+            curveTo(8.16f, 8.4f, 9.0f, 7.3f, 9.0f, 6.0f)
+            curveToRelative(0.0f, -1.66f, -1.34f, -3.0f, -3.0f, -3.0f)
+            reflectiveCurveTo(3.0f, 4.34f, 3.0f, 6.0f)
+            curveToRelative(0.0f, 1.3f, 0.84f, 2.4f, 2.0f, 2.82f)
+            verticalLineTo(17.0f)
+            curveToRelative(0.0f, 2.21f, 1.79f, 4.0f, 4.0f, 4.0f)
+            reflectiveCurveToRelative(4.0f, -1.79f, 4.0f, -4.0f)
+            verticalLineTo(7.0f)
+            curveToRelative(0.0f, -1.1f, 0.9f, -2.0f, 2.0f, -2.0f)
+            reflectiveCurveToRelative(2.0f, 0.9f, 2.0f, 2.0f)
+            verticalLineToRelative(8.18f)
+            curveToRelative(-1.16f, 0.41f, -2.0f, 1.51f, -2.0f, 2.82f)
+            curveToRelative(0.0f, 1.66f, 1.34f, 3.0f, 3.0f, 3.0f)
+            reflectiveCurveToRelative(3.0f, -1.34f, 3.0f, -3.0f)
+            curveToRelative(0.0f, -1.31f, -0.84f, -2.41f, -2.0f, -2.82f)
+            close()
+        }
+    }
+
+    val SwapVert: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+        buildIcon("SwapVert", autoMirror = false) {
+            moveTo(16.0f, 17.01f)
+            verticalLineTo(10.0f)
+            horizontalLineToRelative(-2.0f)
+            verticalLineToRelative(7.01f)
+            horizontalLineToRelative(-3.0f)
+            lineTo(15.0f, 21.0f)
+            lineToRelative(4.0f, -3.99f)
+            horizontalLineToRelative(-3.0f)
+            close()
+            moveTo(9.0f, 3.0f)
+            lineTo(5.0f, 6.99f)
+            horizontalLineToRelative(3.0f)
+            verticalLineTo(14.0f)
+            horizontalLineToRelative(2.0f)
+            verticalLineTo(6.99f)
+            horizontalLineToRelative(3.0f)
+            lineTo(9.0f, 3.0f)
+            close()
+        }
+    }
+
+    val SwapHoriz: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+        buildIcon("SwapHoriz", autoMirror = false) {
+            moveTo(6.99f, 11.0f)
+            lineTo(3.0f, 15.0f)
+            lineToRelative(3.99f, 4.0f)
+            verticalLineToRelative(-3.0f)
+            horizontalLineTo(14.0f)
+            verticalLineToRelative(-2.0f)
+            horizontalLineTo(6.99f)
+            verticalLineToRelative(-3.0f)
+            close()
+            moveTo(21.0f, 9.0f)
+            lineToRelative(-3.99f, -4.0f)
+            verticalLineToRelative(3.0f)
+            horizontalLineTo(10.0f)
+            verticalLineToRelative(2.0f)
+            horizontalLineToRelative(7.01f)
+            verticalLineToRelative(3.0f)
+            lineTo(21.0f, 9.0f)
+            close()
+        }
+    }
+
+    val MyLocation: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+        buildIcon("MyLocation", autoMirror = false) {
+            moveTo(12.0f, 8.0f)
+            curveToRelative(-2.21f, 0.0f, -4.0f, 1.79f, -4.0f, 4.0f)
+            reflectiveCurveToRelative(1.79f, 4.0f, 4.0f, 4.0f)
+            reflectiveCurveToRelative(4.0f, -1.79f, 4.0f, -4.0f)
+            reflectiveCurveToRelative(-1.79f, -4.0f, -4.0f, -4.0f)
+            close()
+            moveTo(20.94f, 11.0f)
+            curveToRelative(-0.46f, -4.17f, -3.77f, -7.48f, -7.94f, -7.94f)
+            verticalLineTo(1.0f)
+            horizontalLineToRelative(-2.0f)
+            verticalLineToRelative(2.06f)
+            curveTo(6.83f, 3.52f, 3.52f, 6.83f, 3.06f, 11.0f)
+            horizontalLineTo(1.0f)
+            verticalLineToRelative(2.0f)
+            horizontalLineToRelative(2.06f)
+            curveToRelative(0.46f, 4.17f, 3.77f, 7.48f, 7.94f, 7.94f)
+            verticalLineTo(23.0f)
+            horizontalLineToRelative(2.0f)
+            verticalLineToRelative(-2.06f)
+            curveToRelative(4.17f, -0.46f, 7.48f, -3.77f, 7.94f, -7.94f)
+            horizontalLineTo(23.0f)
+            verticalLineToRelative(-2.0f)
+            horizontalLineToRelative(-2.06f)
+            close()
+            moveTo(12.0f, 19.0f)
+            curveToRelative(-3.87f, 0.0f, -7.0f, -3.13f, -7.0f, -7.0f)
+            reflectiveCurveToRelative(3.13f, -7.0f, 7.0f, -7.0f)
+            reflectiveCurveToRelative(7.0f, 3.13f, 7.0f, 7.0f)
+            reflectiveCurveToRelative(-3.13f, 7.0f, -7.0f, 7.0f)
+            close()
+        }
+    }
 }
 

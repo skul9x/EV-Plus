@@ -25,6 +25,7 @@ import com.evcs.favorites.data.logging.DebugLogTag
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.preferences.FocusModePreferences
 import com.evcs.favorites.data.network.here.HereEvApiClient
+import com.evcs.favorites.data.routing.RouteSessionData
 import com.evcs.favorites.domain.location.LocationService
 import com.evcs.favorites.navigation.MapNavigator
 import kotlinx.coroutines.CoroutineScope
@@ -66,9 +67,13 @@ class FocusModeForegroundService : Service() {
         const val ACTION_STOP = "com.evcs.favorites.focus.ACTION_STOP"
         const val ACTION_REROUTE = "com.evcs.favorites.focus.ACTION_REROUTE"
         const val ACTION_SET_MUTED = "com.evcs.favorites.focus.ACTION_SET_MUTED"
+        const val ACTION_START_ROUTE_SESSION = "com.evcs.favorites.focus.ACTION_START_ROUTE_SESSION"
+        const val ACTION_ADVANCE_ROUTE_LEG = "com.evcs.favorites.focus.ACTION_ADVANCE_ROUTE_LEG"
+
         const val EXTRA_STATION_JSON = "extra_station_json"
         const val EXTRA_NEW_STATION_JSON = "extra_new_station_json"
         const val EXTRA_IS_MUTED = "extra_is_muted"
+        const val EXTRA_ROUTE_SESSION_JSON = "extra_route_session_json"
 
         private val json = Json {
             ignoreUnknownKeys = true
@@ -80,6 +85,100 @@ class FocusModeForegroundService : Service() {
 
         private val _currentState = MutableStateFlow<FocusModeState?>(null)
         val currentState: StateFlow<FocusModeState?> = _currentState.asStateFlow()
+
+        private val _currentRouteSession = MutableStateFlow<RouteSessionData?>(null)
+        val currentRouteSession: StateFlow<RouteSessionData?> = _currentRouteSession.asStateFlow()
+
+        internal var testRouteSessionStarter: ((RouteSessionData) -> Unit)? = null
+        internal var testRouteSessionAdvancer: ((RouteSessionData?) -> Unit)? = null
+
+        fun resetTestRouteLaunchers() {
+            testRouteSessionStarter = null
+            testRouteSessionAdvancer = null
+        }
+
+        /**
+         * Returns an intent specification for starting multi-stop route session.
+         */
+        fun getStartRouteSessionIntentSpec(routeSession: RouteSessionData): FocusServiceIntentSpec {
+            return FocusServiceIntentSpec(
+                action = ACTION_START_ROUTE_SESSION,
+                targetClass = FocusModeForegroundService::class.java,
+                payloadJson = json.encodeToString(RouteSessionData.serializer(), routeSession)
+            )
+        }
+
+        /**
+         * Returns an intent specification for advancing to the next route leg.
+         */
+        fun getAdvanceRouteLegIntentSpec(routeSession: RouteSessionData? = null): FocusServiceIntentSpec {
+            return FocusServiceIntentSpec(
+                action = ACTION_ADVANCE_ROUTE_LEG,
+                targetClass = FocusModeForegroundService::class.java,
+                payloadJson = routeSession?.let { json.encodeToString(RouteSessionData.serializer(), it) }
+            )
+        }
+
+        fun parseRouteSessionJson(jsonString: String): RouteSessionData? {
+            return try {
+                json.decodeFromString(RouteSessionData.serializer(), jsonString)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        /**
+         * Creates an Intent to start a multi-stop route navigation session in Focus Mode.
+         */
+        fun createStartRouteSessionIntent(context: Context, routeSession: RouteSessionData): Intent {
+            val spec = getStartRouteSessionIntentSpec(routeSession)
+            return Intent(context, spec.targetClass).apply {
+                action = spec.action
+                putExtra(EXTRA_ROUTE_SESSION_JSON, spec.payloadJson)
+                putExtra(EXTRA_STATION_JSON, json.encodeToString(Station.serializer(), routeSession.currentTargetStation))
+            }
+        }
+
+        /**
+         * Creates an Intent to advance multi-stop route navigation to the next waypoint.
+         */
+        fun createAdvanceRouteLegIntent(context: Context, routeSession: RouteSessionData? = null): Intent {
+            val spec = getAdvanceRouteLegIntentSpec(routeSession)
+            return Intent(context, spec.targetClass).apply {
+                action = spec.action
+                if (spec.payloadJson != null) {
+                    putExtra(EXTRA_ROUTE_SESSION_JSON, spec.payloadJson)
+                }
+            }
+        }
+
+        /**
+         * Starts a multi-stop route session in FocusModeForegroundService.
+         */
+        fun startRouteSession(context: Context, routeSession: RouteSessionData) {
+            if (testRouteSessionStarter != null) {
+                testRouteSessionStarter?.invoke(routeSession)
+                return
+            }
+            val intent = createStartRouteSessionIntent(context, routeSession)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /**
+         * Advances the active multi-stop route session to the next waypoint.
+         */
+        fun advanceRouteLeg(context: Context, routeSession: RouteSessionData? = null) {
+            if (testRouteSessionAdvancer != null) {
+                testRouteSessionAdvancer?.invoke(routeSession)
+                return
+            }
+            val intent = createAdvanceRouteLegIntent(context, routeSession)
+            context.startService(intent)
+        }
 
         /**
          * Returns an intent specification for service startup to support deterministic JVM testing.
@@ -266,6 +365,41 @@ class FocusModeForegroundService : Service() {
             return START_STICKY
         }
 
+        if (intent.action == ACTION_START_ROUTE_SESSION) {
+            val sessionJson = intent.getStringExtra(EXTRA_ROUTE_SESSION_JSON)
+            if (sessionJson != null) {
+                try {
+                    val session = json.decodeFromString(RouteSessionData.serializer(), sessionJson)
+                    initializeAndStartRouteSession(session)
+                } catch (e: Exception) {
+                    AppDebugLogger.log(
+                        tag = DebugLogTag.FOCUS_MODE,
+                        level = DebugLogLevel.ERROR,
+                        message = "Focus Mode Service: Lỗi parse RouteSessionData JSON: ${e.message}"
+                    )
+                    stopFocusMode()
+                    return START_NOT_STICKY
+                }
+            } else {
+                stopFocusMode()
+                return START_NOT_STICKY
+            }
+            return START_STICKY
+        }
+
+        if (intent.action == ACTION_ADVANCE_ROUTE_LEG) {
+            val sessionJson = intent.getStringExtra(EXTRA_ROUTE_SESSION_JSON)
+            val explicitSession = if (sessionJson != null) {
+                try {
+                    json.decodeFromString(RouteSessionData.serializer(), sessionJson)
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+            handleAdvanceRouteLeg(explicitSession)
+            return START_STICKY
+        }
+
         if (intent.action == ACTION_START) {
             val stationJson = intent.getStringExtra(EXTRA_STATION_JSON)
             if (stationJson != null) {
@@ -303,7 +437,47 @@ class FocusModeForegroundService : Service() {
         serviceScope.cancel()
     }
 
-    private fun initializeAndStartEngine(station: Station) {
+    /**
+     * Initializes Focus Mode telemetry targeting Leg 1 of a multi-stop route session.
+     */
+    fun initializeAndStartRouteSession(session: RouteSessionData) {
+        _currentRouteSession.value = session
+        val targetStation = session.currentTargetStation
+        initializeAndStartEngine(targetStation, session)
+    }
+
+    /**
+     * Advances to the next waypoint in the route session, updates telemetry, and reroutes navigation.
+     */
+    fun handleAdvanceRouteLeg(explicitSession: RouteSessionData? = null) {
+        val updatedSession = explicitSession ?: engine?.advanceRouteLeg() ?: _currentRouteSession.value?.advanceToNextLeg()
+        if (updatedSession != null) {
+            _currentRouteSession.value = updatedSession
+            val nextStation = updatedSession.currentTargetStation
+            AppDebugLogger.log(
+                tag = DebugLogTag.FOCUS_MODE,
+                level = DebugLogLevel.INFO,
+                message = "Focus Mode Service: Chuyển sang ${updatedSession.progressionLabel}"
+            )
+            engine?.updateRouteSession(updatedSession)
+            engine?.updateTargetStation(nextStation)
+            MapNavigator.navigate(
+                context = applicationContext,
+                latitude = nextStation.latitude,
+                longitude = nextStation.longitude,
+                stationName = nextStation.name
+            )
+        } else {
+            AppDebugLogger.log(
+                tag = DebugLogTag.FOCUS_MODE,
+                level = DebugLogLevel.INFO,
+                message = "Focus Mode Service: Đã hoàn thành toàn bộ lộ trình!"
+            )
+            stopFocusMode()
+        }
+    }
+
+    private fun initializeAndStartEngine(station: Station, routeSession: RouteSessionData? = null) {
         // Clean up any existing engine, TTS, location tracking, and coroutine collectors
         stateCollectionJob?.cancel()
         stateCollectionJob = null
@@ -340,7 +514,8 @@ class FocusModeForegroundService : Service() {
                 newTtsManager.speak(alert.text)
             },
             coroutineScope = serviceScope,
-            stationNameResolver = resolver
+            stationNameResolver = resolver,
+            initialRouteSession = routeSession
         ).apply {
             setMuted(isMuted)
         }
@@ -359,7 +534,8 @@ class FocusModeForegroundService : Service() {
             floatingViewManager = FocusModeFloatingViewManager(
                 context = applicationContext,
                 onDismiss = { stopFocusMode() },
-                onReroute = { rec -> handleReroute(rec.station) }
+                onReroute = { rec -> handleReroute(rec.station) },
+                onAdvanceLeg = { handleAdvanceRouteLeg() }
             ).apply {
                 showOverlay(newEngine.state.value)
             }
@@ -384,7 +560,8 @@ class FocusModeForegroundService : Service() {
                         floatingViewManager = FocusModeFloatingViewManager(
                             context = applicationContext,
                             onDismiss = { stopFocusMode() },
-                            onReroute = { rec -> handleReroute(rec.station) }
+                            onReroute = { rec -> handleReroute(rec.station) },
+                            onAdvanceLeg = { handleAdvanceRouteLeg() }
                         ).apply {
                             showOverlay(state)
                         }
@@ -448,6 +625,7 @@ class FocusModeForegroundService : Service() {
         ttsManager = null
         _currentEngine.value = null
         _currentState.value = null
+        _currentRouteSession.value = null
 
         floatingViewManager?.removeOverlay()
         floatingViewManager = null

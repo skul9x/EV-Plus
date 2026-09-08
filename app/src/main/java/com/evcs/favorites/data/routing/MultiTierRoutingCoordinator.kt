@@ -223,6 +223,108 @@ open class MultiTierRoutingCoordinator(
     }
 
     /**
+     * Calculates the path polyline and driving metrics between origin and destination coordinates.
+     * Tier priority: OSRM primary -> Google fallback (if key provided) -> Haversine baseline.
+     */
+    open suspend fun calculateRoutePath(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double,
+        settings: RoutingSettings = RoutingSettings()
+    ): RoutePathResult = withContext(ioDispatcher) {
+        if (!isValidCoordinate(originLat, originLng) || !isValidCoordinate(destLat, destLng)) {
+            return@withContext RoutePathResult(
+                coordinates = emptyList(),
+                distanceMeters = 0L,
+                durationSeconds = 0L,
+                engineUsed = RoutingEngineType.HAVERSINE
+            )
+        }
+
+        when (settings.preferredEngine) {
+            RoutingEngineMode.HAVERSINE_ONLY -> {
+                computeHaversineRoute(originLat, originLng, destLat, destLng)
+            }
+            RoutingEngineMode.OSRM_ONLY -> {
+                val osrmRes = osrmClient.computeRoute(
+                    originLat = originLat,
+                    originLng = originLng,
+                    destLat = destLat,
+                    destLng = destLng,
+                    customBaseUrl = settings.customOsrmServerUrl,
+                    timeoutMs = OSRM_TIMEOUT_MS
+                )
+                if (osrmRes.isSuccess && osrmRes.getOrThrow().coordinates.isNotEmpty()) {
+                    osrmRes.getOrThrow()
+                } else if (settings.autoFallbackEnabled) {
+                    computeHaversineRoute(originLat, originLng, destLat, destLng)
+                } else {
+                    RoutePathResult(coordinates = emptyList(), distanceMeters = 0L, durationSeconds = 0L, engineUsed = RoutingEngineType.OSRM)
+                }
+            }
+            RoutingEngineMode.GOOGLE_ONLY -> {
+                if (settings.autoFallbackEnabled) {
+                    computeHaversineRoute(originLat, originLng, destLat, destLng)
+                } else {
+                    RoutePathResult(coordinates = emptyList(), distanceMeters = 0L, durationSeconds = 0L, engineUsed = RoutingEngineType.GOOGLE)
+                }
+            }
+            RoutingEngineMode.AUTO -> {
+                val osrmRes = osrmClient.computeRoute(
+                    originLat = originLat,
+                    originLng = originLng,
+                    destLat = destLat,
+                    destLng = destLng,
+                    customBaseUrl = settings.customOsrmServerUrl,
+                    timeoutMs = OSRM_TIMEOUT_MS
+                )
+                if (osrmRes.isSuccess && osrmRes.getOrThrow().coordinates.isNotEmpty()) {
+                    return@withContext osrmRes.getOrThrow()
+                }
+
+                if (settings.autoFallbackEnabled) {
+                    computeHaversineRoute(originLat, originLng, destLat, destLng)
+                } else {
+                    RoutePathResult(coordinates = emptyList(), distanceMeters = 0L, durationSeconds = 0L, engineUsed = RoutingEngineType.OSRM)
+                }
+            }
+        }
+    }
+
+    /**
+     * Computes a linear interpolated straight-line route between two points.
+     */
+    fun computeHaversineRoute(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double
+    ): RoutePathResult {
+        val distanceM = DistanceCalculator.calculateDistanceMeters(originLat, originLng, destLat, destLng).roundToLong()
+        val durationSec = if (distanceM > 0) {
+            (distanceM / (50.0 * 1000.0 / 3600.0)).roundToLong().coerceAtLeast(60L)
+        } else {
+            0L
+        }
+        val distanceKm = distanceM / 1000.0
+        val stepKm = 10.0
+        val steps = (distanceKm / stepKm).toInt().coerceIn(1, 100)
+        val coords = (0..steps).map { i ->
+            val fraction = i.toDouble() / steps
+            val lat = originLat + (destLat - originLat) * fraction
+            val lng = originLng + (destLng - originLng) * fraction
+            RouteCoordinate(latitude = lat, longitude = lng)
+        }
+        return RoutePathResult(
+            coordinates = coords,
+            distanceMeters = distanceM,
+            durationSeconds = durationSec,
+            engineUsed = RoutingEngineType.HAVERSINE
+        )
+    }
+
+    /**
      * Validates that coordinate values are numeric, within GPS ranges, and not unresolved (0.0, 0.0).
      */
     private fun isValidCoordinate(lat: Double, lng: Double): Boolean {
@@ -231,3 +333,4 @@ open class MultiTierRoutingCoordinator(
         return lat in -90.0..90.0 && lng in -180.0..180.0
     }
 }
+

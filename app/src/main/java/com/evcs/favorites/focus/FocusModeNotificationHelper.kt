@@ -73,15 +73,21 @@ object FocusModeNotificationHelper {
         )
 
         val cleanName = com.evcs.favorites.util.StationNameSanitizer.sanitize(state.targetStation.name).ifBlank { state.targetStation.name }
-        val title = "⚡ Focus Mode: $cleanName"
+        val title = if (state.hasArrivedAtStop) {
+            "⚡ Đã đến trạm sạc: $cleanName"
+        } else {
+            "⚡ Focus Mode: $cleanName"
+        }
         val distStr = state.distanceRemainingKm?.let { String.format(Locale.US, "%.1f km", it) } ?: "..."
-        val contentText = if (state.detailedDcTiersText != null) {
+        val contentText = if (state.hasArrivedAtStop) {
+            "Đã đến trạm sạc. Nhấn tiếp tục để dẫn đường chặng tiếp theo."
+        } else if (state.detailedDcTiersText != null) {
             "${state.statusBadgeOverviewText} • ${state.detailedDcTiersText} • Cách $distStr"
         } else {
             "${state.statusBadgeText} • Cách $distStr"
         }
 
-        val priority = if (isFallbackMode && state.isDcFull) {
+        val priority = if (state.hasArrivedAtStop || (isFallbackMode && state.isDcFull)) {
             NotificationCompat.PRIORITY_HIGH
         } else {
             NotificationCompat.PRIORITY_LOW
@@ -93,7 +99,7 @@ object FocusModeNotificationHelper {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(contentPendingIntent)
             .setOngoing(true)
-            .setOnlyAlertOnce(!isFallbackMode)
+            .setOnlyAlertOnce(!isFallbackMode && !state.hasArrivedAtStop)
             .setPriority(priority)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .addAction(
@@ -102,9 +108,26 @@ object FocusModeNotificationHelper {
                 stopPendingIntent
             )
 
-        // When slots are full and an alternative station recommendation exists,
-        // attach 1-tap "Đổi trạm" action button and BigTextStyle expansion
-        if (state.isDcFull && state.alternativeStation != null) {
+        // When arrived at stop waypoint, attach 1-tap "Tiếp tục chặng tiếp theo" action
+        if (state.hasArrivedAtStop) {
+            val advanceIntent = FocusModeForegroundService.createAdvanceRouteLegIntent(context)
+            val advancePendingIntent = PendingIntent.getService(
+                context,
+                3,
+                advanceIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(
+                android.R.drawable.ic_media_play,
+                "Tiếp tục chặng tiếp theo",
+                advancePendingIntent
+            )
+            builder.setStyle(
+                NotificationCompat.BigTextStyle()
+                    .setBigContentTitle(title)
+                    .bigText(contentText)
+            )
+        } else if (state.isDcFull && state.alternativeStation != null) {
             val alt = state.alternativeStation
             val rerouteIntent = FocusModeForegroundService.createRerouteIntent(context, alt.station)
             val reroutePendingIntent = PendingIntent.getService(

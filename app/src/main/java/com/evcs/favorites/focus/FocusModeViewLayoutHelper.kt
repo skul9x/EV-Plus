@@ -127,6 +127,18 @@ object FocusModeViewLayoutHelper {
             .ifBlank { state.targetStation.name }
 
         return when {
+            state.hasArrivedAtStop -> {
+                FloatingViewState(
+                    stationName = cleanStationName,
+                    badgeText = state.arrivalMessage ?: "Đã đến trạm sạc",
+                    detailedTiersText = null,
+                    badgeColorToken = FocusBadgeColor.GREEN,
+                    isRerouteAvailable = true,
+                    rerouteButtonText = "Tiếp tục chặng tiếp theo",
+                    isOffline = false,
+                    distanceText = distText
+                )
+            }
             state.isOffline -> {
                 FloatingViewState(
                     stationName = cleanStationName,

@@ -1,63 +1,92 @@
 {
-  "updated_at": "2026-09-08T14:02:00+07:00",
+  "updated_at": "2026-09-08T21:50:00+07:00",
   "working_on": {
-    "feature": "Automated Android Release CI/CD & Secure Secret Management",
-    "task": "Fixed local java.home path in gradle.properties and baseline profile wildcard syntax. Successfully built, signed, and published release APK on GitHub Actions.",
-    "status": "completed",
+    "feature": "Fix EV Smart Routing Performance Bottlenecks & UI Warnings",
+    "task": "Created comprehensive 4-phase plan to fix audit critical issues and warnings (Bounding Box & Euclidean projection, Slider disk thrashing prevention, comprehensive station sourcing, and Compose zero-allocation UI optimizations).",
+    "status": "planned",
     "files": [
-      "gradle.properties",
-      "app/src/main/baseline-prof.txt",
-      "app/src/main/baselineProfiles/baseline-prof.txt",
-      ".gitignore",
-      ".github/workflows/android.yml"
+      "plans/260908-2150-fix-ev-routing-performance-and-warnings/plan.md",
+      "plans/260908-2150-fix-ev-routing-performance-and-warnings/phase-01-algorithmic-optimization-and-bounding-box-filtering.md",
+      "plans/260908-2150-fix-ev-routing-performance-and-warnings/phase-02-slider-disk-thrashing-prevention-and-state-updates.md",
+      "plans/260908-2150-fix-ev-routing-performance-and-warnings/phase-03-comprehensive-route-station-sourcing.md",
+      "plans/260908-2150-fix-ev-routing-performance-and-warnings/phase-04-compose-dropdown-and-zero-allocation-ui-optimizations.md",
+      "docs/reports/audit_20260908.md"
     ],
     "blockers": [],
-    "notes": "Release v1.0 successfully published on GitHub Actions with signed APK: ev-plus-v1.0.apk."
+    "notes": "All 4 phase files generated with exactly one verification test each. Verification command uses JAVA_HOME=/home/skul9x/.jdks/jdk-17.0.20.1+1."
   },
-  "pending_tasks": [],
+  "pending_tasks": [
+    {
+      "task": "Execute Phase 01: Algorithmic Optimization & Bounding Box Filtering",
+      "priority": "high",
+      "notes": "Add spatial bounding box pre-filtering and localized Euclidean flat projection to EvSmartRoutePlanner. Verification test: com.evcs.favorites.data.routing.EvSmartRoutePlannerOptimizationTest"
+    },
+    {
+      "task": "Execute Phase 02: Slider Disk Thrashing Prevention & State Updates",
+      "priority": "high",
+      "notes": "Defer SharedPreferences writes to onValueChangeFinished in RoutingSettingsModal and RouteScreen. Verification test: com.evcs.favorites.data.preferences.EvSliderPersistenceDebounceTest"
+    },
+    {
+      "task": "Execute Phase 03: Comprehensive Route Station Sourcing",
+      "priority": "high",
+      "notes": "Provide all known cached stations to RouteViewModel instead of personal favorites only. Verification test: com.evcs.favorites.ui.screens.RouteStationSourcingIntegrationTest"
+    },
+    {
+      "task": "Execute Phase 04: Compose Dropdown & Zero-Allocation UI Optimizations",
+      "priority": "high",
+      "notes": "Cache sorted provinces, pre-compute district names in state, and eliminate DrawScope allocations in EnergyCorridorBar. Verification test: com.evcs.favorites.ui.screens.RouteUiPerformanceOptimizationTest"
+    }
+  ],
   "recent_changes": [
     {
-      "timestamp": "2026-09-08T13:37:00+07:00",
-      "type": "ci_cd",
-      "description": "Fixed runner secret condition syntax and release tag parsing, verified GitHub Actions run 34195491881 in_progress.",
+      "timestamp": "2026-09-08T19:55:00+07:00",
+      "type": "planning",
+      "description": "Created comprehensive 5-phase plan in English for EV Smart Route Planning & Corridor Navigation System with exactly one file-based test per phase.",
       "files": [
-        ".github/workflows/android.yml"
+        "plans/260908-1955-ev-smart-routing-and-navigation/plan.md",
+        "plans/260908-1955-ev-smart-routing-and-navigation/phase-01-offline-locations-dataset-and-repository.md",
+        "plans/260908-1955-ev-smart-routing-and-navigation/phase-02-ev-routing-settings-and-preferences.md",
+        "plans/260908-1955-ev-smart-routing-and-navigation/phase-03-smart-ev-corridor-route-planner.md",
+        "plans/260908-1955-ev-smart-routing-and-navigation/phase-04-navigation-tabs-and-route-screen-ui.md",
+        "plans/260908-1955-ev-smart-routing-and-navigation/phase-05-settings-modal-and-navigation-handoff.md"
       ]
     },
     {
-      "timestamp": "2026-09-08T13:31:00+07:00",
-      "type": "ci_cd",
-      "description": "Added GitHub Actions automated release pipeline: slugify app name, auto-increment minor release version, decode Base64 keystore & google-services.json, build assembleRelease, rename APK and publish GitHub Release.",
+      "timestamp": "2026-09-08T19:40:00+07:00",
+      "type": "design",
+      "description": "Generated 3 UI mockups (Settings Screen, Route & Energy Corridor Map, Route Tab with District Dropdowns) matching Jetpack Compose Emerald Dark Theme.",
       "files": [
-        ".github/workflows/android.yml",
-        "app/google-services.json.example"
-      ]
-    },
-    {
-      "timestamp": "2026-09-08T13:29:00+07:00",
-      "type": "security",
-      "description": "Protected google-services.json and *.jks via .gitignore, provided app/google-services.json.example template, and generated Base64 secret strings.",
-      "files": [
-        "app/google-services.json.example",
-        ".gitignore"
+        "docs/BRIEF_EV_SMART_ROUTING.md"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "GitHub Actions validation failure: Unrecognized named-value 'secrets' in step if condition",
-      "solution": "Refactored secret check inside bash script using env vars [ -n \"$SECRET\" ]",
+      "error": "Execution failed for task ':app:compileDebugJavaWithJavac': jlink executable /usr/lib/jvm/java-21-openjdk-amd64/bin/jlink does not exist.",
+      "solution": "Pointed JAVA_HOME to /home/skul9x/.jdks/jdk-17.0.20.1+1 which contains a complete JDK with jlink. Test builds succeeded in 34s.",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Use Base64 encoded GitHub Actions Secrets for google-services.json and keystore.jks",
-      "reason": "Prevents secret leakage in public/private repositories while maintaining automated CI/CD builds"
+      "decision": "Use bundled vietnam_locations.json (from https://www3.evcs.vn/l.json) in app assets",
+      "reason": "Lightweight (26KB), covers all 63 provinces and ~700 districts with precomputed lat/lng centroids, eliminates external HTTP calls and Cloudflare bot protection issues, enables 100% offline usage."
     },
     {
-      "decision": "Use softprops/action-gh-release@v2 with auto minor tag increment",
-      "reason": "Automates GitHub Releases with zero manual versioning intervention on every push to main"
+      "decision": "Three-tab bottom navigation with Favorites in the center",
+      "reason": "User requirement: Tab 1 Nearby, Tab 2 Favorites (Center), Tab 3 Route (Beside Favorites)."
+    },
+    {
+      "decision": "OSRM detour penalty > 3km highway anti-trap",
+      "reason": "Prevents recommending charging stations on the opposite side of dual-carriageway expressways where U-turns are illegal or require tens of kilometers."
+    },
+    {
+      "decision": "DC power tiering: >=60kW prioritized -> 30kW fallback -> exclude AC 11kW",
+      "reason": "Provides fast travel charging times and prevents slow AC charging stops on long trips."
+    },
+    {
+      "decision": "One test per phase verification protocol",
+      "reason": "Ensures isolated, verifiable, and regression-free incremental implementation."
     }
   ]
 }

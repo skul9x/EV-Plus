@@ -24,8 +24,8 @@ import com.evcs.favorites.ui.theme.MIN_CAR_TOUCH_TARGET
 
 /**
  * Material 3 NavigationRail providing automotive left-edge vertical navigation
- * in landscape mode, preserving vertical screen height and offering large automotive
- * touch targets (>= 56dp) with distinct Emerald indicators.
+ * in landscape mode across Nearby, Favorites, and Route tabs, preserving vertical
+ * screen height and offering large automotive touch targets (>= 56dp) with distinct Emerald indicators.
  */
 @Composable
 fun AppNavigationRail(

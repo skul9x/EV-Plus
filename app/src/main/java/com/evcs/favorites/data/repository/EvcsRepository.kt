@@ -63,7 +63,8 @@ open class EvcsRepository(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
     private val eagerLoadCache: Boolean = true,
-    val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null
+    val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null,
+    private val clusterStationCache: MutableMap<String, Station> = BoundedLruMap(maxCapacity = 1000)
 ) {
 
     val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
@@ -250,12 +251,83 @@ open class EvcsRepository(
     }
 
     /**
-     * Clears cached favorites snapshot and resets in-memory favorites flows.
+     * Clears cached favorites snapshot, resets in-memory favorites flows,
+     * and clears cached cluster stations.
      */
     fun clearOfflineCache() {
         cacheStorage?.remove(KEY_OFFLINE_FAVORITES)
         _favoritesState.value = emptyList()
         _favoriteIdsState.value = emptySet()
+        clusterStationCache.clear()
+    }
+
+    /**
+     * Caches search/cluster stations into the repository's station cache.
+     * Also updates [coordinateCache] if coordinates are non-zero.
+     */
+    open fun cacheClusterStations(stations: Collection<Station>) {
+        for (st in stations) {
+            val key = st.id.trim().lowercase()
+            if (key.isNotEmpty()) {
+                clusterStationCache[key] = st
+                if (st.latitude != 0.0 || st.longitude != 0.0) {
+                    coordinateCache[key] = Pair(st.latitude, st.longitude)
+                }
+            }
+        }
+    }
+
+    /**
+     * Caches a single search/cluster station into the repository's station cache.
+     */
+    open fun cacheClusterStation(station: Station) {
+        cacheClusterStations(listOf(station))
+    }
+
+    /**
+     * Returns an immutable copy of current cached cluster/search stations.
+     */
+    open fun getCachedClusterStations(): List<Station> = clusterStationCache.values.toList()
+
+    /**
+     * Clears cached cluster stations from memory.
+     */
+    open fun clearClusterStationCache() {
+        clusterStationCache.clear()
+    }
+
+    /**
+     * Aggregates all known charging stations across:
+     * 1. In-memory favorite stations ([favoritesState.value] or persistent cache).
+     * 2. Cached cluster search stations and resolved stations ([clusterStationCache]).
+     * 3. Cleanly deduplicates stations by unique station ID.
+     */
+    open fun getAllKnownStations(): List<Station> {
+        val favorites = favoritesState.value.ifEmpty { getCachedFavorites() }
+        val clusterStations = clusterStationCache.values
+
+        val stationMap = LinkedHashMap<String, Station>()
+
+        for (st in clusterStations) {
+            val key = st.id.trim().lowercase()
+            if (key.isNotEmpty()) {
+                stationMap[key] = st
+            }
+        }
+
+        for (fav in favorites) {
+            val key = fav.id.trim().lowercase()
+            if (key.isNotEmpty()) {
+                val existing = stationMap[key]
+                if (existing != null && (fav.latitude == 0.0 && fav.longitude == 0.0) && (existing.latitude != 0.0 || existing.longitude != 0.0)) {
+                    stationMap[key] = fav.copy(latitude = existing.latitude, longitude = existing.longitude)
+                } else {
+                    stationMap[key] = fav
+                }
+            }
+        }
+
+        return stationMap.values.toList()
     }
 
     /**
@@ -399,11 +471,14 @@ open class EvcsRepository(
             }
         }
 
-        // Cache coordinates from search stations
+        // Cache coordinates and stations from search stations
         for (st in searchStations) {
             val key = st.effectiveLocationId.trim().lowercase()
-            if (key.isNotEmpty() && (st.latitude != 0.0 || st.longitude != 0.0)) {
-                coordinateCache[key] = Pair(st.latitude, st.longitude)
+            if (key.isNotEmpty()) {
+                if (st.latitude != 0.0 || st.longitude != 0.0) {
+                    coordinateCache[key] = Pair(st.latitude, st.longitude)
+                }
+                clusterStationCache[key] = st.toDomainStation()
             }
         }
         saveCachedCoordinates()
@@ -667,18 +742,21 @@ open class EvcsRepository(
 
         val rawStations = searchResult.getOrThrow()
 
-        // Cache coordinates from search stations
-        for (st in rawStations) {
-            val key = st.effectiveLocationId.trim().lowercase()
-            if (key.isNotEmpty() && (st.latitude != 0.0 || st.longitude != 0.0)) {
-                coordinateCache[key] = Pair(st.latitude, st.longitude)
-            }
-        }
-        saveCachedCoordinates()
-
+        // Cache coordinates and stations from search stations
         val domainStations = rawStations.map { raw ->
             raw.toDomainStation(userLat = lat, userLon = lon)
         }
+
+        for (st in domainStations) {
+            val key = st.id.trim().lowercase()
+            if (key.isNotEmpty()) {
+                if (st.latitude != 0.0 || st.longitude != 0.0) {
+                    coordinateCache[key] = Pair(st.latitude, st.longitude)
+                }
+                clusterStationCache[key] = st
+            }
+        }
+        saveCachedCoordinates()
 
         Result.success(domainStations)
     }

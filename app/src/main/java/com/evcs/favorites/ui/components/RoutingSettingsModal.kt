@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,10 +57,19 @@ import android.app.Activity
 import androidx.compose.foundation.border
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.evcs.favorites.data.preferences.OrientationPreferences
 import com.evcs.favorites.data.preferences.StartupOrientation
+import com.evcs.favorites.data.routing.EvRoutingSettings
+import com.evcs.favorites.data.routing.RoutingPreferencesManager
 import com.evcs.favorites.util.OrientationHelper
+import kotlin.math.roundToInt
 
 /**
  * Material 3 [ModalBottomSheet] providing power filter configuration,
@@ -77,6 +87,7 @@ fun RoutingSettingsModal(
     onSaveCustomFilter: ((CustomFilterConfig) -> Unit)? = null,
     focusModePreferences: FocusModePreferences? = null,
     orientationPreferences: OrientationPreferences? = null,
+    routingPreferencesManager: RoutingPreferencesManager? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -89,6 +100,31 @@ fun RoutingSettingsModal(
         orientationPreferences ?: OrientationPreferences.create(context)
     }
     val currentOrientation by orientationPrefs.startupOrientationFlow.collectAsState()
+
+    val routingPrefs = remember(routingPreferencesManager, context) {
+        routingPreferencesManager ?: try {
+            RoutingPreferencesManager.create(context)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    // Two-way reactive synchronization with RoutingPreferencesManager
+    val evFromPrefs by (routingPrefs?.evRoutingSettings ?: MutableStateFlow(settings.evSettings)).collectAsState()
+    var localEvSettings by remember(settings.evSettings) {
+        mutableStateOf(if (routingPrefs != null) evFromPrefs else settings.evSettings)
+    }
+
+    LaunchedEffect(evFromPrefs) {
+        if (routingPrefs != null) {
+            localEvSettings = evFromPrefs
+        }
+    }
+
+    val onEvChanged: (EvRoutingSettings) -> Unit = { updatedEv ->
+        localEvSettings = updatedEv
+        routingPrefs?.updateEvRoutingSettings(updatedEv)
+    }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scrollState = rememberScrollState()
@@ -178,7 +214,15 @@ fun RoutingSettingsModal(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 3. Custom Filter Section
+            // 3. EV Smart Routing Settings Section
+            EvSmartRoutingSettingsCard(
+                evSettings = localEvSettings,
+                onEvSettingsChanged = onEvChanged
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 4. Custom Filter Section
             CustomFilterSettingsCard(
                 state = customFilterState,
                 onSaveCustomFilter = { config ->
@@ -188,12 +232,12 @@ fun RoutingSettingsModal(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 4. Debug Log Viewer Section
+            // 5. Debug Log Viewer Section
             DebugLogViewerCard()
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 5. Action Buttons (Save & Dismiss)
+            // 6. Action Buttons (Save & Dismiss)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -210,7 +254,9 @@ fun RoutingSettingsModal(
 
                 Button(
                     onClick = {
-                        onSaveSettings?.invoke(settings)
+                        routingPrefs?.updateEvRoutingSettings(localEvSettings)
+                        val updatedSettings = settings.copy(evSettings = localEvSettings)
+                        onSaveSettings?.invoke(updatedSettings)
                         focusPrefs.setVoiceAlertEnabled(voiceAlertEnabled)
                         orientationPrefs.setStartupOrientation(currentOrientation)
                         if (customFilterState.isValid) {
@@ -487,4 +533,278 @@ fun StartupOrientationCard(
         }
     }
 }
+
+/**
+ * Automotive-styled Material 3 card container for EV vehicle specifications and safety routing buffers.
+ * Provides controls for safe range (100-500 km), arrival reserve buffer (5-25%),
+ * target charging SoC (70-95%), and +25% delay safety buffer switch.
+ */
+@Composable
+fun EvSmartRoutingSettingsCard(
+    evSettings: EvRoutingSettings,
+    onEvSettingsChanged: (EvRoutingSettings) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var safeRange by remember(evSettings.vehicleSafeRangeKm) {
+        mutableFloatStateOf(evSettings.vehicleSafeRangeKm.toFloat())
+    }
+    var arrivalBuffer by remember(evSettings.arrivalBufferSocPercent) {
+        mutableFloatStateOf(evSettings.arrivalBufferSocPercent.toFloat())
+    }
+    var targetCharging by remember(evSettings.targetChargingSocPercent) {
+        mutableFloatStateOf(evSettings.targetChargingSocPercent.toFloat())
+    }
+
+    LaunchedEffect(evSettings.vehicleSafeRangeKm) {
+        safeRange = evSettings.vehicleSafeRangeKm.toFloat()
+    }
+    LaunchedEffect(evSettings.arrivalBufferSocPercent) {
+        arrivalBuffer = evSettings.arrivalBufferSocPercent.toFloat()
+    }
+    LaunchedEffect(evSettings.targetChargingSocPercent) {
+        targetCharging = evSettings.targetChargingSocPercent.toFloat()
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = EmeraldContainerDark
+        ),
+        border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.25f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(EmeraldPrimary.copy(alpha = 0.2f))
+                ) {
+                    Icon(
+                        imageVector = AppIcons.EvStation,
+                        contentDescription = null,
+                        tint = EmeraldPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Cấu hình Lộ trình & Pin Xe EV",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Thông số pin, tầm an toàn và mức sạc mục tiêu",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Slider 1: Quãng đường an toàn ở 100% pin (100 - 500 km, default 200 km)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Quãng đường an toàn ở 100% pin",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${safeRange.roundToInt()} km",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = EmeraldPrimary
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Khai báo số km thực tế xe đi được an toàn ở 100% pin",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Slider(
+                    value = safeRange,
+                    onValueChange = { newValue ->
+                        safeRange = newValue
+                    },
+                    onValueChangeFinished = {
+                        onEvSettingsChanged(
+                            evSettings.copy(
+                                vehicleSafeRangeKm = safeRange.roundToInt().coerceIn(100, 500),
+                                arrivalBufferSocPercent = arrivalBuffer.roundToInt().coerceIn(5, 25),
+                                targetChargingSocPercent = targetCharging.roundToInt().coerceIn(70, 95)
+                            )
+                        )
+                    },
+                    valueRange = 100f..500f,
+                    steps = 7,
+                    colors = SliderDefaults.colors(
+                        thumbColor = EmeraldPrimary,
+                        activeTrackColor = EmeraldPrimary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+            }
+
+            // Slider 2: Mức pin dự phòng tối thiểu khi đến trạm / đích (5% - 25%, default 10%)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Mức pin dự phòng tối thiểu khi đến trạm / đích",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${arrivalBuffer.roundToInt()}%",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = EmeraldPrimary
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Ngưỡng pin tối thiểu an toàn để tránh cạn kiệt năng lượng",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Slider(
+                    value = arrivalBuffer,
+                    onValueChange = { newValue ->
+                        arrivalBuffer = newValue
+                    },
+                    onValueChangeFinished = {
+                        onEvSettingsChanged(
+                            evSettings.copy(
+                                vehicleSafeRangeKm = safeRange.roundToInt().coerceIn(100, 500),
+                                arrivalBufferSocPercent = arrivalBuffer.roundToInt().coerceIn(5, 25),
+                                targetChargingSocPercent = targetCharging.roundToInt().coerceIn(70, 95)
+                            )
+                        )
+                    },
+                    valueRange = 5f..25f,
+                    steps = 3,
+                    colors = SliderDefaults.colors(
+                        thumbColor = EmeraldPrimary,
+                        activeTrackColor = EmeraldPrimary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+            }
+
+            // Slider 3: Mức pin mục tiêu khi sạc (70% - 95%, default 85%)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Mức pin mục tiêu khi sạc",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${targetCharging.roundToInt()}%",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = EmeraldPrimary
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Mức pin tối ưu ngắt sạc để tối đa hóa tốc độ sạc nhanh DC",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Slider(
+                    value = targetCharging,
+                    onValueChange = { newValue ->
+                        targetCharging = newValue
+                    },
+                    onValueChangeFinished = {
+                        onEvSettingsChanged(
+                            evSettings.copy(
+                                vehicleSafeRangeKm = safeRange.roundToInt().coerceIn(100, 500),
+                                arrivalBufferSocPercent = arrivalBuffer.roundToInt().coerceIn(5, 25),
+                                targetChargingSocPercent = targetCharging.roundToInt().coerceIn(70, 95)
+                            )
+                        )
+                    },
+                    valueRange = 70f..95f,
+                    steps = 4,
+                    colors = SliderDefaults.colors(
+                        thumbColor = EmeraldPrimary,
+                        activeTrackColor = EmeraldPrimary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+            }
+
+            // Switch: Cộng thêm 25% thời gian trễ an toàn khi sạc (default On)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Cộng thêm 25% thời gian trễ an toàn khi sạc",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Bù trừ thời gian chờ cắm sạc, giảm tốc độ khi pin nóng",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Switch(
+                    checked = evSettings.safetyDurationBufferEnabled,
+                    onCheckedChange = { isChecked ->
+                        onEvSettingsChanged(
+                            evSettings.copy(
+                                vehicleSafeRangeKm = safeRange.roundToInt().coerceIn(100, 500),
+                                arrivalBufferSocPercent = arrivalBuffer.roundToInt().coerceIn(5, 25),
+                                targetChargingSocPercent = targetCharging.roundToInt().coerceIn(70, 95),
+                                safetyDurationBufferEnabled = isChecked
+                            )
+                        )
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = EmeraldPrimary,
+                        checkedTrackColor = EmeraldContainerDark,
+                        checkedBorderColor = EmeraldPrimary,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+            }
+        }
+    }
+}
+
 

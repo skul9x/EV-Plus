@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import kotlinx.serialization.Serializable
+import com.evcs.favorites.data.routing.RouteSessionData
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,8 +60,23 @@ data class FocusModeState(
     val alternativeStation: AlternativeStationRecommendation? = null,
     val offlineMessage: String? = null,
     val lastUpdatedTimestamp: Long = 0L,
-    val isAudioMuted: Boolean = false
+    val isAudioMuted: Boolean = false,
+    val routeSession: RouteSessionData? = null,
+    val hasArrivedAtStop: Boolean = false,
+    val arrivalMessage: String? = null
 ) {
+    val isMultiStopRoute: Boolean
+        get() = routeSession != null
+
+    val nextWaypointName: String?
+        get() = routeSession?.let { session ->
+            val nextIndex = session.currentLegIndex + 1
+            if (nextIndex < session.plan.stops.size) {
+                session.plan.stops[nextIndex].station.name
+            } else if (nextIndex == session.plan.stops.size) {
+                session.destinationLabel.ifBlank { "Điểm đến" }
+            } else null
+        }
     val isOffline: Boolean
         get() = connectionStatus == FocusConnectionStatus.OFFLINE
 

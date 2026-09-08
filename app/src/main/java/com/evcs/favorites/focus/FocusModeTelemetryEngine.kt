@@ -6,6 +6,7 @@ import com.evcs.favorites.data.logging.DebugLogTag
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.network.here.HereEvApiClient
+import com.evcs.favorites.data.routing.RouteSessionData
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.util.StationNameSanitizer
@@ -41,8 +42,7 @@ object FocusModeDcFilter {
     }
 
     /**
-     * Computes the available and total DC slots from a list of power ports,
-     * strictly excluding AC ports (< 20kW or 22kW AC).
+     * Computes the available and total DC slots for a list of [PowerPort]s.
      *
      * @return Pair(availableDcSlots, totalDcSlots)
      */
@@ -85,7 +85,8 @@ class FocusModeTelemetryEngine(
         clock = clock
     ),
     private val onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null,
-    val stationNameResolver: EvcsStationNameResolver? = null
+    val stationNameResolver: EvcsStationNameResolver? = null,
+    val initialRouteSession: RouteSessionData? = null
 ) {
     companion object {
         const val INTERVAL_FAR_MS = 15_000L     // Distance > 3.0km -> 15s
@@ -94,6 +95,8 @@ class FocusModeTelemetryEngine(
 
         const val DISTANCE_THRESHOLD_FAR_KM = 3.0
         const val DISTANCE_THRESHOLD_NEAR_KM = 1.5
+
+        const val ARRIVAL_THRESHOLD_KM = 0.3 // 300 meters proximity threshold for waypoint arrival
 
         /**
          * Computes the dynamic polling interval based on the remaining distance to target station.
@@ -206,7 +209,8 @@ class FocusModeTelemetryEngine(
             clock = clock
         ),
         onVoiceAlert: ((FocusVoiceAlert) -> Unit)? = null,
-        stationNameResolver: EvcsStationNameResolver? = null
+        stationNameResolver: EvcsStationNameResolver? = null,
+        initialRouteSession: RouteSessionData? = null
     ) : this(
         initialStation = initialStation,
         fetchStationTelemetry = { stationId, lat, lon ->
@@ -233,7 +237,8 @@ class FocusModeTelemetryEngine(
         coroutineScope = coroutineScope,
         voiceAlertPolicy = voiceAlertPolicy,
         onVoiceAlert = onVoiceAlert,
-        stationNameResolver = stationNameResolver
+        stationNameResolver = stationNameResolver,
+        initialRouteSession = initialRouteSession
     )
 
     private val scope = coroutineScope ?: CoroutineScope(defaultDispatcher)
@@ -260,11 +265,31 @@ class FocusModeTelemetryEngine(
         }
     }
 
+    private var currentRouteSession: RouteSessionData? = initialRouteSession
+
+    private fun checkArrival(distanceKm: Double?): Boolean {
+        return distanceKm != null && !distanceKm.isNaN() && distanceKm <= ARRIVAL_THRESHOLD_KM
+    }
+
+    private fun buildArrivalMessage(target: Station, session: RouteSessionData?): String {
+        return if (session != null && !session.isFinalLeg) {
+            "Đã đến trạm sạc: ${target.name}"
+        } else {
+            "Đã đến điểm đích: ${target.name}"
+        }
+    }
+
     private val _state = MutableStateFlow(
         FocusModeState.createInitial(
             targetStation = initialTargetStation,
             distanceRemainingKm = initialTargetStation.effectiveDistanceKm,
             timestamp = clock()
+        ).copy(
+            routeSession = initialRouteSession,
+            hasArrivedAtStop = checkArrival(initialTargetStation.effectiveDistanceKm),
+            arrivalMessage = if (checkArrival(initialTargetStation.effectiveDistanceKm)) {
+                buildArrivalMessage(initialTargetStation, initialRouteSession)
+            } else null
         )
     )
 
@@ -298,7 +323,12 @@ class FocusModeTelemetryEngine(
         val target = _state.value.targetStation
         if (target.latitude != 0.0 && target.longitude != 0.0) {
             val dist = DistanceCalculator.calculateDistanceKm(latitude, longitude, target.latitude, target.longitude)
-            _state.value = _state.value.copy(distanceRemainingKm = dist)
+            val arrived = checkArrival(dist)
+            _state.value = _state.value.copy(
+                distanceRemainingKm = dist,
+                hasArrivedAtStop = arrived,
+                arrivalMessage = if (arrived) buildArrivalMessage(target, currentRouteSession) else null
+            )
         }
     }
 
@@ -320,6 +350,7 @@ class FocusModeTelemetryEngine(
         } else {
             preservedStation.effectiveDistanceKm
         }
+        val arrived = checkArrival(dist)
         _state.value = _state.value.copy(
             targetStation = preservedStation,
             availableDcSlots = avail,
@@ -327,8 +358,41 @@ class FocusModeTelemetryEngine(
             distanceRemainingKm = dist,
             alternativeStation = null,
             offlineMessage = null,
-            connectionStatus = FocusConnectionStatus.CONNECTED
+            connectionStatus = FocusConnectionStatus.CONNECTED,
+            hasArrivedAtStop = arrived,
+            arrivalMessage = if (arrived) buildArrivalMessage(preservedStation, currentRouteSession) else null
         )
+    }
+
+    /**
+     * Updates the active route session data.
+     */
+    fun updateRouteSession(session: RouteSessionData) {
+        currentRouteSession = session
+        val target = _state.value.targetStation
+        val arrived = checkArrival(_state.value.distanceRemainingKm)
+        _state.value = _state.value.copy(
+            routeSession = session,
+            hasArrivedAtStop = arrived,
+            arrivalMessage = if (arrived) buildArrivalMessage(target, session) else null
+        )
+    }
+
+    /**
+     * Advances multi-stop itinerary to the next leg and points telemetry target to the new waypoint.
+     * @return Updated [RouteSessionData] or null if already at final destination.
+     */
+    fun advanceRouteLeg(): RouteSessionData? {
+        val nextSession = currentRouteSession?.advanceToNextLeg() ?: return null
+        currentRouteSession = nextSession
+        val nextStation = nextSession.currentTargetStation
+        updateTargetStation(nextStation)
+        _state.value = _state.value.copy(
+            routeSession = nextSession,
+            hasArrivedAtStop = false,
+            arrivalMessage = null
+        )
+        return nextSession
     }
 
 
@@ -447,6 +511,7 @@ class FocusModeTelemetryEngine(
                 distanceKm = remainingDist
             )
 
+            val arrived = checkArrival(remainingDist)
             _state.value = FocusModeState(
                 targetStation = updatedWithDist,
                 availableDcSlots = availDc,
@@ -456,7 +521,10 @@ class FocusModeTelemetryEngine(
                 alternativeStation = recommendation,
                 offlineMessage = null,
                 lastUpdatedTimestamp = lastSuccessfulTelemetryTimestamp,
-                isAudioMuted = voiceAlertPolicy?.isMuted ?: currentState.isAudioMuted
+                isAudioMuted = voiceAlertPolicy?.isMuted ?: currentState.isAudioMuted,
+                routeSession = currentRouteSession,
+                hasArrivedAtStop = arrived,
+                arrivalMessage = if (arrived) buildArrivalMessage(updatedWithDist, currentRouteSession) else null
             )
 
             voiceAlertPolicy?.let { policy ->
@@ -499,11 +567,15 @@ class FocusModeTelemetryEngine(
                 errorDetails = err?.stackTraceToString()
             )
 
+            val arrived = checkArrival(remainingDist)
             _state.value = currentState.copy(
                 targetStation = preservedTarget,
                 distanceRemainingKm = remainingDist,
                 connectionStatus = FocusConnectionStatus.OFFLINE,
-                offlineMessage = offlineMsg
+                offlineMessage = offlineMsg,
+                routeSession = currentRouteSession,
+                hasArrivedAtStop = arrived,
+                arrivalMessage = if (arrived) buildArrivalMessage(preservedTarget, currentRouteSession) else null
             )
         }
 

@@ -5,29 +5,37 @@
   },
   "project": {
     "name": "EV-Plus",
-    "type": "Android App (Jetpack Compose)",
-    "status": "In Progress"
+    "type": "Android App (Jetpack Compose & Android Auto)",
+    "status": "Production Ready (v1.0 Live, 724/724 Tests Passing)"
   },
   "tech_stack": {
     "frontend": {
       "language": "Kotlin 1.9.23 (JVM Target 17)",
       "ui_framework": "Jetpack Compose (Material 3 BOM 2024.04.01)",
-      "image_loader": "Coil Compose 2.6.0 (RGB_565 downsampling)",
-      "audio_tts": "Android TextToSpeech (vi-VN locale) + Transient Audio Ducking",
+      "car_app": "Android Auto Car App Library 1.7.0 (androidx.car.app:app + app-projected API Level 7)",
+      "image_loader": "Coil Compose 2.6.0 (Disk & Memory LRU Caching)",
+      "audio_tts": "Android TextToSpeech (vi-VN locale) + Transient Audio Ducking (AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)",
       "window_manager": "Android System Alert Window Overlay (TYPE_APPLICATION_OVERLAY)"
     },
     "backend": {
-      "service": "Firebase (Firestore + Auth)",
+      "service": "Firebase (Firestore + Auth BOM 33.10.0)",
+      "auth_service": "Google Credential Manager 1.3.0 (androidx.credentials + googleid:1.1.1)",
+      "routing_coordinator": "MultiTierRoutingCoordinator (Tier 1: Google Routes API v2 BYOK, Tier 2: OSRM Table Service, Tier 3: Haversine Offline Baseline with 30km/h ETA Heuristic)",
       "telemetry_source": "HERE Maps EV API (OAuth 1.0a HMAC-SHA256 direct VinFast telemetry) + EVCS Public API fallback"
     },
     "database": {
       "cloud": "Cloud Firestore (users/{userId}/userdata/favorites)",
-      "local": "Local-First EncryptedSharedPreferences / JSON Cache"
+      "local": "Local-First PlainSharedPrefsStorage (Thread-Safe Registry) & EncryptedSharedPreferences (AES-256 GCM MasterKey)"
     },
     "ci_cd": {
       "runner": "GitHub Actions (ubuntu-latest)",
       "workflow": ".github/workflows/android.yml",
       "features": "Slugify App Name, Auto-Increment Release Tag (v1.0 -> v1.1...), Base64 Secrets Injection (google-services.json & keystore.jks), Auto Signed APK Release via softprops/action-gh-release@v2"
+    },
+    "testing": {
+      "framework": "JUnit 4.13.2 + MockWebServer 4.12.0 + Kotlinx Coroutines Test 1.8.0 + AndroidX Car App Testing 1.7.0",
+      "test_count": 724,
+      "pass_rate": "100% (724/724 passed, 0 failures, 0 ignored)"
     }
   },
   "database_schema": {
@@ -63,10 +71,18 @@
       "method": "GET",
       "endpoint": "https://router.project-osrm.org/table/v1/driving/{coords}?sources=0&annotations=duration,distance",
       "purpose": "Calculates real road driving distance and duration matrix for top 10 stations."
+    },
+    {
+      "name": "Google Routes API Matrix v2",
+      "method": "POST",
+      "endpoint": "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix",
+      "purpose": "Calculates real-time traffic aware road distance and duration matrix via BYOK."
     }
   ],
   "features": [
+    "Android Auto Integration (EVPlusCarAppService & FavoritesCarScreen) for taplo navigation",
     "Automated GitHub Actions CI/CD Pipeline (Signing, Auto Version Increment, Release Publishing)",
+    "Multi-Tier Routing Coordinator (Google Routes v2 + OSRM + Haversine fallback with 30km/h heuristic)",
     "Focus Mode (Live DC Telemetry Navigation Tracker) with Draggable Floating Capsule Overlay over Google Maps",
     "Focus Mode evcs.vn Authentic Station Name Resolution (EvcsStationNameResolver) & Name Preservation against Here API generic names",
     "Focus Mode 1-Tap Direct Turn-by-Turn Driving Navigation (google.navigation:q=lat,lon&mode=d)",
@@ -83,10 +99,17 @@
     "Vietnamese Voice / Audio Announcements (vi-VN TTS) with Transient Audio Ducking on DC slot saturation/availability",
     "Native Station Detail Bottom Sheet with VinFast S3 Photo Carousel & Lightbox Zoom",
     "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In",
-    "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation"
+    "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation",
+    "EV Smart Route Planning & Corridor Charging Stop Planner (VinFast Only, 3-Tab Bottom Navigation, Highway Anti-Trap, Offline 63 Vietnam Provinces/Districts Dataset)"
   ],
   "knowledge_items": {
     "patterns": [
+      "Offline-first administrative locations hierarchy bundling via app/src/main/assets/vietnam_locations.json (63 provinces, ~700 districts) with precalculated centroids eliminating external HTTP latency & Cloudflare bot blocks",
+      "Corridor buffering (D_buffer <= 4km) with prefix-sum cumulative distance H[i] for O(1) road distance lookups along polyline paths",
+      "Highway dual-carriageway anti-trap mechanism: OSRM detour penalty > 3km immediately discards opposite-lane stations on divided expressways",
+      "DC power hierarchy prioritization (>=60kW prioritized -> 30kW fallback -> exclude AC 11kW) for fast long-distance charging",
+      "Dynamic defaultDispatcher resolution in ViewModels (if ioDispatcher === Dispatchers.IO then Dispatchers.Default else ioDispatcher) providing both thread-safe production execution and deterministic test execution",
+      "Bounded timeout isolation with withTimeoutOrNull for Stage 2 telemetry stats calculation preventing unhandled background hangs",
       "Base64 secret encoding & injection during CI/CD execution preventing secret exposure in git repositories",
       "Injected Gradle signing properties (-Pandroid.injected.signing.store.file=...) for dynamic keystore signing in GitHub Actions",
       "Automated semantic minor version calculation by inspecting GitHub Release API latest tags",
@@ -98,23 +121,22 @@
       "FocusModeTelemetryEngine headless decoupling with StateFlow and SharedFlow for discrete voice alerts",
       "Foreground Service lifecycle management with stateCollectionJob cancellation and locationService listener cleanup",
       "Android 14 (API 34) Foreground Service runtime permission check with FOREGROUND_SERVICE_TYPE_DATA_SYNC fallback",
-      "Android 13 (API 33+) rememberLauncherForActivityResult for POST_NOTIFICATIONS runtime request before notification dispatch",
-      "withTimeoutOrNull wrapping FusedLocationProviderClient suspendCancellableCoroutine with CancellationTokenSource cancellation cleanup",
-      "Watchdog coroutine timeout for TextToSpeech to guarantee audio ducking release upon engine lockup",
-      "rememberSaveable state preservation for transient dialog visibility across activity configuration changes",
-      "Raw HereEvStation direct filtering before domain mapping to eliminate Garbage Collection churn during 5s polling",
-      "Display metrics caching on ACTION_DOWN in floating WindowManager touch listeners to save Main Thread CPU cycles",
-      "NearbyUiHelper pure function decision rules for auto-scrolling with timestamp verification",
-      "AGP 8.2+ Baseline Profile method wildcards require `->**(**)**` rather than bare `->*` to avoid profgen parser StringIndexOutOfBoundsException"
+      "VinFast CDN direct URL decoding bypassing Cloudflare 403 proxy blocks",
+      "Optimistic UI state updates with automatic rollback on network failure"
     ],
     "gotchas": [
-      "Do not commit hardcoded org.gradle.java.home in gradle.properties to ensure CI/CD runner compatibility across environments.",
-      "AGP expandArtProfileWildcards task throws StringIndexOutOfBoundsException if baseline-prof.txt contains legacy `->*` wildcards; use `->**(**)**`.",
-      "GitHub Actions runner does not support 'secrets' context directly inside step 'if' conditions; use environment variables and evaluate inside the run script.",
-      "google-services.json and Keystore files (.jks) must always be kept out of git tracking and added to .gitignore.",
-      "Audio ducking requires AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK; activeUtteranceCount must reach 0 before abandoning focus.",
-      "FusedLocationProviderClient.lastLocation can return null; getCurrentLocation with PRIORITY_HIGH_ACCURACY and cancellation tokens must be used.",
-      "Double tap / fast spam clicks can trigger duplicate navigation intents or rapid Google sign-in launches if not debounced."
+      "Missing /usr/lib/jvm/java-21-openjdk-amd64/bin/jlink on Ubuntu: always specify JAVA_HOME=/home/skul9x/.jdks/jdk-17.0.20.1+1 for local Gradle testing",
+      "Do not hardcode org.gradle.java.home in gradle.properties to ensure compatibility with CI/CD runners",
+      "AGP 8.2+ requires ->**(**)** wildcard syntax in baseline-prof.txt to avoid StringIndexOutOfBoundsException",
+      "MockWebServer enqueued responses can be consumed by background telemetry calls if not using MockWebServer Dispatcher for targeted route isolation",
+      "EncryptedSharedPreferences must never be initialized synchronously on the main thread during app cold start"
+    ],
+    "conventions": [
+      "Package name: com.evcs.favorites",
+      "Application ID: com.evplus.app",
+      "State management: StateFlow with immutable data classes",
+      "Navigation: Compose Navigation & Custom Tabs with backstack preservation",
+      "Code style: Kotlin official style guide with ktlint compatibility"
     ]
   }
 }

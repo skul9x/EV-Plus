@@ -27,16 +27,36 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Provides real-time [StateFlow] reactive observation and proactive Google Cloud Routes API key validation.
  */
 class RoutingPreferencesManager(
-    private val storage: SessionStorage,
+    val storage: SessionStorage,
     private val okHttpClient: OkHttpClient = AppOkHttpClientProvider.getSharedClient().newBuilder().build(),
     private val baseUrl: String = GoogleRoutesClient.DEFAULT_BASE_URL,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
+    val storageAccess: SessionStorage get() = storage
+
+    private val _serializationCount = java.util.concurrent.atomic.AtomicInteger(0)
+    val serializationCount: Int get() = _serializationCount.get()
+
+    private val _writeCount = java.util.concurrent.atomic.AtomicInteger(0)
+    val writeCount: Int get() = _writeCount.get()
+
+    fun resetWriteCountsForTesting() {
+        _serializationCount.set(0)
+        _writeCount.set(0)
+    }
     companion object {
         const val KEY_GOOGLE_API_KEY = "routing_google_api_key"
         const val KEY_PREFERRED_ENGINE = "routing_preferred_engine"
         const val KEY_AUTO_FALLBACK = "routing_auto_fallback"
         const val KEY_CUSTOM_OSRM_URL = "routing_custom_osrm_url"
+
+        const val KEY_EV_SAFE_RANGE_KM = "routing_ev_safe_range_km"
+        const val KEY_EV_START_BATTERY_PERCENT = "routing_ev_start_battery_percent"
+        const val KEY_EV_ARRIVAL_BUFFER_SOC_PERCENT = "routing_ev_arrival_buffer_soc_percent"
+        const val KEY_EV_TARGET_CHARGING_SOC_PERCENT = "routing_ev_target_charging_soc_percent"
+        const val KEY_EV_SAFETY_DURATION_BUFFER_ENABLED = "routing_ev_safety_duration_buffer_enabled"
+        const val KEY_EV_SAFETY_DURATION_BUFFER_RATIO = "routing_ev_safety_duration_buffer_ratio"
+        const val KEY_EV_ROUTING_SETTINGS_JSON = "routing_ev_settings_json"
 
         /**
          * Factory helper for production Android application instantiation.
@@ -59,6 +79,10 @@ class RoutingPreferencesManager(
     private val _settings = MutableStateFlow(loadSettings())
     val settings: StateFlow<RoutingSettings> = _settings.asStateFlow()
 
+    private val _evSettings = MutableStateFlow(_settings.value.evSettings)
+    val evSettings: StateFlow<EvRoutingSettings> = _evSettings.asStateFlow()
+    val evRoutingSettings: StateFlow<EvRoutingSettings> get() = evSettings
+
     /**
      * Reads persisted preferences from storage, returning default [RoutingSettings]
      * if preferences have not been customized.
@@ -78,28 +102,192 @@ class RoutingPreferencesManager(
         val fallbackStr = storage.getString(KEY_AUTO_FALLBACK)
         val fallback = fallbackStr?.toBooleanStrictOrNull() ?: true
         val customOsrm = storage.getString(KEY_CUSTOM_OSRM_URL)
+        val evSettings = loadEvSettings()
 
         return RoutingSettings(
             googleApiKey = apiKey,
             preferredEngine = engine,
             autoFallbackEnabled = fallback,
-            customOsrmServerUrl = customOsrm
+            customOsrmServerUrl = customOsrm,
+            evSettings = evSettings
         )
+    }
+
+    /**
+     * Reads EV routing settings from storage, falling back to defaults and applying boundary clamping.
+     */
+    fun loadEvSettings(): EvRoutingSettings {
+        val jsonStr = storage.getString(KEY_EV_ROUTING_SETTINGS_JSON)
+        val parsedFromJson = if (!jsonStr.isNullOrBlank()) {
+            try {
+                json.decodeFromString<EvRoutingSettings>(jsonStr)
+            } catch (e: Exception) {
+                null
+            }
+        } else null
+
+        val safeRange = storage.getString(KEY_EV_SAFE_RANGE_KM)?.toIntOrNull()
+            ?: parsedFromJson?.vehicleSafeRangeKm
+            ?: EvRoutingSettings.DEFAULT_VEHICLE_SAFE_RANGE_KM
+
+        val startBattery = storage.getString(KEY_EV_START_BATTERY_PERCENT)?.toIntOrNull()
+            ?: parsedFromJson?.startBatteryPercent
+            ?: EvRoutingSettings.DEFAULT_START_BATTERY_PERCENT
+
+        val arrivalBuffer = storage.getString(KEY_EV_ARRIVAL_BUFFER_SOC_PERCENT)?.toIntOrNull()
+            ?: parsedFromJson?.arrivalBufferSocPercent
+            ?: EvRoutingSettings.DEFAULT_ARRIVAL_BUFFER_SOC_PERCENT
+
+        val targetSoc = storage.getString(KEY_EV_TARGET_CHARGING_SOC_PERCENT)?.toIntOrNull()
+            ?: parsedFromJson?.targetChargingSocPercent
+            ?: EvRoutingSettings.DEFAULT_TARGET_CHARGING_SOC_PERCENT
+
+        val durationBufferEnabled = storage.getString(KEY_EV_SAFETY_DURATION_BUFFER_ENABLED)?.toBooleanStrictOrNull()
+            ?: parsedFromJson?.safetyDurationBufferEnabled
+            ?: EvRoutingSettings.DEFAULT_SAFETY_DURATION_BUFFER_ENABLED
+
+        val durationBufferRatio = storage.getString(KEY_EV_SAFETY_DURATION_BUFFER_RATIO)?.toFloatOrNull()
+            ?: parsedFromJson?.safetyDurationBufferRatio
+            ?: EvRoutingSettings.DEFAULT_SAFETY_DURATION_BUFFER_RATIO
+
+        return EvRoutingSettings(
+            vehicleSafeRangeKm = safeRange,
+            startBatteryPercent = startBattery,
+            arrivalBufferSocPercent = arrivalBuffer,
+            targetChargingSocPercent = targetSoc,
+            safetyDurationBufferEnabled = durationBufferEnabled,
+            safetyDurationBufferRatio = durationBufferRatio
+        ).sanitized()
     }
 
     /**
      * Persists updated routing settings to secure storage and emits the new state to observers.
      */
     fun saveSettings(newSettings: RoutingSettings) {
-        storage.putString(KEY_GOOGLE_API_KEY, newSettings.googleApiKey)
-        storage.putString(KEY_PREFERRED_ENGINE, newSettings.preferredEngine.name)
-        storage.putString(KEY_AUTO_FALLBACK, newSettings.autoFallbackEnabled.toString())
-        if (newSettings.customOsrmServerUrl != null) {
-            storage.putString(KEY_CUSTOM_OSRM_URL, newSettings.customOsrmServerUrl)
-        } else {
-            storage.remove(KEY_CUSTOM_OSRM_URL)
+        val sanitizedEv = newSettings.evSettings.sanitized()
+        val sanitizedSettings = newSettings.copy(evSettings = sanitizedEv)
+
+        _serializationCount.incrementAndGet()
+        val serializedJson = try {
+            json.encodeToString(sanitizedEv)
+        } catch (e: Exception) {
+            null
         }
-        _settings.value = newSettings
+
+        val entries = mutableMapOf<String, String?>(
+            KEY_GOOGLE_API_KEY to sanitizedSettings.googleApiKey,
+            KEY_PREFERRED_ENGINE to sanitizedSettings.preferredEngine.name,
+            KEY_AUTO_FALLBACK to sanitizedSettings.autoFallbackEnabled.toString(),
+            KEY_CUSTOM_OSRM_URL to sanitizedSettings.customOsrmServerUrl,
+            KEY_EV_SAFE_RANGE_KM to sanitizedEv.vehicleSafeRangeKm.toString(),
+            KEY_EV_START_BATTERY_PERCENT to sanitizedEv.startBatteryPercent.toString(),
+            KEY_EV_ARRIVAL_BUFFER_SOC_PERCENT to sanitizedEv.arrivalBufferSocPercent.toString(),
+            KEY_EV_TARGET_CHARGING_SOC_PERCENT to sanitizedEv.targetChargingSocPercent.toString(),
+            KEY_EV_SAFETY_DURATION_BUFFER_ENABLED to sanitizedEv.safetyDurationBufferEnabled.toString(),
+            KEY_EV_SAFETY_DURATION_BUFFER_RATIO to sanitizedEv.safetyDurationBufferRatio.toString()
+        )
+        if (serializedJson != null) {
+            entries[KEY_EV_ROUTING_SETTINGS_JSON] = serializedJson
+        }
+        storage.putStrings(entries)
+        _writeCount.incrementAndGet()
+
+        _settings.value = sanitizedSettings
+        _evSettings.value = sanitizedEv
+    }
+
+    private fun saveEvSettingsToStorage(ev: EvRoutingSettings) {
+        _serializationCount.incrementAndGet()
+        val serializedJson = try {
+            json.encodeToString(ev)
+        } catch (e: Exception) {
+            null
+        }
+
+        val entries = mutableMapOf<String, String?>(
+            KEY_EV_SAFE_RANGE_KM to ev.vehicleSafeRangeKm.toString(),
+            KEY_EV_START_BATTERY_PERCENT to ev.startBatteryPercent.toString(),
+            KEY_EV_ARRIVAL_BUFFER_SOC_PERCENT to ev.arrivalBufferSocPercent.toString(),
+            KEY_EV_TARGET_CHARGING_SOC_PERCENT to ev.targetChargingSocPercent.toString(),
+            KEY_EV_SAFETY_DURATION_BUFFER_ENABLED to ev.safetyDurationBufferEnabled.toString(),
+            KEY_EV_SAFETY_DURATION_BUFFER_RATIO to ev.safetyDurationBufferRatio.toString()
+        )
+        if (serializedJson != null) {
+            entries[KEY_EV_ROUTING_SETTINGS_JSON] = serializedJson
+        }
+        storage.putStrings(entries)
+        _writeCount.incrementAndGet()
+    }
+
+    /**
+     * Convenience updater for EV-specific routing configurations.
+     */
+    fun updateEvRoutingSettings(evSettings: EvRoutingSettings) {
+        val sanitizedEv = evSettings.sanitized()
+        saveEvSettingsToStorage(sanitizedEv)
+        _settings.value = _settings.value.copy(evSettings = sanitizedEv)
+        _evSettings.value = sanitizedEv
+    }
+
+    /**
+     * Convenience updater for vehicle safe range in km.
+     */
+    fun updateVehicleSafeRangeKm(rangeKm: Int) {
+        updateEvRoutingSettings(_settings.value.evSettings.copy(vehicleSafeRangeKm = rangeKm))
+    }
+
+    /**
+     * Convenience updater for trip starting battery percentage.
+     */
+    fun updateStartBatteryPercent(percent: Int) {
+        updateEvRoutingSettings(_settings.value.evSettings.copy(startBatteryPercent = percent))
+    }
+
+    /**
+     * Convenience updater for destination arrival safety reserve buffer percentage.
+     */
+    fun updateArrivalBufferSocPercent(percent: Int) {
+        updateEvRoutingSettings(_settings.value.evSettings.copy(arrivalBufferSocPercent = percent))
+    }
+
+    /**
+     * Convenience updater for maximum target charging SoC percentage.
+     */
+    fun updateTargetChargingSocPercent(percent: Int) {
+        updateEvRoutingSettings(_settings.value.evSettings.copy(targetChargingSocPercent = percent))
+    }
+
+    /**
+     * Convenience updater for safety duration buffer toggle and ratio.
+     */
+    fun updateSafetyDurationBuffer(enabled: Boolean, ratio: Float = _settings.value.evSettings.safetyDurationBufferRatio) {
+        updateEvRoutingSettings(
+            _settings.value.evSettings.copy(
+                safetyDurationBufferEnabled = enabled,
+                safetyDurationBufferRatio = ratio
+            )
+        )
+    }
+
+    /**
+     * Convenience updater for safety duration buffer toggle.
+     */
+    fun updateSafetyDurationBufferEnabled(enabled: Boolean) {
+        updateEvRoutingSettings(_settings.value.evSettings.copy(safetyDurationBufferEnabled = enabled))
+    }
+
+    /**
+     * Convenience updater for safety duration buffer ratio.
+     */
+    fun updateSafetyDurationBufferRatio(ratio: Float) {
+        updateEvRoutingSettings(_settings.value.evSettings.copy(safetyDurationBufferRatio = ratio))
+    }
+
+    /**
+     * Resets EV routing settings to default values.
+     */
+    fun resetEvRoutingSettings() {
+        updateEvRoutingSettings(EvRoutingSettings())
     }
 
     /**

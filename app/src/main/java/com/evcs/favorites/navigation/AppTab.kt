@@ -23,5 +23,10 @@ enum class AppTab(
         label = "Yêu thích",
         selectedIcon = Icons.Filled.Favorite,
         unselectedIcon = AppIcons.FavoriteBorder
+    ),
+    ROUTE(
+        label = "Lộ trình",
+        selectedIcon = AppIcons.Route,
+        unselectedIcon = AppIcons.Route
     )
 }

@@ -31,7 +31,8 @@ class FocusModeFloatingViewManager(
     private val context: Context,
     private val windowManager: WindowManager? = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager,
     private val onDismiss: () -> Unit,
-    private val onReroute: (AlternativeStationRecommendation) -> Unit
+    private val onReroute: (AlternativeStationRecommendation) -> Unit,
+    private val onAdvanceLeg: (() -> Unit)? = null
 ) {
 
     companion object {
@@ -79,11 +80,22 @@ class FocusModeFloatingViewManager(
         rerouteDebounceHelper = helper
     }
 
+    private var hasArrivedAtStop: Boolean = false
+
     fun setAlternativeStationForTesting(station: AlternativeStationRecommendation?) {
         currentAlternativeStation = station
     }
 
+    fun setArrivedAtStopForTesting(arrived: Boolean) {
+        hasArrivedAtStop = arrived
+    }
+
     fun triggerReroute(): Boolean {
+        if (hasArrivedAtStop) {
+            return rerouteDebounceHelper.runIfAllowed {
+                onAdvanceLeg?.invoke() ?: FocusModeForegroundService.advanceRouteLeg(context)
+            }
+        }
         val alt = currentAlternativeStation ?: return false
         return rerouteDebounceHelper.runIfAllowed {
             onReroute(alt)
@@ -254,6 +266,7 @@ class FocusModeFloatingViewManager(
         if (!isViewAttached || floatingRootView == null) return
 
         currentAlternativeStation = state.alternativeStation
+        hasArrivedAtStop = state.hasArrivedAtStop
         val viewState = FocusModeViewLayoutHelper.formatViewState(state)
 
         // Update Mini Pill HUD

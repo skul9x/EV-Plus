@@ -13,16 +13,6 @@ enum class RoutingEngineMode {
     HAVERSINE_ONLY
 }
 
-/**
- * User configuration and BYOK preferences for routing calculations.
- */
-@Serializable
-data class RoutingSettings(
-    val googleApiKey: String = "",
-    val preferredEngine: RoutingEngineMode = RoutingEngineMode.OSRM_ONLY,
-    val autoFallbackEnabled: Boolean = true,
-    val customOsrmServerUrl: String? = null
-)
 
 /**
  * Target destination point for multi-destination routing matrices.
@@ -93,10 +83,6 @@ data class GoogleRpcStatus(
     val message: String? = null
 )
 
-// ==========================================
-// OSRM Table Service DTOs
-// ==========================================
-
 @Serializable
 data class OsrmTableResponse(
     val code: String = "",
@@ -104,3 +90,28 @@ data class OsrmTableResponse(
     val distances: List<List<Double?>>? = null,
     val message: String? = null
 )
+
+// ==========================================
+// OSRM Route Service DTOs
+// ==========================================
+
+@Serializable
+data class OsrmRouteResponse(
+    val code: String = "",
+    val routes: List<OsrmRouteElement>? = null,
+    val message: String? = null
+)
+
+@Serializable
+data class OsrmRouteElement(
+    val distance: Double = 0.0,
+    val duration: Double = 0.0,
+    val geometry: OsrmGeometry? = null
+)
+
+@Serializable
+data class OsrmGeometry(
+    val coordinates: List<List<Double>> = emptyList(),
+    val type: String = ""
+)
+

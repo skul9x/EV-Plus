@@ -130,6 +130,20 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private val locationsRepository by lazy { com.evcs.favorites.data.locations.VietnamLocationsRepository.getInstance(applicationContext) }
+    private val evSmartRoutePlanner by lazy { com.evcs.favorites.data.routing.EvSmartRoutePlanner() }
+
+    private val routeViewModel by viewModels<com.evcs.favorites.ui.screens.RouteViewModel> {
+        com.evcs.favorites.ui.screens.RouteViewModel.provideFactory(
+            locationsRepository = locationsRepository,
+            evSmartRoutePlanner = evSmartRoutePlanner,
+            evcsRepository = repository,
+            locationService = locationService,
+            routingPreferencesManager = routingPreferencesManager,
+            candidateStationsProvider = { repository.getAllKnownStations() }
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -163,6 +177,7 @@ class MainActivity : ComponentActivity() {
                     FavoritesApp(
                         viewModel = favoritesViewModel,
                         nearbyViewModel = nearbyViewModel,
+                        routeViewModel = routeViewModel,
                         locationService = locationService
                     )
                 }
@@ -174,12 +189,13 @@ class MainActivity : ComponentActivity() {
 /**
  * Root Composable orchestrating authentication state, bottom navigation bar,
  * location permission rationale, and navigation transitions between
- * [LoginScreen], [FavoritesScreen], and [NearbyScreen].
+ * [LoginScreen], [FavoritesScreen], [NearbyScreen], and [com.evcs.favorites.ui.screens.RouteScreen].
  */
 @Composable
 fun FavoritesApp(
     viewModel: FavoritesViewModel,
     nearbyViewModel: NearbyViewModel? = null,
+    routeViewModel: com.evcs.favorites.ui.screens.RouteViewModel? = null,
     locationService: LocationService? = null,
     modifier: Modifier = Modifier
 ) {
@@ -333,6 +349,15 @@ fun FavoritesApp(
                                         routingSettings = routingSettings,
                                         onSaveRoutingSettings = { nearbyViewModel.updateRoutingSettings(it) },
                                         onValidateGoogleApiKey = { nearbyViewModel.validateGoogleApiKey(it) },
+                                        isLandscape = effectiveIsLandscape
+                                    )
+                                }
+                            }
+
+                            AppTab.ROUTE -> {
+                                if (routeViewModel != null) {
+                                    com.evcs.favorites.ui.screens.RouteScreen(
+                                        viewModel = routeViewModel,
                                         isLandscape = effectiveIsLandscape
                                     )
                                 }

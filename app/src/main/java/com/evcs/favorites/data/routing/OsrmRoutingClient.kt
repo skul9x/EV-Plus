@@ -183,4 +183,102 @@ class OsrmRoutingClient(
             Result.failure(e)
         }
     }
+
+    /**
+     * Computes route geometry and driving metrics between origin and destination using OSRM Route Service.
+     */
+    suspend fun computeRoute(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double,
+        customBaseUrl: String? = null,
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS
+    ): Result<RoutePathResult> = withContext(Dispatchers.IO) {
+        val baseUrl = if (!customBaseUrl.isNullOrBlank()) customBaseUrl else defaultBaseUrl
+        val endpointUrl = "${baseUrl.trimEnd('/')}/route/v1/driving/$originLng,$originLat;$destLng,$destLat?overview=full&geometries=geojson"
+
+        val request = Request.Builder()
+            .url(endpointUrl)
+            .addHeader(HEADER_USER_AGENT, USER_AGENT_VALUE)
+            .get()
+            .build()
+
+        val effectiveClient = if (timeoutMs > 0L) {
+            okHttpClient.newBuilder()
+                .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                .build()
+        } else {
+            okHttpClient
+        }
+        val call = effectiveClient.newCall(request)
+
+        try {
+            val response = suspendCancellableCoroutine<Response> { continuation ->
+                continuation.invokeOnCancellation {
+                    call.cancel()
+                }
+                call.enqueue(object : Callback {
+                    override fun onResponse(call: Call, response: Response) {
+                        continuation.resume(response)
+                    }
+                    override fun onFailure(call: Call, e: IOException) {
+                        if (continuation.isCancelled) return
+                        continuation.resumeWithException(e)
+                    }
+                })
+            }
+
+            response.use { resp ->
+                val responseBody = resp.body?.string().orEmpty()
+
+                if (!resp.isSuccessful) {
+                    return@withContext Result.failure(
+                        RoutingApiException(
+                            statusCode = resp.code,
+                            message = "OSRM Route API error HTTP ${resp.code}: $responseBody"
+                        )
+                    )
+                }
+
+                val routeResponse = json.decodeFromString<OsrmRouteResponse>(responseBody)
+
+                if (!routeResponse.code.equals("Ok", ignoreCase = true)) {
+                    return@withContext Result.failure(
+                        RoutingApiException(
+                            statusCode = resp.code,
+                            message = "OSRM Route returned status '${routeResponse.code}': ${routeResponse.message.orEmpty()}"
+                        )
+                    )
+                }
+
+                val firstRoute = routeResponse.routes?.firstOrNull()
+                    ?: return@withContext Result.failure(
+                        RoutingApiException(
+                            statusCode = 404,
+                            message = "No routes found in OSRM Route response"
+                        )
+                    )
+
+                val coords = firstRoute.geometry?.coordinates?.mapNotNull { coordList ->
+                    if (coordList.size >= 2) {
+                        RouteCoordinate(latitude = coordList[1], longitude = coordList[0])
+                    } else null
+                } ?: emptyList()
+
+                Result.success(
+                    RoutePathResult(
+                        coordinates = coords,
+                        distanceMeters = firstRoute.distance.roundToLong(),
+                        durationSeconds = firstRoute.duration.roundToLong(),
+                        engineUsed = RoutingEngineType.OSRM
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Result.failure(e)
+        }
+    }
 }
+

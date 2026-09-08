@@ -43,6 +43,7 @@ app/reports/
 plan+source-code-vinfast-app/
 original_app_data/
 output_vinfast/
+jadx_out_evcs/
 
 # Temporary network captures, packet dumps & logs
 curl_capture_*/

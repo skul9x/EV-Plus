@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.preferences.FocusModePreferences
+import com.evcs.favorites.data.routing.RouteSessionData
 import com.evcs.favorites.focus.AlternativeStationRecommendation
 import com.evcs.favorites.focus.FocusModeForegroundService
 import com.evcs.favorites.focus.FocusModeState
@@ -14,7 +15,8 @@ import com.evcs.favorites.focus.FocusVoiceAlert
 
 /**
  * Bridge between Android Auto head unit actions and mobile background services:
- * - Dispatches [FocusModeForegroundService.ACTION_START] and [FocusModeForegroundService.ACTION_REROUTE].
+ * - Dispatches [FocusModeForegroundService.ACTION_START], [FocusModeForegroundService.ACTION_REROUTE],
+ *   and [FocusModeForegroundService.ACTION_START_ROUTE_SESSION].
  * - Synchronizes Voice TTS alerts (Station Full, Alternative Station Found, 2km Proximity Reminder)
  *   with audio ducking and driver preferences.
  */
@@ -43,6 +45,20 @@ object CarFocusModeBridge {
     }
 
     /**
+     * Serializes route session itinerary payload and creates intent specification for starting multi-stop route.
+     */
+    fun getStartRouteSessionIntentSpec(routeSession: RouteSessionData): FocusServiceIntentSpec {
+        return FocusModeForegroundService.getStartRouteSessionIntentSpec(routeSession)
+    }
+
+    /**
+     * Serializes route session payload and creates intent specification for advancing to next leg.
+     */
+    fun getAdvanceRouteLegIntentSpec(routeSession: RouteSessionData? = null): FocusServiceIntentSpec {
+        return FocusModeForegroundService.getAdvanceRouteLegIntentSpec(routeSession)
+    }
+
+    /**
      * Helper factory to build the Intent to start [FocusModeForegroundService].
      */
     fun createStartIntent(context: Context, station: Station): Intent {
@@ -54,6 +70,64 @@ object CarFocusModeBridge {
      */
     fun createRerouteIntent(context: Context, newStation: Station): Intent {
         return FocusModeForegroundService.createRerouteIntent(context, newStation)
+    }
+
+    /**
+     * Helper factory to build the Intent to start multi-stop route session.
+     */
+    fun createStartRouteSessionIntent(context: Context, routeSession: RouteSessionData): Intent {
+        return FocusModeForegroundService.createStartRouteSessionIntent(context, routeSession)
+    }
+
+    /**
+     * Helper factory to build the Intent to advance multi-stop route session.
+     */
+    fun createAdvanceRouteLegIntent(context: Context, routeSession: RouteSessionData? = null): Intent {
+        return FocusModeForegroundService.createAdvanceRouteLegIntent(context, routeSession)
+    }
+
+    /**
+     * Starts mobile FocusModeForegroundService with complete route session itinerary.
+     */
+    fun startRouteFocusMode(context: Context?, routeSession: RouteSessionData) {
+        val spec = getStartRouteSessionIntentSpec(routeSession)
+        if (testServiceSpecStarter != null) {
+            testServiceSpecStarter?.invoke(spec)
+            return
+        }
+        if (context == null) return
+        val intent = createStartRouteSessionIntent(context, routeSession)
+        try {
+            if (testServiceStarter != null) {
+                testServiceStarter?.invoke(intent)
+            } else {
+                ContextCompat.startForegroundService(context, intent)
+            }
+        } catch (_: Exception) {
+            // Handled gracefully
+        }
+    }
+
+    /**
+     * Advances mobile FocusModeForegroundService to the next waypoint in the route session.
+     */
+    fun advanceRouteFocusMode(context: Context?, updatedSession: RouteSessionData) {
+        val spec = getAdvanceRouteLegIntentSpec(updatedSession)
+        if (testServiceSpecStarter != null) {
+            testServiceSpecStarter?.invoke(spec)
+            return
+        }
+        if (context == null) return
+        val intent = createAdvanceRouteLegIntent(context, updatedSession)
+        try {
+            if (testServiceStarter != null) {
+                testServiceStarter?.invoke(intent)
+            } else {
+                ContextCompat.startForegroundService(context, intent)
+            }
+        } catch (_: Exception) {
+            // Handled gracefully
+        }
     }
 
     /**

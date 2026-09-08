@@ -18,6 +18,9 @@ interface SessionStorage {
     suspend fun warmUp() {}
     fun getString(key: String): String?
     fun putString(key: String, value: String?)
+    fun putStrings(entries: Map<String, String?>) {
+        entries.forEach { (k, v) -> putString(k, v) }
+    }
     fun remove(key: String)
     fun clear()
 }
@@ -72,6 +75,20 @@ class EncryptedSharedPrefsStorage(context: Context) : SessionStorage {
                 editor.remove(key)
             } else {
                 editor.putString(key, value)
+            }
+            editor.apply()
+        }
+    }
+
+    override fun putStrings(entries: Map<String, String?>) {
+        synchronized(lock) {
+            val editor = prefs.edit()
+            for ((key, value) in entries) {
+                if (value == null) {
+                    editor.remove(key)
+                } else {
+                    editor.putString(key, value)
+                }
             }
             editor.apply()
         }
@@ -145,6 +162,20 @@ class PlainSharedPrefsStorage(
         }
     }
 
+    override fun putStrings(entries: Map<String, String?>) {
+        synchronized(lock) {
+            val editor = prefs.edit()
+            for ((key, value) in entries) {
+                if (value == null) {
+                    editor.remove(key)
+                } else {
+                    editor.putString(key, value)
+                }
+            }
+            editor.apply()
+        }
+    }
+
     override fun remove(key: String) {
         synchronized(lock) {
             prefs.edit().remove(key).apply()
@@ -181,6 +212,11 @@ class InMemorySessionStorage(
     override fun getString(key: String): String? = map[key]
     override fun putString(key: String, value: String?) {
         if (value == null) map.remove(key) else map[key] = value
+    }
+    override fun putStrings(entries: Map<String, String?>) {
+        for ((key, value) in entries) {
+            if (value == null) map.remove(key) else map[key] = value
+        }
     }
     override fun remove(key: String) {
         map.remove(key)
