@@ -91,7 +91,7 @@ fun FavoritesScreen(
     onStationClick: (Station) -> Unit = {},
     selectedStationForDetail: Station? = null,
     onDismissDetail: () -> Unit = {},
-    cookieHeader: String? = null,
+    @Suppress("UNUSED_PARAMETER") cookieHeader: String? = null,
     stationDetailState: StationDetailUiState = StationDetailUiState(),
     onRefreshDetail: () -> Unit = {},
     onToggleFavoriteDetail: ((Station) -> Unit)? = null,
@@ -103,7 +103,7 @@ fun FavoritesScreen(
     onSignInClick: () -> Unit = {},
     onSignOutClick: () -> Unit = onLogout,
     isSyncing: Boolean = false,
-    isSigningIn: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") isSigningIn: Boolean = false,
     togglingStationIds: Set<String> = emptySet(),
     isLandscape: Boolean? = null,
     modifier: Modifier = Modifier
@@ -410,19 +410,19 @@ fun FavoritesScreen(
                             MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
                         )
                     ) {
-                        val activeStationForDetail = selectedStationForDetail
-                        if (activeStationForDetail != null) {
-                            val effectiveDetailState = if (stationDetailState.station?.id == activeStationForDetail.id) {
+                        val targetStationForDetail = selectedStationForDetail
+                        if (targetStationForDetail != null) {
+                            val effectiveDetailState = if (stationDetailState.station?.id == targetStationForDetail.id) {
                                 stationDetailState
                             } else {
-                                stationDetailState.copy(station = activeStationForDetail)
+                                stationDetailState.copy(station = targetStationForDetail)
                             }
 
                             NativeStationDetailContent(
-                                station = activeStationForDetail,
+                                station = targetStationForDetail,
                                 uiState = effectiveDetailState,
                                 isFavorite = true,
-                                isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
+                                isToggleInProgress = targetStationForDetail.id.let { togglingStationIds.contains(it) },
                                 onRefresh = onRefreshDetail,
                                 onDismiss = onDismissDetail,
                                 onNavigate = memoizedNavigateClick,

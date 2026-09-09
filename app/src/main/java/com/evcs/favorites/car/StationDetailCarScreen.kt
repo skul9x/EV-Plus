@@ -64,6 +64,7 @@ class StationDetailCarScreen(
                 .build()
             templateBuilder.setHeader(header)
         } else {
+            @Suppress("DEPRECATION")
             templateBuilder
                 .setHeaderAction(Action.BACK)
                 .setTitle(title)

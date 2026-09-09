@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="car_hosts_allowlist">
+        <item>com.google.android.projection.gearhead</item>
+    </string-array>
+</resources>

@@ -43,7 +43,7 @@ object CarServiceConfig {
             HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
         } else {
             HostValidator.Builder(context)
-                .addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample)
+                .addAllowedHosts(com.evcs.favorites.R.array.car_hosts_allowlist)
                 .build()
         }
     }

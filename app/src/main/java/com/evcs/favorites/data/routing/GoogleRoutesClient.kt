@@ -34,7 +34,7 @@ class GoogleRoutesClient(
         const val HEADER_API_KEY = "X-Goog-Api-Key"
         const val HEADER_FIELD_MASK = "X-Goog-FieldMask"
         const val HEADER_ANDROID_PACKAGE = "X-Android-Package"
-        const val ANDROID_PACKAGE_VALUE = "com.evcs.favorites"
+        const val ANDROID_PACKAGE_VALUE = "com.evplus.app"
         const val FIELD_MASK_VALUE = "originIndex,destinationIndex,status,condition,distanceMeters,duration,staticDuration"
     }
 

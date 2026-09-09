@@ -59,5 +59,20 @@
       "decision": "Use softprops/action-gh-release@v2 with auto minor tag increment",
       "reason": "Automates GitHub Releases with zero manual versioning intervention on every push to main"
     }
-  ]
+  ],
+  "last_audit": {
+    "scope": "FULL",
+    "timestamp": "2026-09-09T09:55:00+07:00",
+    "status": "completed",
+    "report_path": "docs/reports/audit_20260909_0948.md",
+    "tests_passed": "724/724",
+    "apk_size_bytes": 3980296,
+    "findings_count": {
+      "critical": 0,
+      "high": 1,
+      "medium": 2,
+      "low": 3,
+      "suggestion": 2
+    }
+  }
 }

@@ -60,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -110,7 +111,7 @@ import kotlinx.coroutines.launch
 fun NearbyScreen(
     viewModel: NearbyViewModel,
     onNavigateToLogin: () -> Unit = {},
-    cookieHeader: String? = null,
+    @Suppress("UNUSED_PARAMETER") cookieHeader: String? = null,
     routingSettings: RoutingSettings = RoutingSettings(),
     onSaveRoutingSettings: (RoutingSettings) -> Unit = {},
     onValidateGoogleApiKey: (suspend (String) -> Result<Boolean>)? = null,
@@ -284,7 +285,7 @@ fun NearbyScreen(
     }
 
     // Observe refresh completion and trigger smooth scroll to index 0 safely
-    var lastHandledRefreshTimestamp by remember { mutableStateOf(0L) }
+    var lastHandledRefreshTimestamp by remember { mutableLongStateOf(0L) }
     LaunchedEffect(uiState.lastRefreshTimestamp, uiState.top10DisplayStations.size) {
         if (NearbyUiHelper.shouldScrollToTop(
                 isUserInitiated = true,
