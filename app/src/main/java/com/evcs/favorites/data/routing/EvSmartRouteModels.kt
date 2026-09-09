@@ -17,6 +17,8 @@ fun distanceFromPrimaryStationKm(primary: Station, backup: Station): Double {
     )
 }
 
+private val POWER_KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*k[wW]""")
+
 /**
  * Extracts peak charging power in kW from station powers, labels, and text descriptions.
  */
@@ -31,7 +33,7 @@ fun extractStationMaxPowerKw(station: Station): Double {
         append("${station.connectors} ${station.summary} ${station.name}")
     }
 
-    val kwMatches = Regex("""(\d+(?:\.\d+)?)\s*k[wW]""").findAll(allText)
+    val kwMatches = POWER_KW_REGEX.findAll(allText)
     val maxFromText = kwMatches.mapNotNull { it.groupValues[1].toDoubleOrNull() }.maxOrNull()
     if (maxFromText != null) return maxFromText
 

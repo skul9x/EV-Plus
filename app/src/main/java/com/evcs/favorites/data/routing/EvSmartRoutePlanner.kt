@@ -2,6 +2,7 @@ package com.evcs.favorites.data.routing
 
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.location.DistanceCalculator
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -73,6 +74,8 @@ data class RouteBoundingBox(
         }
     }
 }
+
+private val DETOUR_KM_REGEX = Regex("""detour[:\s]+(\d+(?:\.\d+)?)\s*km""", RegexOption.IGNORE_CASE)
 
 /**
  * Algorithmic corridor route planner and optimizer for EV smart routing.
@@ -764,7 +767,7 @@ class EvSmartRoutePlanner(
         }
 
         // Textual detour annotation (e.g. "detour: 4.5km")
-        val detourMatch = Regex("""detour[:\s]+(\d+(?:\.\d+)?)\s*km""", RegexOption.IGNORE_CASE).find(text)
+        val detourMatch = DETOUR_KM_REGEX.find(text)
         if (detourMatch != null) {
             val detourKm = detourMatch.groupValues[1].toDoubleOrNull() ?: 0.0
             if (detourKm > maxHighwayDetourKm) {
@@ -777,28 +780,9 @@ class EvSmartRoutePlanner(
 
     /**
      * Extracts peak charging power in kW from station powers, labels, and text descriptions.
+     * Delegates directly to [extractStationMaxPowerKw].
      */
-    fun extractMaxPowerKw(station: Station): Double {
-        val maxWatts = station.powers.maxOfOrNull { it.typeWatts } ?: 0L
-        if (maxWatts > 0) {
-            return maxWatts / 1000.0
-        }
-
-        val allText = buildString {
-            station.powers.forEach { append("${it.label} ${it.displayString} ") }
-            append("${station.connectors} ${station.summary} ${station.name}")
-        }
-
-        val kwMatches = Regex("""(\d+(?:\.\d+)?)\s*k[wW]""").findAll(allText)
-        val maxFromText = kwMatches.mapNotNull { it.groupValues[1].toDoubleOrNull() }.maxOrNull()
-        if (maxFromText != null) return maxFromText
-
-        if (allText.contains("DC", ignoreCase = true) || allText.contains("Super", ignoreCase = true)) {
-            return 60.0
-        }
-
-        return 11.0
-    }
+    fun extractMaxPowerKw(station: Station): Double = extractStationMaxPowerKw(station)
 
     /**
      * Evaluates live telemetry availability and calculates queue ETA if station is busy.
@@ -878,6 +862,7 @@ class EvSmartRoutePlanner(
         currentSoC: Int,
         safeRangeKm: Double
     ): Station? {
+        if (primaryCandidate.station.latitude == 0.0 && primaryCandidate.station.longitude == 0.0) return null
         val eligibleMap = eligibleCandidates.associateBy { it.station.id }
         val backupCandidates = mutableListOf<BackupCandidate>()
 
@@ -918,6 +903,11 @@ class EvSmartRoutePlanner(
         for (st in allStations) {
             if (st.id == primaryCandidate.station.id || eligibleMap.containsKey(st.id)) continue
             if (st.latitude == 0.0 && st.longitude == 0.0) continue
+
+            // Coarse spatial bounding box filter (~0.10 deg ~= 11.1 km)
+            val latDiff = abs(st.latitude - primaryCandidate.station.latitude)
+            val lngDiff = abs(st.longitude - primaryCandidate.station.longitude)
+            if (latDiff > 0.10 || lngDiff > 0.10) continue
 
             val straightDistKm = distanceFromPrimaryStationKm(primaryCandidate.station, st)
             if (straightDistKm > 10.0) continue

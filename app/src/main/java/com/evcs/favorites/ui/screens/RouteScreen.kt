@@ -984,12 +984,14 @@ fun RouteTimelineCard(
 
             // 2. Intermediate Charging Stops
             plan.stops.forEach { stop ->
-                TimelineConnectorLine()
-                TimelineChargingStopNode(
-                    stop = stop,
-                    onSwapClick = { onSwapStationClick(stop) },
-                    onSwapWithBackupClick = { onSwapWithBackupClick?.invoke(stop.stopIndex) }
-                )
+                key(stop.stopIndex) {
+                    TimelineConnectorLine()
+                    TimelineChargingStopNode(
+                        stop = stop,
+                        onSwapClick = { onSwapStationClick(stop) },
+                        onSwapWithBackupClick = { onSwapWithBackupClick?.invoke(stop.stopIndex) }
+                    )
+                }
             }
 
             // 3. Destination Timeline Node
@@ -1180,11 +1182,13 @@ fun TimelineChargingStopNode(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Dedicated BackupStationCard directly below primary station content
-            BackupStationCard(
-                primaryStation = stop.station,
-                backupStation = stop.backupStation,
-                onSwapWithBackup = { onSwapWithBackupClick?.invoke() }
-            )
+            key(stop.station.id, stop.backupStation?.id) {
+                BackupStationCard(
+                    primaryStation = stop.station,
+                    backupStation = stop.backupStation,
+                    onSwapWithBackup = { onSwapWithBackupClick?.invoke() }
+                )
+            }
         }
     }
 }
@@ -1243,9 +1247,18 @@ fun BackupStationCard(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                val distKm = distanceFromPrimaryStationKm(primaryStation, backupStation)
-                val powerKw = extractStationMaxPowerKw(backupStation)
-                val formattedDist = String.format(java.util.Locale.US, "%.1f", distKm)
+                val (distKm, powerKw) = remember(primaryStation.id, backupStation.id) {
+                    Pair(
+                        distanceFromPrimaryStationKm(primaryStation, backupStation),
+                        extractStationMaxPowerKw(backupStation)
+                    )
+                }
+                val formattedDist = remember(primaryStation.id, backupStation.id) {
+                    formatBackupDistance(distKm)
+                }
+                val formattedPower = remember(primaryStation.id, backupStation.id) {
+                    formatBackupPower(powerKw)
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1260,7 +1273,7 @@ fun BackupStationCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (powerKw > 0) "⚡ ${powerKw.toInt()} kW" else "⚡ DC",
+                            text = formattedPower,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = EmeraldPrimaryLight
                         )
@@ -1319,6 +1332,22 @@ fun BackupStationCard(
         }
     }
 }
+
+/**
+ * Calculates straight-line distance and maximum power in kW for a paired backup station.
+ * Pure calculation logic memoized inside [BackupStationCard].
+ */
+fun computeBackupStationMetrics(primaryStation: Station, backupStation: Station): Pair<Double, Double> =
+    Pair(
+        distanceFromPrimaryStationKm(primaryStation, backupStation),
+        extractStationMaxPowerKw(backupStation)
+    )
+
+fun formatBackupDistance(distKm: Double): String =
+    String.format(java.util.Locale.US, "%.1f", distKm)
+
+fun formatBackupPower(powerKw: Double): String =
+    if (powerKw > 0) "⚡ ${powerKw.toInt()} kW" else "⚡ DC"
 
 @Composable
 fun TimelineDestinationNode(

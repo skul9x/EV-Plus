@@ -21,8 +21,11 @@ import com.evcs.favorites.data.routing.RouteSessionData
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
 import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.domain.location.LocationService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,13 +86,15 @@ class RouteViewModel(
     private val routingPreferencesManager: RoutingPreferencesManager? = null,
     private val candidateStationsProvider: (suspend () -> List<Station>)? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val defaultDispatcher: CoroutineDispatcher = if (ioDispatcher === Dispatchers.IO) Dispatchers.Default else ioDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RouteUiState())
     val uiState: StateFlow<RouteUiState> = _uiState.asStateFlow()
 
     private var customCandidateStations: List<Station>? = null
+    private var swapStationJob: Job? = null
 
     init {
         initializeLocations()
@@ -343,6 +348,9 @@ class RouteViewModel(
             return
         }
 
+        swapStationJob?.cancel()
+        swapStationJob = null
+
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
         viewModelScope.launch(ioDispatcher) {
@@ -457,6 +465,9 @@ class RouteViewModel(
     }
 
     fun swapStation(stopIndex: Int, alternateStation: Station) {
+        swapStationJob?.cancel()
+        _uiState.update { it.copy(selectedStopForSwap = null) }
+
         val currentPlan = _uiState.value.routePlan ?: return
         val evSettings = (routingPreferencesManager?.evRoutingSettings?.value ?: EvRoutingSettings()).copy(
             vehicleSafeRangeKm = _uiState.value.safeRangeKm,
@@ -464,18 +475,25 @@ class RouteViewModel(
             minChargerPowerKw = _uiState.value.minChargerPowerKw
         )
 
-        val updatedPlan = evSmartRoutePlanner.recalculateWithAlternateStop(
-            originalPlan = currentPlan,
-            stopIndex = stopIndex,
-            alternateStation = alternateStation,
-            evSettings = evSettings
-        )
-
-        _uiState.update {
-            it.copy(
-                routePlan = updatedPlan,
-                selectedStopForSwap = null
-            )
+        swapStationJob = viewModelScope.launch(defaultDispatcher) {
+            try {
+                val updatedPlan = evSmartRoutePlanner.recalculateWithAlternateStop(
+                    originalPlan = currentPlan,
+                    stopIndex = stopIndex,
+                    alternateStation = alternateStation,
+                    evSettings = evSettings
+                )
+                ensureActive()
+                _uiState.update {
+                    it.copy(routePlan = updatedPlan)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(errorMessage = e.message ?: "Không thể đổi trạm sạc")
+                }
+            }
         }
     }
 
@@ -532,7 +550,8 @@ class RouteViewModel(
             routingPreferencesManager: RoutingPreferencesManager? = null,
             candidateStationsProvider: (suspend () -> List<Station>)? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Main,
-            ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+            ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+            defaultDispatcher: CoroutineDispatcher = if (ioDispatcher === Dispatchers.IO) Dispatchers.Default else ioDispatcher
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -544,7 +563,8 @@ class RouteViewModel(
                     routingPreferencesManager = routingPreferencesManager,
                     candidateStationsProvider = candidateStationsProvider,
                     dispatcher = dispatcher,
-                    ioDispatcher = ioDispatcher
+                    ioDispatcher = ioDispatcher,
+                    defaultDispatcher = defaultDispatcher
                 ) as T
             }
         }
