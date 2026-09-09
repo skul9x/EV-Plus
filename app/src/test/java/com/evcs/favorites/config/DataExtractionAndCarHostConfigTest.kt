@@ -122,6 +122,7 @@ class DataExtractionAndCarHostConfigTest {
         val cloudExcludeNodes = cloudBackup.getElementsByTagName("exclude")
         assertTrue("cloud-backup must specify exclude rule", cloudExcludeNodes.length >= 1)
         val cloudExclude = cloudExcludeNodes.item(0) as Element
+        assertEquals("root", cloudExclude.getAttribute("domain"))
         assertEquals(".", cloudExclude.getAttribute("path"))
 
         // Verify device-transfer configuration
@@ -131,6 +132,7 @@ class DataExtractionAndCarHostConfigTest {
         val transferExcludeNodes = deviceTransfer.getElementsByTagName("exclude")
         assertTrue("device-transfer must specify exclude rule", transferExcludeNodes.length >= 1)
         val transferExclude = transferExcludeNodes.item(0) as Element
+        assertEquals("root", transferExclude.getAttribute("domain"))
         assertEquals(".", transferExclude.getAttribute("path"))
     }
 
