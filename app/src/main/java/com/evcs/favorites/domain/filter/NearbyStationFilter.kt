@@ -54,6 +54,11 @@ fun Station.hasCarCompatiblePorts(): Boolean {
 object NearbyStationFilter {
 
     /**
+     * Checks whether a station belongs to the VinFast network (case-insensitive, trimmed).
+     */
+    fun isVinFastStation(station: Station): Boolean = station.evse.trim().equals("VinFast", ignoreCase = true)
+
+    /**
      * Filters stations by active status and wattage requirements.
      *
      * Rules:
@@ -69,6 +74,10 @@ object NearbyStationFilter {
         includeFullStations: Boolean = false
     ): List<Station> {
         return stations.filter { station ->
+            if (!isVinFastStation(station)) {
+                return@filter false
+            }
+
             val isOutOfService = station.depotStatus.equals("Maintaining", ignoreCase = true) ||
                     station.depotStatus.equals("OutOfService", ignoreCase = true)
             if (isOutOfService) {
@@ -116,6 +125,10 @@ object NearbyStationFilter {
         includeFullStations: Boolean = false
     ): List<Station> {
         return stations.filter { station ->
+            if (!isVinFastStation(station)) {
+                return@filter false
+            }
+
             val isOutOfService = station.depotStatus.equals("Maintaining", ignoreCase = true) ||
                     station.depotStatus.equals("OutOfService", ignoreCase = true)
             if (isOutOfService) {

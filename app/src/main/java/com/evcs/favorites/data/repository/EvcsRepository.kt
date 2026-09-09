@@ -667,8 +667,12 @@ open class EvcsRepository(
 
         val rawStations = searchResult.getOrThrow()
 
+        val vinFastStations = rawStations.filter { raw ->
+            raw.evse?.trim()?.equals("VinFast", ignoreCase = true) == true
+        }
+
         // Cache coordinates from search stations
-        for (st in rawStations) {
+        for (st in vinFastStations) {
             val key = st.effectiveLocationId.trim().lowercase()
             if (key.isNotEmpty() && (st.latitude != 0.0 || st.longitude != 0.0)) {
                 coordinateCache[key] = Pair(st.latitude, st.longitude)
@@ -676,7 +680,7 @@ open class EvcsRepository(
         }
         saveCachedCoordinates()
 
-        val domainStations = rawStations.map { raw ->
+        val domainStations = vinFastStations.map { raw ->
             raw.toDomainStation(userLat = lat, userLon = lon)
         }
 
