@@ -41,6 +41,7 @@ class SingleFlight(
         }
         val existing = inFlight.putIfAbsent(key, newDeferred)
         val deferred = if (existing != null) {
+            newDeferred.cancel()
             existing
         } else {
             newDeferred.start()

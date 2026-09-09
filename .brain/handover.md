@@ -2,41 +2,48 @@
 📋 HANDOVER DOCUMENT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📍 Đang làm: Chuẩn hóa README.md Tech Stack & Toàn bộ Unit Test Suite (724/724 Tests)
-🔢 Đến bước: Hoàn thành 100% (724/724 Tests Pass, README.md viết lại chuẩn xác)
+📍 Đang làm: Tối ưu hóa toàn diện giao diện Landscape cho Carlinkit TBox Android Box
+🔢 Đến bước: Hoàn thành 100% cả 3 Phase & Đã push lên GitHub main (`commit 2e45142`)
 
 ✅ ĐÃ XONG:
-   - Sửa toàn diện các test suite và logic bất đồng bộ:
-     * `MultiTierRoutingCoordinator.kt`: Haversine tính duration ước tính 30km/h (thay vì 0s)
-     * `MultiTierRoutingCoordinatorTest.kt`: Sửa assertion duration Haversine > 0s
-     * `RoutingPreferencesManagerTest.kt` & `AppNavigationAndNearbyIntegrationTest.kt`: Đồng bộ `preferredEngine` mặc định `OSRM_ONLY`
-     * `NearbyAutoScrollOnRefreshTest.kt`: Đồng bộ `FILTER_CHANGE` trigger auto-scroll
-     * `NetworkRoutingAndCoalescingOptimizationTest.kt`: Haversine duration > 0s và nới rộng tolerance window (4500L..8500L)
-     * `CloudSyncRollbackSafetyTest.kt`: Dùng MockWebServer Dispatcher cách ly lỗi 500 cho endpoint `favorite.html`
-     * `LocalFirstFirestoreFavoritesSyncTest.kt`: Chạy `testScheduler.runCurrent()` nạp async cache
-     * `StationDetailCoordinator.kt`: Triển khai Stage 2 tính 24h usage statistics với bounded timeout `statsTimeoutMs`
-     * `NearbyViewModel.kt`: Tự động nhận diện `defaultDispatcher` thông minh (nếu `ioDispatcher === Dispatchers.IO` thì dùng `Dispatchers.Default`, ngược lại dùng `ioDispatcher`) -> pass 100% cả `FilterAlgorithmAndAllocationOptimizationTest` và `ViewModelThreadingAndRaceConditionTest`
-     * Chạy `./gradlew testDebugUnitTest` đạt **724/724 passed (100%)** không còn bất kỳ lỗi nào!
-   - Viết lại toàn bộ `README.md` theo chuẩn tech stack hiện đại nhất của dự án:
-     * Bảng Tech Stack chi tiết từng thư viện và phiên bản chính xác (Android 14 API 34, Kotlin 1.9.23, Compose BOM 2024.04.01, Material 3 1.2.1, Car App 1.7.0, Firebase BOM 33.10.0, OkHttp 4.12.0, Security Crypto 1.1.0-alpha06, Gradle 8.7, AGP 8.3.2)
-     * Mục Android Auto Car App Library
-     * Sơ đồ Clean Architecture & UDF
-     * Kết quả kiểm thử 724 Unit Tests
+   1. **Phase 01: StationNameSanitizer & Marquee Titles**:
+      * `StationNameSanitizer.kt`: Loại bỏ tiền tố thừa như *"Trạm sạc VinFast"*, *"Trạm sạc Ô tô điện VinFast"*, *"EV Charger..."* giúp hiển thị ngay tên địa danh thực tế.
+      * `StationCard.kt`: Thêm Marquee horizontal scroll cho tiêu đề trạm sạc dài khi ở Car Mode.
+      * Unit tests: `StationNameSanitizerTest.kt` (pass 100%).
+
+   2. **Phase 02: Fullscreen Immersive Mode & Compact Navigation Rail (58dp)**:
+      * `MainActivity.kt`: Kích hoạt `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` ẩn hoàn toàn system bars (Status bar & Navigation bar) trên màn hình Android Box. Tự động phục hồi khi `onWindowFocusChanged(true)`.
+      * `AppNavigationRail.kt`: Thu gọn bề rộng rail từ 72dp -> 58dp, touch target 50dp, icon 26dp. Thứ tự automotive glanceability: Quanh đây -> Yêu thích -> Cài đặt -> Làm mới (animated rotation).
+      * Unit tests: `LandscapeNavigationRailTest.kt` (pass 100%).
+
+   3. **Phase 03: Dedicated Landscape UI Screens for Nearby & Favorites**:
+      * `NearbyLandscapeScreen.kt`: Bỏ hoàn toàn `TopAppBar` và filter summary pill, thu hồi ~95dp chiều dọc hiển thị 3-4 StationCard cùng lúc bên cạnh detail pane.
+      * `FavoritesLandscapeScreen.kt`: Bỏ `TopAppBar`, giao diện 2 cột với cloud sync status và full-height detail pane.
+      * `LandscapeScreenContracts.kt`: Định nghĩa các hằng số hợp đồng kiến trúc (0 nested `if (!isLandscape)`).
+      * Unit tests: `LandscapeDedicatedScreensContractTest.kt` (pass 100%).
+
+   4. **Kiểm tra .gitignore & Git Push**:
+      * Fix lỗi pattern `lan*/` chặn nhầm package `ui/screens/landscape/` -> đổi thành `/lan*/`.
+      * Commit và push an toàn lên `origin/main` (fast-forward, không force push).
 
 ⏳ CÒN LẠI / HƯỚNG PHÁT TRIỂN TIẾP THEO:
-   - UI Marquee cho tên trạm sạc dài & tối ưu Station Detail (theo plan `plans/260908-1317-station-detail-marquee-and-ui-cleanup/`)
+   - Theo dõi thực tế trên thiết bị Carlinkit TBox / Android Box khi chạy xe thực tế.
+   - Bổ sung tùy chỉnh kích thước font chữ hoặc mật độ hiển thị theo kích thước màn hình xe (7 inch, 9 inch, 12.3 inch) nếu người dùng có nhu cầu thêm.
 
 🔧 QUYẾT ĐỊNH QUAN TRỌNG:
-   - `defaultDispatcher` trong `NearbyViewModel` giải quyết linh hoạt dựa trên `ioDispatcher` để vừa hỗ trợ thread-safe background execution trên production vừa deterministic trên TestDispatcher.
-   - Stage 2 telemetry tính `stats24h` được bao bọc trong `withTimeoutOrNull(statsTimeoutMs)` để đảm bảo timeout mượt mà không crash app khi mạng treo.
-   - `README.md` cập nhật phản ánh trung thực toàn bộ stack công nghệ và các tính năng thực tế.
+   - Tách riêng biệt composable màn hình ngang (`NearbyLandscapeScreen`, `FavoritesLandscapeScreen`) thay vì nhồi nhét `if (isLandscape)` trong màn hình dọc.
+   - Loại bỏ TopAppBar trong Landscape vì các hành động (Settings, Refresh, Tabs) đã được Navigation Rail đảm nhiệm.
+   - Giữ nguyên toàn bộ logic nghiệp vụ (UDF, Local-First, Mutex Coroutine, Auto-Selection).
 
 📁 FILES QUAN TRỌNG:
-   - `README.md`
-   - `app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt`
-   - `app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt`
-   - `app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt`
-   - `app/src/main/java/com/evcs/favorites/ui/viewmodel/FavoritesViewModel.kt`
+   - `app/src/main/java/com/evcs/favorites/ui/screens/landscape/NearbyLandscapeScreen.kt`
+   - `app/src/main/java/com/evcs/favorites/ui/screens/landscape/FavoritesLandscapeScreen.kt`
+   - `app/src/main/java/com/evcs/favorites/ui/screens/landscape/LandscapeScreenContracts.kt`
+   - `app/src/main/java/com/evcs/favorites/navigation/AppNavigationRail.kt`
+   - `app/src/main/java/com/evcs/favorites/util/StationNameSanitizer.kt`
+   - `app/src/main/java/com/evcs/favorites/MainActivity.kt`
+   - `.brain/brain.json`
+   - `.brain/session.json`
    - `.brain/handover.md`
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

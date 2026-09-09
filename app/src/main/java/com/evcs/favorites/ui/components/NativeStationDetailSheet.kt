@@ -78,6 +78,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -400,6 +401,7 @@ object NativeStationDetailSheetHelper {
     /**
      * Formats community rating badge (e.g. "⭐ 4.8 (12 đánh giá)").
      */
+    @Deprecated("Removed from Station Detail UI layout for automotive glanceability. Retained for backwards compatibility.")
     fun formatRatingBadge(rating: StationRating?): String? {
         if (rating == null || rating.count <= 0) return null
         val formattedAvg = String.format(Locale.US, "%.1f", rating.avg)
@@ -408,13 +410,16 @@ object NativeStationDetailSheetHelper {
 
     /**
      * Resolves charging port badge data:
-     * - Green dot: `${kw}kW: Trống ${available}/${total} cổng` (available > 0)
-     * - Amber dot: `${kw}kW: Hết chỗ (0/${total})` (available == 0 && total > 0)
-     * - Gray/Red dot: `${kw}kW: Bảo trì` (depotStatus maintaining/offline or total == 0)
+     * - Maintaining / Out of service: `${kw}kW  Bảo trì` (StatusOffline / StatusOfflineContainer)
+     * - Exhausted (`avail == 0 && total > 0`): `${kw}kW  0/${total}` (StatusOffline / StatusOfflineContainer)
+     * - Available (`avail > 0`): `${kw}kW  ${avail}/${total}` (StatusAvailable / StatusAvailableContainer)
+     * - Unverified (`total == 0`): `${kw}kW` (surfaceVariant / neutral)
      */
     fun resolvePortBadge(
         portStatus: StationPortStatus,
-        depotStatus: String = "Normal"
+        depotStatus: String = "Normal",
+        surfaceVariant: Color = Color(0xFFE7E0EC),
+        onSurfaceVariant: Color = Color(0xFF79747E)
     ): PortBadgeModel {
         val kw = portStatus.kw
         val avail = portStatus.availablePorts
@@ -424,34 +429,34 @@ object NativeStationDetailSheetHelper {
             depotStatus.equals("Maintaining", ignoreCase = true) ||
             depotStatus.equals("OutOfService", ignoreCase = true) -> {
                 PortBadgeModel(
-                    label = "${kw}kW: Bảo trì",
+                    label = "${kw}kW  Bảo trì",
                     dotColor = StatusOffline,
                     containerColor = StatusOfflineContainer,
                     borderColor = StatusOffline.copy(alpha = 0.4f)
                 )
             }
-            avail > 0 -> {
+            total == 0 -> {
                 PortBadgeModel(
-                    label = "${kw}kW: Trống $avail/$total cổng",
-                    dotColor = StatusAvailable,
-                    containerColor = StatusAvailableContainer,
-                    borderColor = StatusAvailable.copy(alpha = 0.4f)
+                    label = "${kw}kW",
+                    dotColor = onSurfaceVariant,
+                    containerColor = surfaceVariant,
+                    borderColor = onSurfaceVariant.copy(alpha = 0.4f)
                 )
             }
-            total > 0 && avail == 0 -> {
+            avail == 0 -> {
                 PortBadgeModel(
-                    label = "${kw}kW: Hết chỗ (0/$total)",
-                    dotColor = StatusMaintaining,
-                    containerColor = StatusMaintainingContainer,
-                    borderColor = StatusMaintaining.copy(alpha = 0.4f)
+                    label = "${kw}kW  0/$total",
+                    dotColor = StatusOffline,
+                    containerColor = StatusOfflineContainer,
+                    borderColor = StatusOffline.copy(alpha = 0.4f)
                 )
             }
             else -> {
                 PortBadgeModel(
-                    label = "${kw}kW: Bảo trì",
-                    dotColor = StatusOffline,
-                    containerColor = StatusOfflineContainer,
-                    borderColor = StatusOffline.copy(alpha = 0.4f)
+                    label = "${kw}kW  $avail/$total",
+                    dotColor = StatusAvailable,
+                    containerColor = StatusAvailableContainer,
+                    borderColor = StatusAvailable.copy(alpha = 0.4f)
                 )
             }
         }
@@ -858,9 +863,14 @@ fun NativeStationDetailContent(
     isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val scrollState = rememberScrollState()
+    LaunchedEffect(station.id) {
+        scrollState.scrollTo(0)
+    }
+
     Column(
         modifier = modifier
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp)
             .padding(bottom = if (isLandscape) 16.dp else 24.dp),
         verticalArrangement = Arrangement.spacedBy(if (isLandscape) 12.dp else 16.dp)
@@ -876,9 +886,6 @@ fun NativeStationDetailContent(
 
         val distanceEtaText = remember(station.drivingMetrics, station.distanceKm) {
             NativeStationDetailSheetHelper.formatDistanceEta(station)
-        }
-        val ratingText = remember(uiState.rating) {
-            NativeStationDetailSheetHelper.formatRatingBadge(uiState.rating)
         }
 
         Row(
@@ -1017,29 +1024,6 @@ fun NativeStationDetailContent(
                         spacing = MarqueeSpacing.fractionOfContainer(NativeStationDetailSheetHelper.MARQUEE_SPACING_FRACTION)
                     )
             )
-
-            if (!ratingText.isNullOrBlank()) {
-                val isDark = isSystemInDarkTheme()
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFFEF3C7).copy(alpha = if (isDark) 0.15f else 0.8f),
-                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
-                    modifier = Modifier
-                        .wrapContentHeight()
-                        .padding(top = 2.dp)
-                ) {
-                    Text(
-                        text = ratingText,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isDark) Color(0xFFFDE68A) else Color(0xFF92400E)
-                        ),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
         }
 
         // ---------------------------------------------------------------------
@@ -1256,8 +1240,15 @@ fun PortStatusPill(
     depotStatus: String = "Normal",
     modifier: Modifier = Modifier
 ) {
-    val badgeInfo = remember(portStatus, depotStatus) {
-        NativeStationDetailSheetHelper.resolvePortBadge(portStatus, depotStatus)
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val badgeInfo = remember(portStatus, depotStatus, surfaceVariant, onSurfaceVariant) {
+        NativeStationDetailSheetHelper.resolvePortBadge(
+            portStatus = portStatus,
+            depotStatus = depotStatus,
+            surfaceVariant = surfaceVariant,
+            onSurfaceVariant = onSurfaceVariant
+        )
     }
 
     Row(
@@ -1266,7 +1257,7 @@ fun PortStatusPill(
             .clip(RoundedCornerShape(12.dp))
             .background(badgeInfo.containerColor)
             .border(1.dp, badgeInfo.borderColor, RoundedCornerShape(12.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(

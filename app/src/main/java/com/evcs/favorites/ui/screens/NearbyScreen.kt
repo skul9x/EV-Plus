@@ -112,7 +112,6 @@ import kotlinx.coroutines.launch
 fun NearbyScreen(
     viewModel: NearbyViewModel,
     onNavigateToLogin: () -> Unit = {},
-    @Suppress("UNUSED_PARAMETER") cookieHeader: String? = null,
     routingSettings: RoutingSettings = RoutingSettings(),
     onSaveRoutingSettings: (RoutingSettings) -> Unit = {},
     onValidateGoogleApiKey: (suspend (String) -> Result<Boolean>)? = null,

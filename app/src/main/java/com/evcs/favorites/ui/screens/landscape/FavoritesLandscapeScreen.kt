@@ -85,6 +85,7 @@ fun FavoritesLandscapeScreen(
     isSyncing: Boolean = false,
     isSigningIn: Boolean = false,
     togglingStationIds: Set<String> = emptySet(),
+    onEnrichFavorites: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val activeStationForDetail = stationDetailState.station
@@ -93,6 +94,13 @@ fun FavoritesLandscapeScreen(
 
     val stations = (uiState as? FavoritesUiState.Success)?.stations ?: emptyList()
     var hasAutoSelected by rememberSaveable { mutableStateOf(false) }
+
+    // Trigger on-demand live telemetry enrichment if data contains unverified stations
+    LaunchedEffect(stations) {
+        if (stations.isNotEmpty() && stations.any { !it.hasLiveTelemetry }) {
+            onEnrichFavorites?.invoke()
+        }
+    }
 
     // Auto-select first favorite station when results are loaded and selection is empty
     LaunchedEffect(stations, activeStationForDetail, hasAutoSelected) {

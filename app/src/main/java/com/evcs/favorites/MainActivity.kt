@@ -20,10 +20,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.compose.BackHandler
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.evcs.favorites.navigation.AppNavigationRail
+import com.evcs.favorites.navigation.AppNavigationRailHelper
 import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.layout.AdaptiveLayoutHelper
 import com.evcs.favorites.ui.state.FavoritesUiState
@@ -80,26 +82,12 @@ import com.evcs.favorites.ui.viewmodel.NearbyViewModel
  */
 class MainActivity : ComponentActivity() {
 
-    private val sessionManager by lazy { SessionManager.create(applicationContext) }
-    private val apiClient by lazy { EvcsApiClient(sessionManager) }
-    private val authService by lazy { com.evcs.favorites.data.auth.FirebaseAuthManager() }
-    private val firestoreDataSource by lazy { com.evcs.favorites.data.repository.FirestoreFavoritesDataSource.create() }
-    val firestoreFavoritesRepository by lazy {
-        com.evcs.favorites.data.repository.FirestoreFavoritesRepository(
-            remoteDataSource = firestoreDataSource,
-            localStorage = PlainSharedPrefsStorage.getInstance(applicationContext),
-            authService = authService
-        )
-    }
-    private val repository by lazy {
-        EvcsRepository(
-            apiClient = apiClient,
-            cacheStorage = PlainSharedPrefsStorage.getInstance(applicationContext),
-            legacyStorage = EncryptedSharedPrefsStorage.getInstance(applicationContext),
-            autoResolveCoordinates = true,
-            firestoreFavoritesRepository = firestoreFavoritesRepository
-        )
-    }
+    private val appContainer by lazy { (application as EvPlusApplication).appContainer }
+    private val sessionManager by lazy { appContainer.sessionManager }
+    private val apiClient by lazy { appContainer.evcsApiClient }
+    private val authService by lazy { appContainer.authService }
+    val firestoreFavoritesRepository by lazy { appContainer.firestoreFavoritesRepository }
+    private val repository by lazy { appContainer.evcsRepository }
     private val authEngine by lazy { AuthEngine(sessionManager) }
     private val locationService by lazy { LocationService(applicationContext) }
     private val routingPreferencesManager by lazy { RoutingPreferencesManager.create(applicationContext) }
@@ -214,6 +202,10 @@ fun FavoritesApp(
     var rationaleDismissed by rememberSaveable { mutableStateOf(false) }
     var showRoutingSettingsModal by rememberSaveable { mutableStateOf(false) }
 
+    BackHandler(enabled = showRoutingSettingsModal) {
+        showRoutingSettingsModal = false
+    }
+
     val nearbyUiState by nearbyViewModel?.uiState?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(null) }
     val isRefreshing = when (currentTab) {
         AppTab.FAVORITES -> (uiState as? FavoritesUiState.Success)?.isRefreshing == true || uiState is FavoritesUiState.Loading
@@ -269,6 +261,9 @@ fun FavoritesApp(
                 if (effectiveIsLandscape) {
                     AppNavigationRail(
                         currentTab = currentTab,
+                        onHomeClick = {
+                            AppNavigationRailHelper.dispatchSystemHome(context)
+                        },
                         onTabSelected = { currentTab = it },
                         onSettingsClick = { showRoutingSettingsModal = true },
                         onRefreshClick = {
@@ -335,7 +330,6 @@ fun FavoritesApp(
                                     onRefreshDetail = {
                                         viewModel.refreshStationDetail()
                                     },
-                                    cookieHeader = viewModel.getCookieHeader(),
                                     routingSettings = routingSettings,
                                     onSaveRoutingSettings = { viewModel.updateRoutingSettings(it) },
                                     onValidateGoogleApiKey = { viewModel.validateGoogleApiKey(it) },
@@ -354,7 +348,8 @@ fun FavoritesApp(
                                             }
                                         }
                                     },
-                                    isLandscape = effectiveIsLandscape
+                                    isLandscape = effectiveIsLandscape,
+                                    onEnrichFavorites = { viewModel.enrichFavoritesWithTelemetry() }
                                 )
                             }
 
@@ -365,7 +360,6 @@ fun FavoritesApp(
                                         onNavigateToLogin = {
                                             currentTab = AppTab.FAVORITES
                                         },
-                                        cookieHeader = viewModel.getCookieHeader(),
                                         routingSettings = routingSettings,
                                         onSaveRoutingSettings = { nearbyViewModel.updateRoutingSettings(it) },
                                         onValidateGoogleApiKey = { nearbyViewModel.validateGoogleApiKey(it) },
@@ -446,6 +440,7 @@ fun FavoritesApp(
         // Routing & BYOK Settings Modal triggered from Navigation Rail
         if (showRoutingSettingsModal) {
             RoutingSettingsModal(
+                isLandscape = effectiveIsLandscape,
                 settings = routingSettings,
                 onSaveSettings = { newSettings ->
                     viewModel.updateRoutingSettings(newSettings)

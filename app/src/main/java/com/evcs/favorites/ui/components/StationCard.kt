@@ -82,45 +82,6 @@ import com.evcs.favorites.ui.theme.StatusOfflineContainer
 import com.evcs.favorites.ui.theme.UltraPurple
 import java.util.Locale
 
-/**
- * Helper object providing touch-target sizes, typography specifications,
- * and Hero Metric string formatting for automotive car mode.
- */
-object StationCardHelper {
-    val HERO_METRIC_FONT_SIZE: TextUnit = AutomotiveDimens.CAR_HERO_METRIC_TEXT_SIZE
-    val HERO_METRIC_FONT_WEIGHT: FontWeight = FontWeight.Bold
-    val CAR_BUTTON_HEIGHT: Dp = AutomotiveDimens.CAR_BUTTON_HEIGHT
-    val PORTRAIT_BUTTON_HEIGHT: Dp = 44.dp
-    val CAR_CARD_MIN_HEIGHT: Dp = AutomotiveDimens.CAR_CARD_MIN_HEIGHT
-
-    const val HERO_METRIC_FONT_SIZE_SP: Float = 24f
-    const val CAR_BUTTON_HEIGHT_DP: Float = 56f
-    const val PORTRAIT_BUTTON_HEIGHT_DP: Float = 44f
-    const val CAR_CARD_MIN_HEIGHT_DP: Float = 76f
-
-    fun resolveButtonHeight(isCarMode: Boolean): Dp {
-        return if (isCarMode) CAR_BUTTON_HEIGHT else PORTRAIT_BUTTON_HEIGHT
-    }
-
-    fun resolveButtonHeightDp(isCarMode: Boolean): Float {
-        return if (isCarMode) CAR_BUTTON_HEIGHT_DP else PORTRAIT_BUTTON_HEIGHT_DP
-    }
-
-    fun formatHeroMetric(
-        totalAvailablePlugs: Int,
-        totalPlugs: Int,
-        depotStatus: String = "Normal"
-    ): String {
-        return when {
-            depotStatus.equals("Maintaining", ignoreCase = true) -> "🟡 BẢO TRÌ"
-            depotStatus.equals("OutOfService", ignoreCase = true) -> "🔴 TẠM DỪNG"
-            totalPlugs > 0 && totalAvailablePlugs == 0 -> "🔴 0/$totalPlugs HẾT CỔNG"
-            totalAvailablePlugs > 0 -> "🟢 $totalAvailablePlugs/$totalPlugs TRỐNG"
-            totalPlugs == 0 && depotStatus.equals("Normal", ignoreCase = true) -> "🟢 SẴN SÀNG"
-            else -> "⚡ ĐÃ LƯU"
-        }
-    }
-}
 
 /**
  * Individual charging station card displaying real-time power metrics,
@@ -204,7 +165,7 @@ fun StationCard(
                     modifier = Modifier
                         .weight(1f, fill = false)
                         .basicMarquee(
-                            iterations = Int.MAX_VALUE,
+                            iterations = 2,
                             delayMillis = 2000,
                             velocity = 30.dp
                         )
@@ -216,6 +177,38 @@ fun StationCard(
                     depotStatus = station.depotStatus,
                     totalAvailablePlugs = station.totalAvailablePlugs,
                     totalPlugs = station.totalPlugs
+                )
+            }
+
+            val powerDistribution = remember(station.powers, station.connectors) {
+                StationCardHelper.formatPowerDistributionSummary(station.powers, station.connectors)
+            }
+            if (powerDistribution.isNotEmpty()) {
+                val onSurface = MaterialTheme.colorScheme.onSurface
+                val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                val powerSummaryAnnotated = remember(powerDistribution, onSurface, dividerColor) {
+                    StationCardHelper.buildPowerDistributionAnnotatedString(
+                        distribution = powerDistribution,
+                        powerColor = onSurface,
+                        countColor = EmeraldPrimary,
+                        separatorColor = dividerColor
+                    )
+                }
+                Text(
+                    text = powerSummaryAnnotated,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .padding(top = 4.dp, bottom = 4.dp)
+                        .basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            delayMillis = 2000,
+                            velocity = 30.dp
+                        )
                 )
             }
 
@@ -456,11 +449,41 @@ private fun CompactStationCardContent(
                 maxLines = 1,
                 softWrap = false,
                 modifier = Modifier.basicMarquee(
-                    iterations = Int.MAX_VALUE,
+                    iterations = 2,
                     delayMillis = 2000,
                     velocity = 30.dp
                 )
             )
+
+            val powerDistribution = remember(station.powers, station.connectors) {
+                StationCardHelper.formatPowerDistributionSummary(station.powers, station.connectors)
+            }
+            if (powerDistribution.isNotEmpty()) {
+                val onSurface = MaterialTheme.colorScheme.onSurface
+                val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                val powerSummaryAnnotated = remember(powerDistribution, onSurface, dividerColor) {
+                    StationCardHelper.buildPowerDistributionAnnotatedString(
+                        distribution = powerDistribution,
+                        powerColor = onSurface,
+                        countColor = EmeraldPrimary,
+                        separatorColor = dividerColor
+                    )
+                }
+                Text(
+                    text = powerSummaryAnnotated,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.basicMarquee(
+                        iterations = Int.MAX_VALUE,
+                        delayMillis = 2000,
+                        velocity = 30.dp
+                    )
+                )
+            }
 
             val journeyBadgeInfo = remember(station.drivingMetrics, station.distanceKm) {
                 formatJourneyBadge(station.drivingMetrics, station.distanceKm)

@@ -50,11 +50,11 @@ class EncryptedSharedPrefsStorage(context: Context) : SessionStorage {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
             val testKey = "__esp_probe__"
-            esp.edit().putString(testKey, "1").commit()
+            esp.edit().putString(testKey, "1").apply()
             if (esp.getString(testKey, null) != "1") {
                 throw IllegalStateException("EncryptedSharedPreferences probe failed")
             }
-            esp.edit().remove(testKey).commit()
+            esp.edit().remove(testKey).apply()
             esp
         } catch (e: Throwable) {
             appContext.getSharedPreferences("evcs_session_prefs", Context.MODE_PRIVATE)
@@ -212,7 +212,7 @@ class SessionManager(
 
         private val EVCS_COOKIE_REGEX = Regex("""(?:^|;\s*)evcs=([^;]+)""")
         private val PHPSESSID_COOKIE_REGEX = Regex("""(?:^|;\s*)PHPSESSID=([^;]+)""")
-        private val COOKIE_REGEX_CACHE = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+        private val COOKIE_REGEX_CACHE = com.evcs.favorites.util.BoundedLruCache<String, Regex>(256)
 
         fun extractCookieValue(headerOrCookie: String, name: String): String? {
             val regex = when (name) {

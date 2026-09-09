@@ -66,6 +66,12 @@
     }
   ],
   "features": [
+    "Carlinkit TBox & Automotive Head Unit Landscape UI Optimization (Dedicated NearbyLandscapeScreen & FavoritesLandscapeScreen)",
+    "Compact 58dp Navigation Rail with 50dp automotive touch targets and animated refresh indicator",
+    "System-wide Immersive Fullscreen Sticky Mode hiding system bars with swipe-to-reveal",
+    "StationNameSanitizer & Horizontal Marquee Titles in StationCard for long station names",
+    "Strict VinFast Search Filtering (NearbyStationFilter.isVinFast) excluding third-party charging points",
+    "Focus Mode Floating Window Marquee Header and optimized glanceable capsule layout without distance badge",
     "Automated GitHub Actions CI/CD Pipeline (Signing, Auto Version Increment, Release Publishing)",
     "Focus Mode (Live DC Telemetry Navigation Tracker) with Draggable Floating Capsule Overlay over Google Maps",
     "Focus Mode evcs.vn Authentic Station Name Resolution (EvcsStationNameResolver) & Name Preservation against Here API generic names",
@@ -87,6 +93,12 @@
   ],
   "knowledge_items": {
     "patterns": [
+      "Master-Detail automotive 2-column landscape layout (35-40% Master, 60-65% Detail) calculated via AdaptiveLayoutHelper with 58dp navigation rail",
+      "Eliminating TopAppBar and filter summary pills in automotive landscape mode reclaims ~95dp of vertical space for 3-4 visible station cards",
+      "Clean architectural separation: zero nested if (!isLandscape) checks inside dedicated landscape composables",
+      "StationNameSanitizer regex-based stripping of verbose prefixes ('Trạm sạc VinFast', 'Trạm sạc Ô tô điện VinFast') with whitespace collapsing",
+      "BasicMarquee modifier integration for automotive glanceability on truncated station titles",
+      "WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE for immersive in-car experience with onWindowFocusChanged re-assertion",
       "Base64 secret encoding & injection during CI/CD execution preventing secret exposure in git repositories",
       "Injected Gradle signing properties (-Pandroid.injected.signing.store.file=...) for dynamic keystore signing in GitHub Actions",
       "Automated semantic minor version calculation by inspecting GitHub Release API latest tags",
@@ -108,6 +120,7 @@
       "AGP 8.2+ Baseline Profile method wildcards require `->**(**)**` rather than bare `->*` to avoid profgen parser StringIndexOutOfBoundsException"
     ],
     "gotchas": [
+      "Beware of generic .gitignore patterns like lan*/ which match any subdirectory starting with lan (e.g. ui/screens/landscape/); use root-relative /lan*/ instead.",
       "Do not commit hardcoded org.gradle.java.home in gradle.properties to ensure CI/CD runner compatibility across environments.",
       "AGP expandArtProfileWildcards task throws StringIndexOutOfBoundsException if baseline-prof.txt contains legacy `->*` wildcards; use `->**(**)**`.",
       "GitHub Actions runner does not support 'secrets' context directly inside step 'if' conditions; use environment variables and evaluate inside the run script.",

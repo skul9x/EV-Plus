@@ -39,6 +39,11 @@ import androidx.compose.ui.unit.dp
 import com.evcs.favorites.ui.theme.EmeraldContainerDark
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import androidx.compose.material.icons.filled.Home
+
 /**
  * Contract constant: Navigation rail width fixed at 58.dp to maximize
  * horizontal screen estate in landscape / automotive infotainment screens.
@@ -47,13 +52,31 @@ val RAIL_WIDTH_DP: Dp = 58.dp
 
 /**
  * Supported navigation rail actions in strict automotive glanceability sequence:
- * Nearby -> Favorites -> Settings -> Refresh.
+ * Home -> Nearby -> Favorites -> Settings -> Refresh.
  */
 enum class NavigationRailAction(val title: String) {
+    HOME("Trang chủ xe"),
     NEARBY("Quanh đây"),
     FAVORITES("Yêu thích"),
     SETTINGS("Cài đặt"),
     REFRESH("Làm mới")
+}
+
+/**
+ * Intent descriptor for dispatching automotive system home launcher intents.
+ * Decouples intent specification from Android runtime framework dependencies for JVM testing.
+ */
+data class SystemHomeIntentSpec(
+    val action: String = Intent.ACTION_MAIN,
+    val category: String = Intent.CATEGORY_HOME,
+    val flags: Int = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+) {
+    fun toIntent(): Intent {
+        return Intent(action).apply {
+            addCategory(category)
+            flags = this@SystemHomeIntentSpec.flags
+        }
+    }
 }
 
 /**
@@ -66,6 +89,7 @@ object AppNavigationRailDefaults {
     val ITEM_SPACING: Dp = 16.dp
 
     val ACTION_ORDER: List<NavigationRailAction> = listOf(
+        NavigationRailAction.HOME,
         NavigationRailAction.NEARBY,
         NavigationRailAction.FAVORITES,
         NavigationRailAction.SETTINGS,
@@ -77,6 +101,19 @@ object AppNavigationRailDefaults {
  * Pure helper functions for navigation rail action dispatch and animation state mapping.
  */
 object AppNavigationRailHelper {
+    fun buildHomeIntentSpec(): SystemHomeIntentSpec = SystemHomeIntentSpec()
+
+    fun createHomeIntent(): Intent = buildHomeIntentSpec().toIntent()
+
+    fun dispatchSystemHome(context: Context) {
+        try {
+            val homeIntent = createHomeIntent()
+            context.startActivity(homeIntent)
+        } catch (e: Exception) {
+            (context as? Activity)?.moveTaskToBack(true)
+        }
+    }
+
     fun shouldAllowRefresh(isRefreshing: Boolean): Boolean = !isRefreshing
 
     fun resolveRefreshRotationAngle(isRefreshing: Boolean, animatedAngle: Float): Float {
@@ -91,12 +128,14 @@ object AppNavigationRailHelper {
 
     fun handleRailAction(
         action: NavigationRailAction,
+        onHomeClick: () -> Unit = {},
         onTabSelected: (AppTab) -> Unit,
         onSettingsClick: () -> Unit,
         onRefreshClick: () -> Unit,
         isRefreshing: Boolean = false
     ) {
         when (action) {
+            NavigationRailAction.HOME -> onHomeClick()
             NavigationRailAction.NEARBY -> onTabSelected(AppTab.NEARBY)
             NavigationRailAction.FAVORITES -> onTabSelected(AppTab.FAVORITES)
             NavigationRailAction.SETTINGS -> onSettingsClick()
@@ -112,6 +151,7 @@ object AppNavigationRailHelper {
 /**
  * Compact 58dp automotive navigation column providing vertically centered,
  * icon-only touch targets ordered as:
+ * 0. System Home (Return directly to Android launcher / Carlinkit home)
  * 1. Nearby (AppTab.NEARBY)
  * 2. Favorites (AppTab.FAVORITES)
  * 3. Settings (Routing & BYOK modal)
@@ -123,6 +163,7 @@ fun AppNavigationRail(
     onTabSelected: (AppTab) -> Unit,
     onSettingsClick: () -> Unit,
     onRefreshClick: () -> Unit,
+    onHomeClick: () -> Unit = {},
     isRefreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -138,9 +179,19 @@ fun AppNavigationRail(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(vertical = 12.dp),
-            verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // 0. Top-anchored System Home Action for Carlinkit / Android Box
+            RailIconButton(
+                icon = Icons.Default.Home,
+                contentDescription = NavigationRailAction.HOME.title,
+                isSelected = false,
+                onClick = onHomeClick
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Centered functional group
             // 1. Nearby
             val nearbySelected = AppNavigationRailHelper.isTabSelected(AppTab.NEARBY, currentTab)
             RailIconButton(
@@ -203,6 +254,8 @@ fun AppNavigationRail(
                     }
                 }
             )
+
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

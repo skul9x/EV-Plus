@@ -64,16 +64,33 @@ object AppOkHttpClientProvider {
      * Returns the shared base [OkHttpClient] instance (or test override if set).
      */
     fun getSharedClient(): OkHttpClient {
-        return testClient ?: baseClient ?: synchronized(this) {
-            baseClient ?: OkHttpClient.Builder()
-                .connectionPool(connectionPool)
-                .dispatcher(dispatcher)
-                .apply {
-                    if (httpCache != null) {
-                        cache(httpCache)
-                    }
+        testClient?.let { return it }
+        val currentBase = baseClient
+        val currentCache = httpCache
+        if (currentBase != null && (currentCache == null || currentBase.cache == currentCache)) {
+            return currentBase
+        }
+        return synchronized(this) {
+            testClient ?: run {
+                val existing = baseClient
+                val activeCache = httpCache
+                if (existing != null && (activeCache == null || existing.cache == activeCache)) {
+                    existing
+                } else if (existing != null && activeCache != null) {
+                    existing.newBuilder().cache(activeCache).build().also { baseClient = it }
+                } else {
+                    OkHttpClient.Builder()
+                        .connectionPool(connectionPool)
+                        .dispatcher(dispatcher)
+                        .apply {
+                            if (activeCache != null) {
+                                cache(activeCache)
+                            }
+                        }
+                        .build()
+                        .also { baseClient = it }
                 }
-                .build().also { baseClient = it }
+            }
         }
     }
 

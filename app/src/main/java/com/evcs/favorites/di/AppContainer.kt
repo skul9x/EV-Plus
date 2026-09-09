@@ -2,7 +2,9 @@ package com.evcs.favorites.di
 
 import android.content.Context
 import com.evcs.favorites.data.api.EvcsApiClient
+import com.evcs.favorites.data.auth.AuthService
 import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
+import com.evcs.favorites.data.auth.FirebaseAuthManager
 import com.evcs.favorites.data.auth.InMemorySessionStorage
 import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionManager
@@ -10,6 +12,8 @@ import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.data.network.here.HereOAuthManager
 import com.evcs.favorites.data.repository.EvcsRepository
+import com.evcs.favorites.data.repository.FirestoreFavoritesDataSource
+import com.evcs.favorites.data.repository.FirestoreFavoritesRepository
 import com.evcs.favorites.focus.EvcsStationNameResolver
 import com.evcs.favorites.focus.FocusModeTelemetryEngine
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +29,8 @@ interface AppContainer {
     val evcsStationNameResolver: EvcsStationNameResolver
     val sessionManager: SessionManager
     val evcsRepository: EvcsRepository
+    val authService: AuthService
+    val firestoreFavoritesRepository: FirestoreFavoritesRepository
 
     fun createFocusModeTelemetryEngine(
         initialStation: Station,
@@ -59,6 +65,20 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
         EvcsStationNameResolver(apiClient = evcsApiClient)
     }
 
+    override val authService: AuthService by lazy {
+        FirebaseAuthManager()
+    }
+
+    override val firestoreFavoritesRepository: FirestoreFavoritesRepository by lazy {
+        val firestoreDataSource = FirestoreFavoritesDataSource.create()
+        val localStorage = context?.let { PlainSharedPrefsStorage.getInstance(it) }
+        FirestoreFavoritesRepository(
+            remoteDataSource = firestoreDataSource,
+            localStorage = localStorage,
+            authService = authService
+        )
+    }
+
     override val evcsRepository: EvcsRepository by lazy {
         val cacheStorage = context?.let { PlainSharedPrefsStorage.getInstance(it) }
         val legacyStorage = context?.let { EncryptedSharedPrefsStorage.getInstance(it) }
@@ -66,7 +86,8 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
             apiClient = evcsApiClient,
             cacheStorage = cacheStorage,
             legacyStorage = legacyStorage,
-            autoResolveCoordinates = true
+            autoResolveCoordinates = true,
+            firestoreFavoritesRepository = firestoreFavoritesRepository
         )
     }
 

@@ -13,11 +13,11 @@ import com.evcs.favorites.domain.model.isAc
 import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.domain.model.matchesCustomRange
 import com.evcs.favorites.domain.model.matchesQuickChip
+import com.evcs.favorites.util.BoundedLruCache
 
 import java.util.PriorityQueue
-import java.util.concurrent.ConcurrentHashMap
 
-private val connectorCompatibilityCache = ConcurrentHashMap<String, Boolean>()
+private val connectorCompatibilityCache = BoundedLruCache<String, Boolean>(256)
 
 /**
  * Clears the connector compatibility cache. Primarily used for testing.

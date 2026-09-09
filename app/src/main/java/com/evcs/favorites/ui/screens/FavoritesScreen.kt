@@ -92,7 +92,6 @@ fun FavoritesScreen(
     onStationClick: (Station) -> Unit = {},
     selectedStationForDetail: Station? = null,
     onDismissDetail: () -> Unit = {},
-    @Suppress("UNUSED_PARAMETER") cookieHeader: String? = null,
     stationDetailState: StationDetailUiState = StationDetailUiState(),
     onRefreshDetail: () -> Unit = {},
     onToggleFavoriteDetail: ((Station) -> Unit)? = null,
@@ -107,6 +106,7 @@ fun FavoritesScreen(
     @Suppress("UNUSED_PARAMETER") isSigningIn: Boolean = false,
     togglingStationIds: Set<String> = emptySet(),
     isLandscape: Boolean? = null,
+    onEnrichFavorites: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -141,7 +141,7 @@ fun FavoritesScreen(
         }
     }
 
-    val onShareClick: (Station) -> Unit = remember(onShareDetail, context) {
+    val onShareClick: (Station) -> Unit = remember(context, onShareDetail) {
         { st ->
             if (onShareDetail != null) {
                 onShareDetail(st)
@@ -181,6 +181,7 @@ fun FavoritesScreen(
                 isSyncing = isSyncing,
                 isSigningIn = isSigningIn,
                 togglingStationIds = togglingStationIds,
+                onEnrichFavorites = onEnrichFavorites,
                 modifier = Modifier.fillMaxSize()
             )
         } else {

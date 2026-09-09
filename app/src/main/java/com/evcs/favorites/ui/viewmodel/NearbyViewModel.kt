@@ -65,7 +65,7 @@ class NearbyViewModel(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val defaultDispatcher: CoroutineDispatcher = if (ioDispatcher === Dispatchers.IO) Dispatchers.Default else ioDispatcher,
-    private val routingDebounceMs: Long = 300L
+    private val routingDebounceMs: Long = 600L
 ) : ViewModel() {
 
     private val telemetryRepo: EvcsTelemetryRepository = telemetryRepository ?: EvcsTelemetryRepository(
@@ -720,7 +720,8 @@ class NearbyViewModel(
                     originLat = lat,
                     originLng = lon,
                     destinations = destinations,
-                    settings = settings
+                    settings = settings,
+                    forceRefresh = true
                 )
             }
 
@@ -860,7 +861,8 @@ class NearbyViewModel(
                     originLat = userLat,
                     originLng = userLon,
                     destinations = destinations,
-                    settings = prefsManager.settings.value
+                    settings = prefsManager.settings.value,
+                    forceRefresh = isUserRefresh
                 )
             }
             val routedTop10 = top10.map { station ->
@@ -911,7 +913,7 @@ class NearbyViewModel(
             dispatcher: CoroutineDispatcher = Dispatchers.Main,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
             defaultDispatcher: CoroutineDispatcher = if (ioDispatcher === Dispatchers.IO) Dispatchers.Default else ioDispatcher,
-            routingDebounceMs: Long = 300L
+            routingDebounceMs: Long = 600L
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {

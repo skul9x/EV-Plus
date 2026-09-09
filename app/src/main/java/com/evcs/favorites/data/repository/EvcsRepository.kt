@@ -62,7 +62,7 @@ open class EvcsRepository(
     private val delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
-    private val eagerLoadCache: Boolean = true,
+    private val eagerLoadCache: Boolean = false,
     val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null
 ) {
 
@@ -78,7 +78,7 @@ open class EvcsRepository(
         // Pre-compiled regex for connector power extraction (PERF-UI-02)
         val KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
 
-        private val parsedConnectorsCache = ConcurrentHashMap<String, List<PowerPort>>()
+        private val parsedConnectorsCache = com.evcs.favorites.util.BoundedLruCache<String, List<PowerPort>>(256)
 
         /**
          * Clears parsed connectors cache. Primarily used for testing.

@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.evcs.favorites.data.auth.AuthEngine
 import com.evcs.favorites.data.auth.InMemorySessionStorage
-import com.evcs.favorites.data.cache.BoundedLruMap
 import com.evcs.favorites.data.auth.AuthService
 import com.evcs.favorites.domain.model.AuthState
 import com.evcs.favorites.domain.model.AuthUser
@@ -21,6 +20,8 @@ import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.domain.location.LocationService
+import com.evcs.favorites.data.model.PowerPort
+import com.evcs.favorites.domain.StationPortStatus
 import com.evcs.favorites.ui.state.FavoritesUiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToLong
@@ -90,13 +94,6 @@ class FavoritesViewModel(
      */
     val routingSettings: StateFlow<RoutingSettings> = prefsManager.settings
 
-    /**
-     * In-memory cache for candidate routing metrics.
-     */
-    private var cachedOriginLat: Double? = null
-    private var cachedOriginLon: Double? = null
-    private var cacheTimestamp: Long = 0L
-    private val routingCache = BoundedLruMap<String, DrivingMetrics>(maxCapacity = 100)
     private var currentCoordinates: Pair<Double, Double>? = null
     private var lastProcessedCoordinates: Pair<Double, Double>? = null
 
@@ -104,6 +101,10 @@ class FavoritesViewModel(
      * Time provider hook to facilitate deterministic time-advance unit tests.
      */
     internal var timeProvider: () -> Long = { System.currentTimeMillis() }
+        set(value) {
+            field = value
+            routingCoordinator.timeProvider = value
+        }
 
     /**
      * Active background routing job.
@@ -141,6 +142,10 @@ class FavoritesViewModel(
     val togglingStationIds: StateFlow<Set<String>> = _togglingStationIds.asStateFlow()
 
     private val removeJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+
+    private val telemetrySemaphore = Semaphore(3)
+    var telemetryEnrichmentJob: Job? = null
+        private set
 
     init {
         favoritesLoadJob = viewModelScope.launch(ioDispatcher) {
@@ -189,9 +194,6 @@ class FavoritesViewModel(
                     val currentIds = existingMap.keys
                     val repoIds = repoStations.map { it.id }.toSet()
 
-                    val removedIds = currentIds - repoIds
-                    removedIds.forEach { routingCache.remove(it) }
-
                     if ((repoIds - currentIds).isNotEmpty()) {
                         hasNewStations = true
                     }
@@ -238,6 +240,17 @@ class FavoritesViewModel(
                             forceRefresh = false
                         )
                     }
+                }
+            }
+        }
+
+        // Observe station detail coordinator for two-way telemetry sync-back to favorites list
+        viewModelScope.launch(dispatcher) {
+            stationDetailCoordinator.stationDetailState.collect { detailState ->
+                val station = detailState.station ?: return@collect
+                val portStatuses = detailState.portStatuses
+                if (portStatuses.isNotEmpty() && (!detailState.isLoadingTelemetry || portStatuses.any { it.totalPorts > 0 })) {
+                    updateStationWithTelemetry(station.id, portStatuses)
                 }
             }
         }
@@ -325,6 +338,9 @@ class FavoritesViewModel(
                     selectedStationForDetail = _selectedStationForDetail.value
                 )
 
+                // Trigger on-demand live telemetry enrichment
+                enrichFavoritesWithTelemetry(step1Stations)
+
                 // Step 2: Trigger async coordinator routing if GPS coordinates exist
                 if (userLat != null && userLon != null) {
                     executeRoutingPipeline(
@@ -376,6 +392,7 @@ class FavoritesViewModel(
         invalidateRoutingCache()
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
+        telemetryEnrichmentJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             try {
@@ -403,6 +420,9 @@ class FavoritesViewModel(
                         isRefreshing = false,
                         selectedStationForDetail = _selectedStationForDetail.value
                     )
+
+                    // Trigger on-demand live telemetry enrichment
+                    enrichFavoritesWithTelemetry(step1Stations)
 
                     if (userLat != null && userLon != null) {
                         executeRoutingPipeline(
@@ -462,29 +482,13 @@ class FavoritesViewModel(
                 )
             }
 
-            val cacheHit = !forceRefresh &&
-                isCacheValid(userLat, userLon) &&
-                candidates.all { routingCache.containsKey(it.id) }
-
-            val metricsMap: Map<String, DrivingMetrics> = if (cacheHit) {
-                candidates.mapNotNull { st -> routingCache[st.id]?.let { st.id to it } }.toMap()
-            } else {
-                val routes = routingCoordinator.calculateRoutes(
-                    originLat = userLat,
-                    originLng = userLon,
-                    destinations = candidateDestinations,
-                    settings = prefsManager.settings.value
-                )
-
-                if (!isCacheValid(userLat, userLon) || forceRefresh) {
-                    routingCache.clear()
-                }
-                routingCache.putAll(routes)
-                cachedOriginLat = userLat
-                cachedOriginLon = userLon
-                cacheTimestamp = timeProvider()
-                routes
-            }
+            val metricsMap = routingCoordinator.calculateRoutes(
+                originLat = userLat,
+                originLng = userLon,
+                destinations = candidateDestinations,
+                settings = prefsManager.settings.value,
+                forceRefresh = forceRefresh
+            )
 
             val enrichedStations = stations.map { station ->
                 val metrics = metricsMap[station.id]
@@ -567,11 +571,6 @@ class FavoritesViewModel(
             if (displacement <= MIN_DISPLACEMENT_METERS) {
                 return Job().apply { complete() }
             }
-            if (displacement <= MAX_DISPLACEMENT_METERS && isCacheValid(latitude, longitude)) {
-                currentCoordinates = Pair(latitude, longitude)
-                lastProcessedCoordinates = Pair(latitude, longitude)
-                return Job().apply { complete() }
-            }
         }
 
         val previousCoords = currentCoordinates
@@ -590,7 +589,6 @@ class FavoritesViewModel(
 
             if (displaced) {
                 routingJob?.cancel()
-                invalidateRoutingCache()
                 val step1Stations = DistanceCalculator.sortByDistance(currentState.stations, latitude, longitude)
                 _uiState.value = currentState.copy(stations = step1Stations)
                 return executeRoutingPipeline(
@@ -612,26 +610,10 @@ class FavoritesViewModel(
     }
 
     /**
-     * Determines whether the current routing cache is valid for given coordinates and TTL.
-     */
-    private fun isCacheValid(originLat: Double, originLon: Double): Boolean {
-        val lastLat = cachedOriginLat ?: return false
-        val lastLon = cachedOriginLon ?: return false
-        if (routingCache.isEmpty()) return false
-        if (timeProvider() - cacheTimestamp > CACHE_TTL_MS) return false
-        val displacement = DistanceCalculator.calculateDistanceMeters(lastLat, lastLon, originLat, originLon)
-        if (displacement > MAX_DISPLACEMENT_METERS) return false
-        return true
-    }
-
-    /**
      * Clears in-memory routing cache.
      */
     fun invalidateRoutingCache() {
-        cachedOriginLat = null
-        cachedOriginLon = null
-        cacheTimestamp = 0L
-        routingCache.clear()
+        routingCoordinator.clearRoutingCache()
     }
 
     /**
@@ -684,7 +666,6 @@ class FavoritesViewModel(
 
         _togglingStationIds.update { it + stationId }
 
-        routingCache.remove(stationId)
         if (_selectedStationForDetail.value?.id == stationId) {
             _selectedStationForDetail.value = null
         }
@@ -738,6 +719,7 @@ class FavoritesViewModel(
     fun logout(activityContext: android.content.Context? = null) {
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
+        telemetryEnrichmentJob?.cancel()
         invalidateRoutingCache()
         authEngine.logout()
         if (authService != null) {
@@ -774,10 +756,117 @@ class FavoritesViewModel(
         )
     }
 
+    /**
+     * Enriches favorite stations with live charging telemetry (powers, totalAvailablePlugs, totalPlugs)
+     * using a Semaphore(3) throttler to protect cellular bandwidth.
+     */
+    fun enrichFavoritesWithTelemetry(stations: List<Station>? = null): Job {
+        telemetryEnrichmentJob?.cancel()
+        val job = viewModelScope.launch(ioDispatcher) {
+            val currentSuccess = _uiState.value as? FavoritesUiState.Success
+            val targetStations = stations ?: currentSuccess?.stations ?: return@launch
+            if (targetStations.isEmpty()) return@launch
+
+            val enrichmentJobs = targetStations.map { station ->
+                launch {
+                    telemetrySemaphore.withPermit {
+                        try {
+                            val snapshotResult = telemetryRepo.fetchStationTelemetrySnapshot(station)
+                            if (snapshotResult.isSuccess) {
+                                val snapshot = snapshotResult.getOrThrow()
+                                val portStatuses = snapshot.portStatuses
+                                if (portStatuses.isNotEmpty()) {
+                                    withContext(dispatcher) {
+                                        updateStationWithTelemetry(station.id, portStatuses)
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {
+                            // Non-blocking for resilient local display
+                        }
+                    }
+                }
+            }
+            enrichmentJobs.joinAll()
+        }
+        telemetryEnrichmentJob = job
+        return job
+    }
+
+    /**
+     * Triggers live enrichment upon favorites tab activation.
+     */
+    fun onFavoritesTabActivated(): Job = enrichFavoritesWithTelemetry()
+
+    /**
+     * Atomically updates a station in UI state with live telemetry port statuses.
+     */
+    fun updateStationWithTelemetry(stationId: String, portStatuses: List<StationPortStatus>) {
+        val totalAvailable = portStatuses.sumOf { it.availablePorts }
+        val totalPlugs = portStatuses.sumOf { it.totalPorts }
+
+        _uiState.update { currentState ->
+            if (currentState !is FavoritesUiState.Success) return@update currentState
+            val updatedStations = currentState.stations.map { station ->
+                if (station.id == stationId) {
+                    val updatedPowers = if (station.powers.isNotEmpty()) {
+                        val portMap = portStatuses.associateBy { it.kw }
+                        station.powers.map { power ->
+                            val kw = (power.typeWatts / 1000).toInt()
+                            val matchingStatus = portMap[kw]
+                            if (matchingStatus != null) {
+                                power.copy(
+                                    availablePlugs = matchingStatus.availablePorts,
+                                    totalPlugs = matchingStatus.totalPorts,
+                                    displayString = "${power.label.ifBlank { "${kw}kW" }}: trống ${matchingStatus.availablePorts}/${matchingStatus.totalPorts} cổng"
+                                )
+                            } else {
+                                power
+                            }
+                        }
+                    } else {
+                        portStatuses.map { status ->
+                            PowerPort(
+                                typeWatts = status.kw * 1000L,
+                                label = "${status.kw}kW",
+                                availablePlugs = status.availablePorts,
+                                totalPlugs = status.totalPorts,
+                                displayString = "${status.kw}kW: trống ${status.availablePorts}/${status.totalPorts} cổng"
+                            )
+                        }
+                    }
+                    station.copy(
+                        powers = updatedPowers,
+                        totalAvailablePlugs = totalAvailable,
+                        totalPlugs = totalPlugs
+                    )
+                } else {
+                    station
+                }
+            }
+            val updatedSelected = updatedStations.find { it.id == currentState.selectedStationForDetail?.id }
+                ?: currentState.selectedStationForDetail
+
+            currentState.copy(
+                stations = updatedStations,
+                selectedStationForDetail = updatedSelected
+            )
+        }
+
+        _selectedStationForDetail.update { currentSelected ->
+            if (currentSelected?.id == stationId) {
+                (_uiState.value as? FavoritesUiState.Success)?.stations?.find { it.id == stationId } ?: currentSelected
+            } else {
+                currentSelected
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         favoritesLoadJob?.cancel()
         routingJob?.cancel()
+        telemetryEnrichmentJob?.cancel()
         removeJobs.clear()
         stationDetailCoordinator.dismissStationDetail()
     }

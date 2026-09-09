@@ -1,63 +1,83 @@
 {
-  "updated_at": "2026-09-08T14:02:00+07:00",
+  "updated_at": "2026-09-09T14:24:00+07:00",
   "working_on": {
-    "feature": "Automated Android Release CI/CD & Secure Secret Management",
-    "task": "Fixed local java.home path in gradle.properties and baseline profile wildcard syntax. Successfully built, signed, and published release APK on GitHub Actions.",
+    "feature": "Landscape UI Optimization for Carlinkit TBox Android Box",
+    "task": "Completed 3 full phases: StationNameSanitizer & Marquee (Phase 01), Fullscreen Immersive & 58dp Navigation Rail (Phase 02), Dedicated Landscape Screens (Phase 03). All unit tests passing, pushed to GitHub main.",
     "status": "completed",
     "files": [
-      "gradle.properties",
-      "app/src/main/baseline-prof.txt",
-      "app/src/main/baselineProfiles/baseline-prof.txt",
       ".gitignore",
-      ".github/workflows/android.yml"
+      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+      "app/src/main/java/com/evcs/favorites/navigation/AppNavigationRail.kt",
+      "app/src/main/java/com/evcs/favorites/ui/components/StationCard.kt",
+      "app/src/main/java/com/evcs/favorites/ui/layout/AdaptiveLayoutHelper.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/FavoritesScreen.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/landscape/FavoritesLandscapeScreen.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/landscape/LandscapeScreenContracts.kt",
+      "app/src/main/java/com/evcs/favorites/ui/screens/landscape/NearbyLandscapeScreen.kt",
+      "app/src/main/java/com/evcs/favorites/util/StationNameSanitizer.kt",
+      "app/src/test/java/com/evcs/favorites/navigation/LandscapeNavigationRailTest.kt",
+      "app/src/test/java/com/evcs/favorites/ui/LandscapeDedicatedScreensContractTest.kt",
+      "app/src/test/java/com/evcs/favorites/util/StationNameSanitizerTest.kt"
     ],
     "blockers": [],
-    "notes": "Release v1.0 successfully published on GitHub Actions with signed APK: ev-plus-v1.0.apk."
+    "notes": "Code tested, committed, and pushed to https://github.com/skul9x/EV-Plus.git main (commit 2e45142)."
   },
   "pending_tasks": [],
   "recent_changes": [
     {
-      "timestamp": "2026-09-08T13:37:00+07:00",
-      "type": "ci_cd",
-      "description": "Fixed runner secret condition syntax and release tag parsing, verified GitHub Actions run 34195491881 in_progress.",
+      "timestamp": "2026-09-09T14:19:00+07:00",
+      "type": "feature",
+      "description": "Landscape Carlinkit TBox UI Optimization: StationNameSanitizer + Marquee titles, Fullscreen Immersive Sticky mode, 58dp compact navigation rail, dedicated NearbyLandscapeScreen & FavoritesLandscapeScreen with 0 TopAppBar and reclaimed 95dp vertical space.",
       "files": [
-        ".github/workflows/android.yml"
+        ".gitignore",
+        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
+        "app/src/main/java/com/evcs/favorites/navigation/AppNavigationRail.kt",
+        "app/src/main/java/com/evcs/favorites/ui/components/StationCard.kt",
+        "app/src/main/java/com/evcs/favorites/ui/layout/AdaptiveLayoutHelper.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/FavoritesScreen.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/landscape/FavoritesLandscapeScreen.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/landscape/LandscapeScreenContracts.kt",
+        "app/src/main/java/com/evcs/favorites/ui/screens/landscape/NearbyLandscapeScreen.kt",
+        "app/src/main/java/com/evcs/favorites/util/StationNameSanitizer.kt"
       ]
     },
     {
-      "timestamp": "2026-09-08T13:31:00+07:00",
-      "type": "ci_cd",
-      "description": "Added GitHub Actions automated release pipeline: slugify app name, auto-increment minor release version, decode Base64 keystore & google-services.json, build assembleRelease, rename APK and publish GitHub Release.",
+      "timestamp": "2026-09-09T11:38:00+07:00",
+      "type": "feature",
+      "description": "Focus Mode Header Marquee, distance badge removal, and strict VinFast station search filtering (isVinFast).",
       "files": [
-        ".github/workflows/android.yml",
-        "app/google-services.json.example"
-      ]
-    },
-    {
-      "timestamp": "2026-09-08T13:29:00+07:00",
-      "type": "security",
-      "description": "Protected google-services.json and *.jks via .gitignore, provided app/google-services.json.example template, and generated Base64 secret strings.",
-      "files": [
-        "app/google-services.json.example",
-        ".gitignore"
+        "app/src/main/java/com/evcs/favorites/focus/FocusModeFloatingViewManager.kt",
+        "app/src/main/java/com/evcs/favorites/domain/filter/NearbyStationFilter.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "GitHub Actions validation failure: Unrecognized named-value 'secrets' in step if condition",
-      "solution": "Refactored secret check inside bash script using env vars [ -n \"$SECRET\" ]",
+      "error": ".gitignore rule 'lan*/' un-anchored pattern mistakenly matched 'app/src/main/java/.../landscape/' package",
+      "solution": "Changed pattern to root-scoped '/lan*/'",
+      "resolved": true
+    },
+    {
+      "error": "Unresolved reference AppIcons.Warning during FavoritesLandscapeScreen compilation",
+      "solution": "Replaced with AppIcons.Error which is registered in AppIcons registry",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Use Base64 encoded GitHub Actions Secrets for google-services.json and keystore.jks",
-      "reason": "Prevents secret leakage in public/private repositories while maintaining automated CI/CD builds"
+      "decision": "Separate dedicated landscape screens (NearbyLandscapeScreen & FavoritesLandscapeScreen) instead of nested conditionals inside portrait screens",
+      "reason": "Completely decouples automotive in-car rendering, enforces 0 nested if (!isLandscape) branches, and eliminates 95dp overhead from TopAppBar and summary pill"
     },
     {
-      "decision": "Use softprops/action-gh-release@v2 with auto minor tag increment",
-      "reason": "Automates GitHub Releases with zero manual versioning intervention on every push to main"
+      "decision": "Use 58dp navigation rail with 50dp touch targets and 26dp icons",
+      "reason": "Reclaims 14dp horizontal width compared to default 72dp rail while maintaining compliant automotive touch safety"
+    },
+    {
+      "decision": "Use StationNameSanitizer to strip redundant 'Trạm sạc VinFast' prefixes and enable horizontal marquee on station cards",
+      "reason": "Allows station cards in 360-400dp columns to show actual distinctive location names immediately at a glance"
     }
   ],
   "last_audit": {
