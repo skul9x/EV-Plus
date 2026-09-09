@@ -100,6 +100,33 @@ object SmartFilterUiHelper {
     fun isCancelButtonVisible(mode: SmartFilterMode): Boolean {
         return mode == SmartFilterMode.AC || mode == SmartFilterMode.CUSTOM
     }
+
+    /**
+     * Determines whether the active filter configuration represents a DC filter.
+     * Evaluates DC mode, DC sub-filter visibility, selected DC tier, and Custom DC configurations.
+     */
+    fun isDcFilterActive(
+        activeFilterMode: SmartFilterMode,
+        isDcSubFilterVisible: Boolean = false,
+        selectedDcTier: DcWattageTier? = null,
+        savedCustomConfig: CustomFilterConfig? = null
+    ): Boolean {
+        if (activeFilterMode == SmartFilterMode.DC || isDcSubFilterVisible || selectedDcTier != null) {
+            return true
+        }
+        if (activeFilterMode == SmartFilterMode.CUSTOM && savedCustomConfig != null) {
+            return when (savedCustomConfig.mode) {
+                CustomFilterMode.QUICK_CHIP -> savedCustomConfig.quickChip in setOf(
+                    QuickChipOption.DC_LE_30KW,
+                    QuickChipOption.DC_BETWEEN_30_60KW,
+                    QuickChipOption.DC_GE_60KW,
+                    QuickChipOption.DC_GE_120KW
+                )
+                CustomFilterMode.CUSTOM_RANGE -> (savedCustomConfig.minKw ?: 0) >= 20
+            }
+        }
+        return false
+    }
 }
 
 /**

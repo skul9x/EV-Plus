@@ -251,6 +251,8 @@ object NativeStationDetailSheetHelper {
     const val GOOGLE_MAPS_PACKAGE = "com.google.android.apps.maps"
 
     const val LABEL_NAVIGATE = "Chỉ đường"
+    const val LABEL_NAVIGATE_ONLY = "Chỉ Đường"
+    const val LABEL_FOCUS = "Focus"
     const val LABEL_FOCUS_MODE = "⚡ Focus Mode"
     const val LABEL_NAVIGATE_AND_TRACK = "⚡ DẪN ĐƯỜNG & THEO DÕI"
     const val LABEL_FAVORITE = "Yêu thích"
@@ -1060,11 +1062,21 @@ fun NativeStationDetailContent(
         }
 
         // ---------------------------------------------------------------------
-        // 4. Quick Action Row: ⚡ DẪN ĐƯỜNG & THEO DÕI (Primary CTA >= 56dp), Yêu thích & Chia sẻ (>= 56dp)
+        // 4. Primary Automotive Actions: [ Chỉ Đường ] & [ Focus ] (Height >= 56dp), Yêu thích & Chia sẻ (>= 56dp)
         // ---------------------------------------------------------------------
+        val navDebounce = remember { DebounceHelper(1000L) }
         val focusDebounce = remember { DebounceHelper(1000L) }
 
-        val onCombinedNavClick: () -> Unit = remember(onStartFocusMode, onNavigate, station, focusDebounce) {
+        val onNavigateOnlyClick: () -> Unit = remember(onNavigate, station, navDebounce) {
+            {
+                navDebounce.runIfAllowed {
+                    onNavigate(station)
+                }
+                Unit
+            }
+        }
+
+        val onFocusClick: () -> Unit = remember(onStartFocusMode, onNavigate, station, focusDebounce) {
             {
                 focusDebounce.runIfAllowed {
                     if (onStartFocusMode != null) {
@@ -1079,36 +1091,77 @@ fun NativeStationDetailContent(
         val onFavClick = remember(onToggleFavorite, station) { { onToggleFavorite(station) } }
         val onShareClick = remember(onShare, station) { { onShare(station) } }
 
-        // Primary Automotive Action Button: ⚡ DẪN ĐƯỜNG & THEO DÕI (Height >= 56dp, 16sp Bold)
-        Button(
-            onClick = onCombinedNavClick,
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = EmeraldPrimary,
-                contentColor = Color.White
-            ),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        // Primary Automotive Action Buttons Row: [ Chỉ Đường ] & [ Focus ] (Height >= 56dp)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
-                .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = AppIcons.Bolt,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = NativeStationDetailSheetHelper.LABEL_NAVIGATE_AND_TRACK,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = NativeStationDetailSheetHelper.CAR_BUTTON_FONT_WEIGHT,
-                    fontSize = NativeStationDetailSheetHelper.CAR_BUTTON_TEXT_SIZE
+            // Button 1: "Chỉ Đường" (Pure turn-by-turn navigation via Google Maps, height >= 56dp)
+            Button(
+                onClick = onNavigateOnlyClick,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1D4ED8),
+                    contentColor = Color.White
                 ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
+            ) {
+                Icon(
+                    imageVector = AppIcons.Navigation,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = NativeStationDetailSheetHelper.LABEL_NAVIGATE_ONLY,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = NativeStationDetailSheetHelper.CAR_BUTTON_FONT_WEIGHT,
+                        fontSize = 15.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Button 2: "Focus" (Navigation + Real-time Telemetry Tracking Overlay, height >= 56dp)
+            Button(
+                onClick = onFocusClick,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldPrimary,
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
+            ) {
+                Icon(
+                    imageVector = AppIcons.Bolt,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = NativeStationDetailSheetHelper.LABEL_FOCUS,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = NativeStationDetailSheetHelper.CAR_BUTTON_FONT_WEIGHT,
+                        fontSize = 15.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         // Secondary Actions: Yêu thích & Chia sẻ (Height >= 56dp)

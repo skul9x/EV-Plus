@@ -89,6 +89,7 @@ import com.evcs.favorites.ui.components.NativeStationDetailSheetHelper
 import com.evcs.favorites.ui.components.NearbyUiHelper
 import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.components.SmartFilterBar
+import com.evcs.favorites.ui.components.SmartFilterUiHelper
 import com.evcs.favorites.ui.components.StationCard
 import com.evcs.favorites.ui.layout.AdaptiveLayoutHelper
 import com.evcs.favorites.ui.state.NearbyUiEvent
@@ -854,6 +855,14 @@ private fun NearbyResultContent(
         if (uiState.top10DisplayStations.isEmpty()) {
             NearbyEmptyFilterContent(onClearFilters = onClearFilters)
         } else {
+            val isDcFilterActive = remember(uiState.activeFilterMode, uiState.isDcSubFilterVisible, uiState.selectedDcTier, uiState.savedCustomConfig) {
+                SmartFilterUiHelper.isDcFilterActive(
+                    activeFilterMode = uiState.activeFilterMode,
+                    isDcSubFilterVisible = uiState.isDcSubFilterVisible,
+                    selectedDcTier = uiState.selectedDcTier,
+                    savedCustomConfig = uiState.savedCustomConfig
+                )
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -874,7 +883,8 @@ private fun NearbyResultContent(
                         onStationClick = onStationClick,
                         isSelected = isLandscape && station.id == selectedStationId,
                         isCarMode = isLandscape,
-                        isCompact = isLandscape
+                        isCompact = isLandscape,
+                        filterDcOnly = isLandscape && isDcFilterActive
                     )
                 }
             }

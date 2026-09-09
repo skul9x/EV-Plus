@@ -100,6 +100,7 @@ fun StationCard(
     isSelected: Boolean = false,
     isCarMode: Boolean = false,
     isCompact: Boolean = false,
+    filterDcOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -120,7 +121,7 @@ fun StationCard(
         elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 2.dp)
     ) {
         if (isCompact) {
-            CompactStationCardContent(station = station)
+            CompactStationCardContent(station = station, filterDcOnly = filterDcOnly)
         } else {
             Column(
                 modifier = Modifier
@@ -180,8 +181,8 @@ fun StationCard(
                 )
             }
 
-            val powerDistribution = remember(station.powers, station.connectors) {
-                StationCardHelper.formatPowerDistributionSummary(station.powers, station.connectors)
+            val powerDistribution = remember(station.powers, station.connectors, filterDcOnly) {
+                StationCardHelper.formatPowerDistributionSummary(station.powers, station.connectors, filterDcOnly)
             }
             if (powerDistribution.isNotEmpty()) {
                 val onSurface = MaterialTheme.colorScheme.onSurface
@@ -205,7 +206,7 @@ fun StationCard(
                     modifier = Modifier
                         .padding(top = 4.dp, bottom = 4.dp)
                         .basicMarquee(
-                            iterations = Int.MAX_VALUE,
+                            iterations = 2,
                             delayMillis = 2000,
                             velocity = 30.dp
                         )
@@ -426,6 +427,7 @@ fun StationCard(
 @Composable
 private fun CompactStationCardContent(
     station: Station,
+    filterDcOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -455,8 +457,8 @@ private fun CompactStationCardContent(
                 )
             )
 
-            val powerDistribution = remember(station.powers, station.connectors) {
-                StationCardHelper.formatPowerDistributionSummary(station.powers, station.connectors)
+            val powerDistribution = remember(station.powers, station.connectors, filterDcOnly) {
+                StationCardHelper.formatPowerDistributionSummary(station.powers, station.connectors, filterDcOnly)
             }
             if (powerDistribution.isNotEmpty()) {
                 val onSurface = MaterialTheme.colorScheme.onSurface
@@ -478,7 +480,7 @@ private fun CompactStationCardContent(
                     maxLines = 1,
                     softWrap = false,
                     modifier = Modifier.basicMarquee(
-                        iterations = Int.MAX_VALUE,
+                        iterations = 2,
                         delayMillis = 2000,
                         velocity = 30.dp
                     )

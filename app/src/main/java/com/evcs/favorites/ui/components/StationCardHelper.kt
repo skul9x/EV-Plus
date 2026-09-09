@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.repository.EvcsRepository
+import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.ui.theme.AutomotiveDimens
 
 /**
@@ -60,7 +61,8 @@ object StationCardHelper {
      */
     fun formatPowerDistributionSummary(
         powers: List<PowerPort>,
-        connectors: String = ""
+        connectors: String = "",
+        filterDcOnly: Boolean = false
     ): List<Pair<String, Int>> {
         val effectivePorts = if (powers.isNotEmpty()) {
             powers
@@ -68,12 +70,18 @@ object StationCardHelper {
             EvcsRepository.parseConnectorsToPowers(connectors)
         }
 
-        if (effectivePorts.isEmpty()) {
+        val filteredPorts = if (filterDcOnly) {
+            effectivePorts.filter { it.isDc() }
+        } else {
+            effectivePorts
+        }
+
+        if (filteredPorts.isEmpty()) {
             return emptyList()
         }
 
         // Group by typeWatts if > 0, otherwise by label
-        val grouped = effectivePorts.groupBy { port ->
+        val grouped = filteredPorts.groupBy { port ->
             if (port.typeWatts > 0L) port.typeWatts else port.label.trim()
         }
 
@@ -129,9 +137,10 @@ object StationCardHelper {
         connectors: String,
         powerColor: Color,
         countColor: Color,
-        separatorColor: Color
+        separatorColor: Color,
+        filterDcOnly: Boolean = false
     ): AnnotatedString = buildPowerDistributionAnnotatedString(
-        distribution = formatPowerDistributionSummary(powers, connectors),
+        distribution = formatPowerDistributionSummary(powers, connectors, filterDcOnly),
         powerColor = powerColor,
         countColor = countColor,
         separatorColor = separatorColor

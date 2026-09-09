@@ -55,6 +55,7 @@ import com.evcs.favorites.domain.model.DcWattageTier
 import com.evcs.favorites.ui.components.NativeStationDetailContent
 import com.evcs.favorites.ui.components.NearbyUiHelper
 import com.evcs.favorites.ui.components.SmartFilterBar
+import com.evcs.favorites.ui.components.SmartFilterUiHelper
 import com.evcs.favorites.ui.components.StationCard
 import com.evcs.favorites.ui.layout.AdaptiveLayoutHelper
 import com.evcs.favorites.ui.state.NearbyUiState
@@ -205,6 +206,14 @@ fun NearbyLandscapeScreen(
                             if (uiState.top10DisplayStations.isEmpty()) {
                                 NearbyLandscapeEmptyFilterContent(onClearFilters = onClearFilters)
                             } else {
+                                val isDcFilterActive = remember(uiState.activeFilterMode, uiState.isDcSubFilterVisible, uiState.selectedDcTier, uiState.savedCustomConfig) {
+                                    SmartFilterUiHelper.isDcFilterActive(
+                                        activeFilterMode = uiState.activeFilterMode,
+                                        isDcSubFilterVisible = uiState.isDcSubFilterVisible,
+                                        selectedDcTier = uiState.selectedDcTier,
+                                        savedCustomConfig = uiState.savedCustomConfig
+                                    )
+                                }
                                 LazyColumn(
                                     state = listState,
                                     modifier = Modifier.fillMaxSize(),
@@ -225,7 +234,8 @@ fun NearbyLandscapeScreen(
                                             onStationClick = onStationClick,
                                             isSelected = station.id == stationDetailState.station?.id,
                                             isCarMode = true,
-                                            isCompact = true
+                                            isCompact = true,
+                                            filterDcOnly = isDcFilterActive
                                         )
                                     }
                                 }
