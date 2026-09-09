@@ -46,7 +46,7 @@ output_vinfast/
 
 # Temporary network captures, packet dumps & logs
 curl_capture_*/
-lan*/
+/lan*/
 get.md
 *.log
 

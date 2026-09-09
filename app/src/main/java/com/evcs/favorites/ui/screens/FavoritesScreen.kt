@@ -1,5 +1,6 @@
 package com.evcs.favorites.ui.screens
 
+import com.evcs.favorites.ui.screens.landscape.FavoritesLandscapeScreen
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -112,7 +113,6 @@ fun FavoritesScreen(
     var showRoutingSettings by remember { mutableStateOf(false) }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var pendingFocusStation by remember { mutableStateOf<Station?>(null) }
-    var hasAutoSelected by remember { mutableStateOf(false) }
 
     val memoizedNavigateClick = remember(onNavigateClick) { onNavigateClick }
     val memoizedRemoveFavoriteClick = remember(onRemoveFavoriteClick) { onRemoveFavoriteClick }
@@ -155,115 +155,114 @@ fun FavoritesScreen(
         ?: selectedStationForDetail
         ?: (uiState as? FavoritesUiState.Success)?.selectedStationForDetail
 
-    val successStations = (uiState as? FavoritesUiState.Success)?.stations ?: emptyList()
-
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val effectiveIsLandscape = isLandscape ?: AdaptiveLayoutHelper.isLandscapeMode(
             widthDp = maxWidth.value,
             heightDp = maxHeight.value
         )
 
-        val allocation = remember(maxWidth.value) {
-            AdaptiveLayoutHelper.calculateMasterDetailWidths(
-                totalWidthDp = maxWidth.value,
-                navRailWidthDp = 0f
+        if (effectiveIsLandscape) {
+            FavoritesLandscapeScreen(
+                uiState = uiState,
+                stationDetailState = stationDetailState,
+                selectedStationForDetail = selectedStationForDetail,
+                onRefresh = onRefresh,
+                onNavigateClick = memoizedNavigateClick,
+                onRemoveFavoriteClick = memoizedRemoveFavoriteClick,
+                onStationClick = memoizedStationClick,
+                onDismissDetail = onDismissDetail,
+                onRefreshDetail = onRefreshDetail,
+                onToggleFavoriteDetail = onToggleFavoriteDetail,
+                onShareClick = onShareClick,
+                onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
+                authUser = authUser,
+                onSignInClick = onSignInClick,
+                onSignOutClick = onSignOutClick,
+                isSyncing = isSyncing,
+                isSigningIn = isSigningIn,
+                togglingStationIds = togglingStationIds,
+                modifier = Modifier.fillMaxSize()
             )
-        }
-
-        LaunchedEffect(effectiveIsLandscape, successStations, activeStationForDetail, hasAutoSelected) {
-            if (effectiveIsLandscape && !hasAutoSelected && activeStationForDetail == null && successStations.isNotEmpty()) {
-                hasAutoSelected = true
-                val nearest = AdaptiveLayoutHelper.resolveAutoSelectedStation(
-                    isLandscape = true,
-                    currentSelection = null,
-                    stations = successStations
-                )
-                if (nearest != null) {
-                    memoizedStationClick(nearest)
-                }
-            }
-        }
-
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(EmeraldContainerDark)
+        } else {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = AppIcons.Bolt,
-                                    contentDescription = null,
-                                    tint = EmeraldPrimary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            Column {
-                                Text(
-                                    text = "Trạm Yêu Thích",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                )
-
-                                if (uiState is FavoritesUiState.Success) {
-                                    Text(
-                                        text = "${uiState.stations.size} trạm đã lưu",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(EmeraldContainerDark)
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Bolt,
+                                        contentDescription = null,
+                                        tint = EmeraldPrimary,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column {
+                                    Text(
+                                        text = "Trạm Yêu Thích",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    )
+
+                                    if (uiState is FavoritesUiState.Success) {
+                                        Text(
+                                            text = "${uiState.stations.size} trạm đã lưu",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    },
-                    actions = {
-                        // Routing settings button
-                        IconButton(onClick = { showRoutingSettings = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Cài đặt lộ trình",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        },
+                        actions = {
+                            // Routing settings button
+                            IconButton(onClick = { showRoutingSettings = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Cài đặt lộ trình",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
-                        // Refresh action
-                        IconButton(onClick = onRefresh) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Làm mới dữ liệu",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                            // Refresh action
+                            IconButton(onClick = onRefresh) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Làm mới dữ liệu",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
 
-                        // Logout button
-                        IconButton(onClick = onLogout) {
-                            Icon(
-                                imageVector = AppIcons.Logout,
-                                contentDescription = "Đăng xuất",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                            // Logout button
+                            IconButton(onClick = onLogout) {
+                                Icon(
+                                    imageVector = AppIcons.Logout,
+                                    contentDescription = "Đăng xuất",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface
+                        )
                     )
-                )
-            },
-            containerColor = MaterialTheme.colorScheme.background
-        ) { innerPadding ->
-            if (!effectiveIsLandscape) {
+                },
+                containerColor = MaterialTheme.colorScheme.background
+            ) { innerPadding ->
                 val maxContentWidth = if (maxWidth > 600.dp) 680.dp else maxWidth
 
                 Box(
@@ -327,138 +326,26 @@ fun FavoritesScreen(
                         }
                     }
                 }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Left Column (Master - 35% to 40%)
-                    Box(
-                        modifier = Modifier
-                            .width(allocation.masterWidthDp.dp)
-                            .fillMaxHeight()
-                    ) {
-                        when (uiState) {
-                            is FavoritesUiState.Loading -> {
-                                LoadingContent()
-                            }
+            }
 
-                            is FavoritesUiState.Error -> {
-                                ErrorContent(
-                                    errorMessage = uiState.message,
-                                    onRetry = onRefresh
-                                )
-                            }
-
-                            is FavoritesUiState.Success -> {
-                                FavoritesListContent(
-                                    stations = uiState.stations,
-                                    isRefreshing = uiState.isRefreshing,
-                                    onNavigateClick = memoizedNavigateClick,
-                                    onRemoveFavoriteClick = memoizedRemoveFavoriteClick,
-                                    onStationClick = memoizedStationClick,
-                                    onRefresh = onRefresh,
-                                    authUser = authUser,
-                                    onSignInClick = onSignInClick,
-                                    onSignOutClick = onSignOutClick,
-                                    isSyncing = isSyncing,
-                                    togglingStationIds = togglingStationIds,
-                                    selectedStationId = activeStationForDetail?.id,
-                                    isLandscape = true
-                                )
-                            }
-
-                            is FavoritesUiState.LoggedOut -> {
-                                FavoritesListContent(
-                                    stations = emptyList(),
-                                    isRefreshing = false,
-                                    onNavigateClick = memoizedNavigateClick,
-                                    onRemoveFavoriteClick = memoizedRemoveFavoriteClick,
-                                    onStationClick = memoizedStationClick,
-                                    onRefresh = onRefresh,
-                                    authUser = authUser,
-                                    onSignInClick = onSignInClick,
-                                    onSignOutClick = onSignOutClick,
-                                    isSyncing = isSyncing,
-                                    togglingStationIds = togglingStationIds,
-                                    selectedStationId = activeStationForDetail?.id,
-                                    isLandscape = true
-                                )
-                            }
-
-                            is FavoritesUiState.RequestingOtp,
-                            is FavoritesUiState.VerifyingOtp -> {
-                                // Handled at navigation/host level
-                            }
-                        }
-                    }
-
-                    // Right Column (Detail - 60% to 65%)
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 2.dp,
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                        )
-                    ) {
-                        val targetStationForDetail = selectedStationForDetail
-                        if (targetStationForDetail != null) {
-                            val effectiveDetailState = if (stationDetailState.station?.id == targetStationForDetail.id) {
-                                stationDetailState
-                            } else {
-                                stationDetailState.copy(station = targetStationForDetail)
-                            }
-
-                            NativeStationDetailContent(
-                                station = targetStationForDetail,
-                                uiState = effectiveDetailState,
-                                isFavorite = true,
-                                isToggleInProgress = targetStationForDetail.id.let { togglingStationIds.contains(it) },
-                                onRefresh = onRefreshDetail,
-                                onDismiss = onDismissDetail,
-                                onNavigate = memoizedNavigateClick,
-                                onToggleFavorite = onToggleFavoriteDetail ?: memoizedRemoveFavoriteClick,
-                                onShare = onShareClick,
-                                onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
-                                isLandscape = true,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            FavoritesDetailEmptyState(
-                                isEmptyList = (uiState as? FavoritesUiState.Success)?.stations?.isEmpty() ?: true
-                            )
-                        }
-                    }
+            // Station Detail Bottom Sheet (100% Native Jetpack Compose, shown only in portrait mode)
+            if (activeStationForDetail != null) {
+                val effectiveDetailState = if (stationDetailState.station != null) {
+                    stationDetailState
+                } else {
+                    stationDetailState.copy(station = activeStationForDetail)
                 }
+                NativeStationDetailSheet(
+                    uiState = effectiveDetailState,
+                    onDismiss = onDismissDetail,
+                    onRefresh = onRefreshDetail,
+                    isFavorite = true,
+                    isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
+                    onNavigate = onNavigateClick,
+                    onToggleFavorite = onToggleFavoriteDetail ?: onRemoveFavoriteClick,
+                    onShare = onShareDetail
+                )
             }
-        }
-
-        // Station Detail Bottom Sheet (100% Native Jetpack Compose, shown only in portrait mode)
-        if (activeStationForDetail != null && !effectiveIsLandscape) {
-            val effectiveDetailState = if (stationDetailState.station != null) {
-                stationDetailState
-            } else {
-                stationDetailState.copy(station = activeStationForDetail)
-            }
-            NativeStationDetailSheet(
-                uiState = effectiveDetailState,
-                onDismiss = onDismissDetail,
-                onRefresh = onRefreshDetail,
-                isFavorite = true,
-                isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
-                onNavigate = onNavigateClick,
-                onToggleFavorite = onToggleFavoriteDetail ?: onRemoveFavoriteClick,
-                onShare = onShareDetail
-            )
         }
 
         // Routing & BYOK Settings Bottom Sheet

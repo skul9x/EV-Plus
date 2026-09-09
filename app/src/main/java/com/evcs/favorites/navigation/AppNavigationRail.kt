@@ -1,80 +1,246 @@
 package com.evcs.favorites.navigation
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.evcs.favorites.ui.theme.EmeraldContainerDark
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 
-import androidx.compose.foundation.layout.sizeIn
-import com.evcs.favorites.ui.theme.AutomotiveDimens
-import com.evcs.favorites.ui.theme.MIN_CAR_TOUCH_TARGET
+/**
+ * Contract constant: Navigation rail width fixed at 58.dp to maximize
+ * horizontal screen estate in landscape / automotive infotainment screens.
+ */
+val RAIL_WIDTH_DP: Dp = 58.dp
 
 /**
- * Material 3 NavigationRail providing automotive left-edge vertical navigation
- * in landscape mode, preserving vertical screen height and offering large automotive
- * touch targets (>= 56dp) with distinct Emerald indicators.
+ * Supported navigation rail actions in strict automotive glanceability sequence:
+ * Nearby -> Favorites -> Settings -> Refresh.
+ */
+enum class NavigationRailAction(val title: String) {
+    NEARBY("Quanh đây"),
+    FAVORITES("Yêu thích"),
+    SETTINGS("Cài đặt"),
+    REFRESH("Làm mới")
+}
+
+/**
+ * Design constants and contract values for the compact centered navigation rail.
+ */
+object AppNavigationRailDefaults {
+    val RAIL_WIDTH_DP: Dp = 58.dp
+    val ICON_SIZE: Dp = 26.dp
+    val TOUCH_TARGET_SIZE: Dp = 50.dp
+    val ITEM_SPACING: Dp = 16.dp
+
+    val ACTION_ORDER: List<NavigationRailAction> = listOf(
+        NavigationRailAction.NEARBY,
+        NavigationRailAction.FAVORITES,
+        NavigationRailAction.SETTINGS,
+        NavigationRailAction.REFRESH
+    )
+}
+
+/**
+ * Pure helper functions for navigation rail action dispatch and animation state mapping.
+ */
+object AppNavigationRailHelper {
+    fun shouldAllowRefresh(isRefreshing: Boolean): Boolean = !isRefreshing
+
+    fun resolveRefreshRotationAngle(isRefreshing: Boolean, animatedAngle: Float): Float {
+        return if (isRefreshing) animatedAngle else 0f
+    }
+
+    fun resolveRefreshContentDescription(isRefreshing: Boolean): String {
+        return if (isRefreshing) "Đang làm mới" else "Làm mới dữ liệu"
+    }
+
+    fun isTabSelected(tab: AppTab, currentTab: AppTab): Boolean = tab == currentTab
+
+    fun handleRailAction(
+        action: NavigationRailAction,
+        onTabSelected: (AppTab) -> Unit,
+        onSettingsClick: () -> Unit,
+        onRefreshClick: () -> Unit,
+        isRefreshing: Boolean = false
+    ) {
+        when (action) {
+            NavigationRailAction.NEARBY -> onTabSelected(AppTab.NEARBY)
+            NavigationRailAction.FAVORITES -> onTabSelected(AppTab.FAVORITES)
+            NavigationRailAction.SETTINGS -> onSettingsClick()
+            NavigationRailAction.REFRESH -> {
+                if (shouldAllowRefresh(isRefreshing)) {
+                    onRefreshClick()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Compact 58dp automotive navigation column providing vertically centered,
+ * icon-only touch targets ordered as:
+ * 1. Nearby (AppTab.NEARBY)
+ * 2. Favorites (AppTab.FAVORITES)
+ * 3. Settings (Routing & BYOK modal)
+ * 4. Refresh (Data refresh for active tab with animated rotation)
  */
 @Composable
 fun AppNavigationRail(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
+    onSettingsClick: () -> Unit,
+    onRefreshClick: () -> Unit,
+    isRefreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    NavigationRail(
-        modifier = modifier.width(72.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
+    Surface(
+        modifier = modifier
+            .width(RAIL_WIDTH_DP)
+            .fillMaxHeight(),
+        color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        header = {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
+        tonalElevation = 1.dp
     ) {
-        Spacer(modifier = Modifier.height(12.dp))
-        AppTab.entries.forEach { tab ->
-            val selected = tab == currentTab
-            NavigationRailItem(
-                selected = selected,
-                onClick = { onTabSelected(tab) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                        contentDescription = tab.label,
-                        modifier = Modifier.size(24.dp)
-                    )
-                },
-                label = {
-                    Text(
-                        text = tab.label,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                        )
-                    )
-                },
-                alwaysShowLabel = true,
-                modifier = Modifier
-                    .sizeIn(minWidth = AutomotiveDimens.MIN_CAR_TOUCH_TARGET, minHeight = AutomotiveDimens.MIN_CAR_TOUCH_TARGET)
-                    .heightIn(min = AutomotiveDimens.MIN_CAR_TOUCH_TARGET),
-                colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = EmeraldPrimary,
-                    selectedTextColor = EmeraldPrimary,
-                    indicatorColor = EmeraldContainerDark.copy(alpha = 0.6f),
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 12.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 1. Nearby
+            val nearbySelected = AppNavigationRailHelper.isTabSelected(AppTab.NEARBY, currentTab)
+            RailIconButton(
+                icon = if (nearbySelected) AppTab.NEARBY.selectedIcon else AppTab.NEARBY.unselectedIcon,
+                contentDescription = AppTab.NEARBY.label,
+                isSelected = nearbySelected,
+                onClick = { onTabSelected(AppTab.NEARBY) }
             )
-            Spacer(modifier = Modifier.height(12.dp))
+
+            Spacer(modifier = Modifier.height(AppNavigationRailDefaults.ITEM_SPACING))
+
+            // 2. Favorites
+            val favoritesSelected = AppNavigationRailHelper.isTabSelected(AppTab.FAVORITES, currentTab)
+            RailIconButton(
+                icon = if (favoritesSelected) AppTab.FAVORITES.selectedIcon else AppTab.FAVORITES.unselectedIcon,
+                contentDescription = AppTab.FAVORITES.label,
+                isSelected = favoritesSelected,
+                onClick = { onTabSelected(AppTab.FAVORITES) }
+            )
+
+            Spacer(modifier = Modifier.height(AppNavigationRailDefaults.ITEM_SPACING))
+
+            // 3. Settings
+            RailIconButton(
+                icon = Icons.Default.Settings,
+                contentDescription = NavigationRailAction.SETTINGS.title,
+                isSelected = false,
+                onClick = onSettingsClick
+            )
+
+            Spacer(modifier = Modifier.height(AppNavigationRailDefaults.ITEM_SPACING))
+
+            // 4. Refresh (with animated rotation when isRefreshing == true)
+            val animatedAngle = if (isRefreshing) {
+                val infiniteTransition = rememberInfiniteTransition(label = "RailRefreshRotationTransition")
+                val angle by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 1000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "RailRefreshRotationAngle"
+                )
+                angle
+            } else {
+                0f
+            }
+            val rotationAngle = AppNavigationRailHelper.resolveRefreshRotationAngle(isRefreshing, animatedAngle)
+
+            RailIconButton(
+                icon = Icons.Default.Refresh,
+                contentDescription = AppNavigationRailHelper.resolveRefreshContentDescription(isRefreshing),
+                isSelected = false,
+                iconModifier = Modifier.rotate(rotationAngle),
+                enabled = AppNavigationRailHelper.shouldAllowRefresh(isRefreshing),
+                onClick = {
+                    if (AppNavigationRailHelper.shouldAllowRefresh(isRefreshing)) {
+                        onRefreshClick()
+                    }
+                }
+            )
         }
+    }
+}
+
+/**
+ * Large touch target icon button optimized for automotive ergonomics.
+ */
+@Composable
+private fun RailIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconModifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    val activeColor = EmeraldPrimary
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val indicatorColor = EmeraldContainerDark.copy(alpha = 0.6f)
+
+    Box(
+        modifier = modifier
+            .size(AppNavigationRailDefaults.TOUCH_TARGET_SIZE)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (isSelected) indicatorColor else Color.Transparent)
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (isSelected) activeColor else inactiveColor,
+            modifier = iconModifier.size(AppNavigationRailDefaults.ICON_SIZE)
+        )
     }
 }

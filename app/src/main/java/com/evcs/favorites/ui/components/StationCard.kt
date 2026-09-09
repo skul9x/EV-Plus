@@ -6,7 +6,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -124,7 +126,7 @@ object StationCardHelper {
  * Individual charging station card displaying real-time power metrics,
  * live slot availability, distance pill, and 1-tap navigation button.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun StationCard(
     station: Station,
@@ -197,9 +199,15 @@ fun StationCard(
                         fontSize = 17.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            delayMillis = 2000,
+                            velocity = 30.dp
+                        )
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -421,6 +429,7 @@ fun StationCard(
  * Highlights station name, journey ETA/distance, and live available plug status pill.
  * Height is constrained (~76dp) to allow 3-4 stations simultaneously visible on automotive displays.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CompactStationCardContent(
     station: Station,
@@ -445,7 +454,12 @@ private fun CompactStationCardContent(
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                softWrap = false,
+                modifier = Modifier.basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    delayMillis = 2000,
+                    velocity = 30.dp
+                )
             )
 
             val journeyBadgeInfo = remember(station.drivingMetrics, station.distanceKm) {

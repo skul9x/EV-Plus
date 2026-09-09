@@ -1,5 +1,6 @@
 package com.evcs.favorites.ui.screens
 
+import com.evcs.favorites.ui.screens.landscape.NearbyLandscapeScreen
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -129,11 +130,6 @@ fun NearbyScreen(
     var showLoginRequiredDialog by rememberSaveable { mutableStateOf(false) }
     var showOverlayPermissionDialog by rememberSaveable { mutableStateOf(false) }
     var pendingFocusStation by remember { mutableStateOf<Station?>(null) }
-    var hasAutoSelected by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(uiState.lastRefreshTimestamp) {
-        hasAutoSelected = false
-    }
 
     val handleStartFocusMode: (Station) -> Unit = remember(context) {
         { st ->
@@ -317,99 +313,105 @@ fun NearbyScreen(
             heightDp = maxHeight.value
         )
 
-        val allocation = remember(maxWidth.value) {
-            AdaptiveLayoutHelper.calculateMasterDetailWidths(
-                totalWidthDp = maxWidth.value,
-                navRailWidthDp = 0f
+        if (effectiveIsLandscape) {
+            NearbyLandscapeScreen(
+                uiState = uiState,
+                stationDetailState = stationDetailState,
+                onCustomFilterClick = onCustomFilterClick,
+                onDcFilterClick = onDcFilterClick,
+                onAcFilterClick = onAcFilterClick,
+                onSelectDcTier = onSelectDcTier,
+                onBackFromDc = onBackFromDc,
+                onClearFilters = onClearFilters,
+                onFavoriteClick = onFavoriteClick,
+                onNavigateClick = onNavigateClick,
+                onStationClick = onStationClick,
+                onRefreshDetail = { viewModel.refreshStationDetail() },
+                onDismissDetail = { viewModel.dismissStationDetail() },
+                onShareClick = onShareClick,
+                onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
+                onScanClick = {
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxSize()
             )
-        }
+        } else {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(EmeraldContainerDark)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocationOn,
+                                        contentDescription = null,
+                                        tint = EmeraldPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
 
-        LaunchedEffect(effectiveIsLandscape, uiState.top10DisplayStations, stationDetailState.station, hasAutoSelected) {
-            if (effectiveIsLandscape && !hasAutoSelected && stationDetailState.station == null && uiState.top10DisplayStations.isNotEmpty()) {
-                hasAutoSelected = true
-                val nearest = AdaptiveLayoutHelper.resolveAutoSelectedStation(
-                    isLandscape = true,
-                    currentSelection = null,
-                    stations = uiState.top10DisplayStations
-                )
-                if (nearest != null) {
-                    viewModel.selectStationForDetail(nearest)
-                }
-            }
-        }
+                                Spacer(modifier = Modifier.width(10.dp))
 
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(EmeraldContainerDark)
-                            ) {
+                                Column {
+                                    Text(
+                                        text = "Trạm sạc quanh đây",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    )
+
+                                    if (uiState.hasSearched) {
+                                        Text(
+                                            text = "${uiState.top10DisplayStations.size} trạm gần nhất",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        actions = {
+                            // Settings gear icon
+                            IconButton(onClick = { showRoutingSettings = true }) {
                                 Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = EmeraldPrimary,
-                                    modifier = Modifier.size(20.dp)
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Cài đặt lộ trình",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            Column {
-                                Text(
-                                    text = "Trạm sạc quanh đây",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                )
-
-                                if (uiState.hasSearched) {
-                                    Text(
-                                        text = "${uiState.top10DisplayStations.size} trạm gần nhất",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                            // Refresh icon (visible when results exist)
+                            if (uiState.hasSearched) {
+                                IconButton(onClick = { viewModel.refresh() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Làm mới dữ liệu",
+                                        tint = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
-                        }
-                    },
-                    actions = {
-                        // Settings gear icon
-                        IconButton(onClick = { showRoutingSettings = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Cài đặt lộ trình",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // Refresh icon (visible when results exist)
-                        if (uiState.hasSearched) {
-                            IconButton(onClick = { viewModel.refresh() }) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Làm mới dữ liệu",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface
+                        )
                     )
-                )
-            },
-            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-            containerColor = MaterialTheme.colorScheme.background
-        ) { innerPadding ->
-            if (!effectiveIsLandscape) {
+                },
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+                containerColor = MaterialTheme.colorScheme.background
+            ) { innerPadding ->
                 val maxContentWidth = if (maxWidth > 600.dp) 680.dp else maxWidth
 
                 Box(
@@ -466,116 +468,21 @@ fun NearbyScreen(
                         }
                     }
                 }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Left Column (Master: 35% - 40%, clamped to [320dp, 480dp])
-                    Box(
-                        modifier = Modifier
-                            .width(allocation.masterWidthDp.dp)
-                            .fillMaxHeight()
-                    ) {
-                        when {
-                            !uiState.hasSearched && !uiState.isLocating && !uiState.isSearching -> {
-                                NearbyInitialHeroContent(
-                                    uiState = uiState,
-                                    onScanClick = {
-                                        permissionLauncher.launch(
-                                            arrayOf(
-                                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                                Manifest.permission.ACCESS_COARSE_LOCATION
-                                            )
-                                        )
-                                    },
-                                    onCustomFilterClick = onCustomFilterClick,
-                                    onDcFilterClick = onDcFilterClick,
-                                    onAcFilterClick = onAcFilterClick,
-                                    onSelectDcTier = onSelectDcTier,
-                                    onBackFromDc = onBackFromDc,
-                                    onClearFilters = onClearFilters,
-                                    isLandscape = true
-                                )
-                            }
-                            !uiState.hasSearched && (uiState.isLocating || uiState.isSearching) -> {
-                                NearbyLoadingContent(uiState = uiState)
-                            }
-                            uiState.hasSearched -> {
-                                NearbyResultContent(
-                                    uiState = uiState,
-                                    onCustomFilterClick = onCustomFilterClick,
-                                    onDcFilterClick = onDcFilterClick,
-                                    onAcFilterClick = onAcFilterClick,
-                                    onSelectDcTier = onSelectDcTier,
-                                    onBackFromDc = onBackFromDc,
-                                    onClearFilters = onClearFilters,
-                                    onFavoriteClick = onFavoriteClick,
-                                    onNavigateClick = onNavigateClick,
-                                    onStationClick = onStationClick,
-                                    listState = listState,
-                                    selectedStationId = stationDetailState.station?.id,
-                                    isLandscape = true
-                                )
-                            }
-                        }
-                    }
-
-                    // Right Column (Detail: 60% - 65%)
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 2.dp,
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                        )
-                    ) {
-                        val currentStation = stationDetailState.station
-                        if (currentStation != null) {
-                            NativeStationDetailContent(
-                                station = currentStation,
-                                uiState = stationDetailState,
-                                isFavorite = uiState.favoriteStationIds.contains(currentStation.id),
-                                isToggleInProgress = uiState.togglingStationIds.contains(currentStation.id),
-                                onRefresh = { viewModel.refreshStationDetail() },
-                                onDismiss = { viewModel.dismissStationDetail() },
-                                onNavigate = onNavigateClick,
-                                onToggleFavorite = onFavoriteClick,
-                                onShare = onShareClick,
-                                onStartFocusMode = { handleStartFocusModeAndNavigate(it) },
-                                isLandscape = true,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            NearbyDetailEmptyState(
-                                isEmptyResults = uiState.hasSearched && uiState.top10DisplayStations.isEmpty()
-                            )
-                        }
-                    }
-                }
             }
-        }
 
-        // Station Detail Bottom Sheet (100% Native Jetpack Compose, shown in portrait, suppressed in landscape)
-        if (stationDetailState.station != null && !effectiveIsLandscape) {
-            val isCurrentStationFavorite = uiState.favoriteStationIds.contains(stationDetailState.station?.id)
-            NativeStationDetailSheet(
-                uiState = stationDetailState,
-                onDismiss = { viewModel.dismissStationDetail() },
-                onRefresh = { viewModel.refreshStationDetail() },
-                isFavorite = isCurrentStationFavorite,
-                isToggleInProgress = stationDetailState.station?.id?.let { uiState.togglingStationIds.contains(it) } ?: false,
-                onNavigate = onNavigateClick,
-                onToggleFavorite = onFavoriteClick
-            )
+            // Station Detail Bottom Sheet (100% Native Jetpack Compose, shown in portrait)
+            if (stationDetailState.station != null) {
+                val isCurrentStationFavorite = uiState.favoriteStationIds.contains(stationDetailState.station?.id)
+                NativeStationDetailSheet(
+                    uiState = stationDetailState,
+                    onDismiss = { viewModel.dismissStationDetail() },
+                    onRefresh = { viewModel.refreshStationDetail() },
+                    isFavorite = isCurrentStationFavorite,
+                    isToggleInProgress = stationDetailState.station?.id?.let { uiState.togglingStationIds.contains(it) } ?: false,
+                    onNavigate = onNavigateClick,
+                    onToggleFavorite = onFavoriteClick
+                )
+            }
         }
 
         // Routing & BYOK Settings Bottom Sheet Modal

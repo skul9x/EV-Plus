@@ -27,6 +27,7 @@ object AdaptiveLayoutHelper {
 
     const val DEFAULT_NAV_RAIL_WIDTH_DP = 72f
     const val NAVIGATION_RAIL_WIDTH_DP = 72f
+    const val COMPACT_NAV_RAIL_WIDTH_DP = 58f
     const val MIN_MASTER_WIDTH_DP = 320f
     const val MAX_MASTER_WIDTH_DP = 480f
     const val MIN_LANDSCAPE_WIDTH_DP = 600f

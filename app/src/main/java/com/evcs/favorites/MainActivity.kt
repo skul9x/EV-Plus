@@ -20,8 +20,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.evcs.favorites.navigation.AppNavigationRail
+import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.layout.AdaptiveLayoutHelper
+import com.evcs.favorites.ui.state.FavoritesUiState
 import com.evcs.favorites.ui.theme.AppIcons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -132,6 +137,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        applyImmersiveMode()
 
         // Enforce startup orientation immediately before setContent to prevent visual flicker or layout jumps
         requestedOrientation = OrientationHelper.toActivityInfoOrientation(
@@ -169,6 +175,21 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyImmersiveMode()
+        }
+    }
+
+    private fun applyImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+    }
 }
 
 /**
@@ -191,6 +212,13 @@ fun FavoritesApp(
     var currentTab by rememberSaveable { mutableStateOf(AppTab.NEARBY) }
     var showPermissionRationale by rememberSaveable { mutableStateOf(false) }
     var rationaleDismissed by rememberSaveable { mutableStateOf(false) }
+    var showRoutingSettingsModal by rememberSaveable { mutableStateOf(false) }
+
+    val nearbyUiState by nearbyViewModel?.uiState?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(null) }
+    val isRefreshing = when (currentTab) {
+        AppTab.FAVORITES -> (uiState as? FavoritesUiState.Success)?.isRefreshing == true || uiState is FavoritesUiState.Loading
+        AppTab.NEARBY -> nearbyUiState?.let { it.isSearching || it.isLocating } ?: false
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -241,7 +269,15 @@ fun FavoritesApp(
                 if (effectiveIsLandscape) {
                     AppNavigationRail(
                         currentTab = currentTab,
-                        onTabSelected = { currentTab = it }
+                        onTabSelected = { currentTab = it },
+                        onSettingsClick = { showRoutingSettingsModal = true },
+                        onRefreshClick = {
+                            when (currentTab) {
+                                AppTab.FAVORITES -> viewModel.refresh()
+                                AppTab.NEARBY -> nearbyViewModel?.refresh()
+                            }
+                        },
+                        isRefreshing = isRefreshing
                     )
                 }
 
@@ -404,6 +440,21 @@ fun FavoritesApp(
                 },
                 shape = RoundedCornerShape(16.dp),
                 containerColor = MaterialTheme.colorScheme.surface
+            )
+        }
+
+        // Routing & BYOK Settings Modal triggered from Navigation Rail
+        if (showRoutingSettingsModal) {
+            RoutingSettingsModal(
+                settings = routingSettings,
+                onSaveSettings = { newSettings ->
+                    viewModel.updateRoutingSettings(newSettings)
+                    nearbyViewModel?.updateRoutingSettings(newSettings)
+                },
+                onValidateKey = { key ->
+                    viewModel.validateGoogleApiKey(key)
+                },
+                onDismiss = { showRoutingSettingsModal = false }
             )
         }
     }
