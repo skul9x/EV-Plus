@@ -56,6 +56,7 @@ class RoutingPreferencesManager(
         const val KEY_EV_TARGET_CHARGING_SOC_PERCENT = "routing_ev_target_charging_soc_percent"
         const val KEY_EV_SAFETY_DURATION_BUFFER_ENABLED = "routing_ev_safety_duration_buffer_enabled"
         const val KEY_EV_SAFETY_DURATION_BUFFER_RATIO = "routing_ev_safety_duration_buffer_ratio"
+        const val KEY_EV_MIN_CHARGER_POWER_KW = "ev_min_charger_power_kw"
         const val KEY_EV_ROUTING_SETTINGS_JSON = "routing_ev_settings_json"
 
         /**
@@ -150,13 +151,19 @@ class RoutingPreferencesManager(
             ?: parsedFromJson?.safetyDurationBufferRatio
             ?: EvRoutingSettings.DEFAULT_SAFETY_DURATION_BUFFER_RATIO
 
+        val minChargerPower = storage.getString(KEY_EV_MIN_CHARGER_POWER_KW)?.toDoubleOrNull()
+            ?: storage.getString("routing_ev_min_charger_power_kw")?.toDoubleOrNull()
+            ?: parsedFromJson?.minChargerPowerKw
+            ?: EvRoutingSettings.DEFAULT_MIN_CHARGER_POWER_KW
+
         return EvRoutingSettings(
             vehicleSafeRangeKm = safeRange,
             startBatteryPercent = startBattery,
             arrivalBufferSocPercent = arrivalBuffer,
             targetChargingSocPercent = targetSoc,
             safetyDurationBufferEnabled = durationBufferEnabled,
-            safetyDurationBufferRatio = durationBufferRatio
+            safetyDurationBufferRatio = durationBufferRatio,
+            minChargerPowerKw = minChargerPower
         ).sanitized()
     }
 
@@ -184,7 +191,8 @@ class RoutingPreferencesManager(
             KEY_EV_ARRIVAL_BUFFER_SOC_PERCENT to sanitizedEv.arrivalBufferSocPercent.toString(),
             KEY_EV_TARGET_CHARGING_SOC_PERCENT to sanitizedEv.targetChargingSocPercent.toString(),
             KEY_EV_SAFETY_DURATION_BUFFER_ENABLED to sanitizedEv.safetyDurationBufferEnabled.toString(),
-            KEY_EV_SAFETY_DURATION_BUFFER_RATIO to sanitizedEv.safetyDurationBufferRatio.toString()
+            KEY_EV_SAFETY_DURATION_BUFFER_RATIO to sanitizedEv.safetyDurationBufferRatio.toString(),
+            KEY_EV_MIN_CHARGER_POWER_KW to sanitizedEv.minChargerPowerKw.toString()
         )
         if (serializedJson != null) {
             entries[KEY_EV_ROUTING_SETTINGS_JSON] = serializedJson
@@ -210,7 +218,8 @@ class RoutingPreferencesManager(
             KEY_EV_ARRIVAL_BUFFER_SOC_PERCENT to ev.arrivalBufferSocPercent.toString(),
             KEY_EV_TARGET_CHARGING_SOC_PERCENT to ev.targetChargingSocPercent.toString(),
             KEY_EV_SAFETY_DURATION_BUFFER_ENABLED to ev.safetyDurationBufferEnabled.toString(),
-            KEY_EV_SAFETY_DURATION_BUFFER_RATIO to ev.safetyDurationBufferRatio.toString()
+            KEY_EV_SAFETY_DURATION_BUFFER_RATIO to ev.safetyDurationBufferRatio.toString(),
+            KEY_EV_MIN_CHARGER_POWER_KW to ev.minChargerPowerKw.toString()
         )
         if (serializedJson != null) {
             entries[KEY_EV_ROUTING_SETTINGS_JSON] = serializedJson
@@ -281,6 +290,13 @@ class RoutingPreferencesManager(
      */
     fun updateSafetyDurationBufferRatio(ratio: Float) {
         updateEvRoutingSettings(_settings.value.evSettings.copy(safetyDurationBufferRatio = ratio))
+    }
+
+    /**
+     * Convenience updater for minimum charger power in kW.
+     */
+    fun updateMinChargerPowerKw(powerKw: Double) {
+        updateEvRoutingSettings(_settings.value.evSettings.copy(minChargerPowerKw = powerKw))
     }
 
     /**

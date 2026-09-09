@@ -53,25 +53,39 @@
 evcs://route?pl={polyline}&stations=[{"name":"...","latitude":...,"longitude":...,"power":"..."},...]
 ```
 
-### 2.3. Giải pháp Native Offline Resilience của EV-Plus:
-- Nhúng sẵn database 63 Tỉnh/Thành & Quận/Huyện kèm tọa độ trung tâm trong asset offline.
-- Tự động chạy thuật toán bám đường, quét hành lang Corridor Buffer và OSRM Detour Penalty trên thiết bị, không bị lỗi Cloudflare 403 Forbidden và chạy mượt 100% offline kể cả khi mất sóng 4G.
+### 2.3. Cơ chế Online 4G & Trạm Sạc Real-time:
+- 100% Online qua mạng 4G: Không cần cache cơ sở dữ liệu trạm sạc offline nặng nề.
+- Lộ trình: Gọi OSRM Routing Server (`https://map.evcs.vn/route/v1/driving/...`).
+- Dữ liệu trạm sạc & Live Telemetry: Gọi HERE Maps EV API (`ev-v2.cc.api.here.com`) và EVCS Search API (`evcs.vn/search`) để lấy tọa độ, công suất và trạng thái trụ rảnh (Available plugs).
 
 ---
 
 ## 3. QUY TẮC THUẬT TOÁN ĐÃ THỐNG NHẤT (ALGORITHM RULES)
 
-1. **Chống Bẫy Cao Tốc:** OSRM Detour Penalty $> 3\text{km}$ $\to$ Tự động loại trừ trạm ngược chiều cao tốc có dải phân cách cứng.
-2. **Ưu tiên Công Suất Trụ Sạc:**
-   - Ưu tiên 1: Trụ DC $\ge 60\text{kW}$ (hoặc 150kW - 250kW).
-   - Ưu tiên 2: Trụ DC 30kW nếu không có trụ công suất cao hơn.
-   - Loại trừ: Trạm chỉ có AC 11kW ở các chặng dừng giữa đường.
-3. **Cài đặt Tùy biến (Settings):**
+1. **Khắc phục lỗi chia đều - Áp dụng Greedy Forward Simulation:**
+   - **Chặng 1:** Tính tầm vận hành an toàn từ thanh trượt % pin hiện tại ($SoC_{start}$):
+     $$D_1 = Range_{safe} \times \frac{SoC_{start} - SoC_{buffer}}{100}$$
+   - **Các chặng tiếp theo:** Sau khi sạc tại trạm dừng lên mức khuyến nghị 85% ($SoC_{charge\_target}$), tầm vận hành chặng sau chỉ tính từ 85% về 10% pin an toàn (tương đương ~75% $Range_{safe}$):
+     $$D_k = Range_{safe} \times \frac{85 - SoC_{buffer}}{100}$$
+2. **Chống Bẫy Cao Tốc & Đi đường vòng (Detour Penalty):**
+   - Lọc trạm trong hành lang Corridor Buffer $\le 3\text{km} - 4\text{km}$ tính từ tim đường polyline.
+   - OSRM Detour Penalty $> 3\text{km}$ hoặc lệch chiều có dải phân cách cứng $\to$ Tự động loại trừ.
+3. **Cơ chế Popup thông báo khi không có trạm đạt Min Power:**
+   - Khi quét trong cửa sổ pin an toàn không tìm thấy trạm nào đạt công suất tối thiểu do user cài đặt (ví dụ: yêu cầu $\ge 60\text{kW}$ nhưng vùng đó chỉ có 30kW):
+     - Hiển thị Popup cảnh báo trên giao diện: *"Không tìm thấy trạm $\ge [MinPower]\text{kW}$ trong phạm vi pin an toàn. Trạm khả dụng gần nhất là [Tên trạm] ([Công suất]kW). Bạn có muốn nới lỏng bộ lọc để tiếp tục?"*.
+     - User chọn **[Đồng ý hạ công suất]** để tiếp tục lập lộ trình, hoặc **[Tự chọn trạm khác]**.
+4. **Cặp Trạm Chính + Trạm Dự Phòng (Primary & Backup Station):**
+   - Tại mỗi điểm dừng nghỉ sạc, thuật toán chọn ra:
+     - **Trạm chính (Primary Stop):** Trạm đạt điểm cao nhất (công suất tối ưu, ít detour, có súng trống).
+     - **Trạm dự phòng (Backup Station):** Trạm thay thế tốt thứ hai nằm lân cận trạm chính.
+   - Hiển thị trực tiếp trạm dự phòng trên Timeline để tài xế có thể 1-chạm đổi trạm ngay lập tức nếu tới nơi trạm chính bị mất điện hoặc kẹt hàng đợi.
+5. **Cài đặt Tùy biến (Settings):**
    - Số km an toàn @ 100% pin (lưu vĩnh viễn).
-   - Ngưỡng pin an toàn khi đến trạm (Mặc định: 10% pin).
+   - Mức pin lúc xuất phát (Thanh trượt % pin hiện tại: 20% - 100%).
+   - Ngưỡng pin an toàn khi đến trạm ($SoC_{buffer}$, mặc định 10% pin).
    - Mục tiêu sạc tại trạm dừng (Mặc định: Luôn sạc tới 85%).
-   - Cộng 25% thời gian sạc an toàn (Toggle On/Off, mặc định Bật).
-4. **Chuyển tiếp chặng tự động:**
+   - Công suất tối thiểu mong muốn ($MinPower$: Mặc định 60kW DC).
+6. **Chuyển tiếp chặng tự động:**
    - Dẫn đường đến Trạm 1 trước. Khi xe đến gần trạm ($< 300\text{m}$) hoặc tài xế bấm xác nhận đã sạc xong, app tự động chuyển mục tiêu sang chặng tiếp theo.
 
 ---

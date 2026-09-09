@@ -12,6 +12,7 @@ import kotlin.math.roundToInt
  * @property targetChargingSocPercent Maximum recommended SoC (%) for DC fast charging sessions (70 - 95%, default 85%).
  * @property safetyDurationBufferEnabled Whether traffic and charging delay safety padding is applied to trip durations.
  * @property safetyDurationBufferRatio Ratio added to duration when safety buffer is enabled (default 0.25f = +25%).
+ * @property minChargerPowerKw Minimum preferred charger power in kW (20.0 - 250.0 kW, default 60.0).
  */
 @Serializable
 data class EvRoutingSettings(
@@ -20,7 +21,8 @@ data class EvRoutingSettings(
     val arrivalBufferSocPercent: Int = DEFAULT_ARRIVAL_BUFFER_SOC_PERCENT,
     val targetChargingSocPercent: Int = DEFAULT_TARGET_CHARGING_SOC_PERCENT,
     val safetyDurationBufferEnabled: Boolean = DEFAULT_SAFETY_DURATION_BUFFER_ENABLED,
-    val safetyDurationBufferRatio: Float = DEFAULT_SAFETY_DURATION_BUFFER_RATIO
+    val safetyDurationBufferRatio: Float = DEFAULT_SAFETY_DURATION_BUFFER_RATIO,
+    val minChargerPowerKw: Double = DEFAULT_MIN_CHARGER_POWER_KW
 ) {
 
     /**
@@ -60,7 +62,8 @@ data class EvRoutingSettings(
             startBatteryPercent = startBatteryPercent.coerceIn(MIN_START_BATTERY_PERCENT, MAX_START_BATTERY_PERCENT),
             arrivalBufferSocPercent = arrivalBufferSocPercent.coerceIn(MIN_ARRIVAL_BUFFER_SOC_PERCENT, MAX_ARRIVAL_BUFFER_SOC_PERCENT),
             targetChargingSocPercent = targetChargingSocPercent.coerceIn(MIN_TARGET_CHARGING_SOC_PERCENT, MAX_TARGET_CHARGING_SOC_PERCENT),
-            safetyDurationBufferRatio = safetyDurationBufferRatio.coerceIn(MIN_SAFETY_DURATION_BUFFER_RATIO, MAX_SAFETY_DURATION_BUFFER_RATIO)
+            safetyDurationBufferRatio = safetyDurationBufferRatio.coerceIn(MIN_SAFETY_DURATION_BUFFER_RATIO, MAX_SAFETY_DURATION_BUFFER_RATIO),
+            minChargerPowerKw = minChargerPowerKw.coerceIn(MIN_CHARGER_POWER_KW, MAX_CHARGER_POWER_KW)
         )
     }
 
@@ -91,6 +94,16 @@ data class EvRoutingSettings(
         const val MAX_SAFETY_DURATION_BUFFER_RATIO = 1.0f
         const val DEFAULT_SAFETY_DURATION_BUFFER_RATIO = 0.25f
 
+        const val MIN_CHARGER_POWER_KW = 20.0
+        const val MAX_CHARGER_POWER_KW = 250.0
+        const val DEFAULT_MIN_CHARGER_POWER_KW = 60.0
+
+        // Predefined power presets matching Vietnamese charging infrastructure
+        const val PRESET_POWER_STANDARD = 30.0
+        const val PRESET_POWER_FAST = 60.0
+        const val PRESET_POWER_ULTRA = 150.0
+        const val PRESET_POWER_SUPER = 250.0
+
         // Additional convenient aliases
         const val MIN_SAFE_RANGE_KM = MIN_VEHICLE_SAFE_RANGE_KM
         const val MAX_SAFE_RANGE_KM = MAX_VEHICLE_SAFE_RANGE_KM
@@ -105,7 +118,8 @@ data class EvRoutingSettings(
             arrivalBufferSocPercent: Int = DEFAULT_ARRIVAL_BUFFER_SOC_PERCENT,
             targetChargingSocPercent: Int = DEFAULT_TARGET_CHARGING_SOC_PERCENT,
             safetyDurationBufferEnabled: Boolean = DEFAULT_SAFETY_DURATION_BUFFER_ENABLED,
-            safetyDurationBufferRatio: Float = DEFAULT_SAFETY_DURATION_BUFFER_RATIO
+            safetyDurationBufferRatio: Float = DEFAULT_SAFETY_DURATION_BUFFER_RATIO,
+            minChargerPowerKw: Double = DEFAULT_MIN_CHARGER_POWER_KW
         ): EvRoutingSettings {
             return EvRoutingSettings(
                 vehicleSafeRangeKm = vehicleSafeRangeKm,
@@ -113,7 +127,8 @@ data class EvRoutingSettings(
                 arrivalBufferSocPercent = arrivalBufferSocPercent,
                 targetChargingSocPercent = targetChargingSocPercent,
                 safetyDurationBufferEnabled = safetyDurationBufferEnabled,
-                safetyDurationBufferRatio = safetyDurationBufferRatio
+                safetyDurationBufferRatio = safetyDurationBufferRatio,
+                minChargerPowerKw = minChargerPowerKw
             ).sanitized()
         }
 

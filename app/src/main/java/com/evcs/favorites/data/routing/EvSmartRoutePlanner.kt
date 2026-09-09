@@ -94,7 +94,8 @@ class EvSmartRoutePlanner(
     companion object {
         const val DEFAULT_CORRIDOR_BUFFER_KM = 4.0
         const val DEFAULT_MAX_HIGHWAY_DETOUR_KM = 3.0
-        const val MIN_MID_TRIP_CHARGER_KW = 11.0 // Strictly exclude <= 11kW AC from mid-trip stops
+        const val MIN_FALLBACK_CHARGER_KW = 20.0
+        const val MIN_MID_TRIP_CHARGER_KW = 20.0 // Strictly exclude < 20kW from mid-trip stops
         const val PACK_KWH_PER_KM = 0.18 // Approximate EV battery capacity formula: range * 0.18 kWh
     }
 
@@ -190,11 +191,15 @@ class EvSmartRoutePlanner(
             totalDistanceKm = totalDistanceKm
         )
 
-        // 5. Multi-Stop Greedy Leapfrog Scheduler
+        // 5. Multi-Stop Greedy Leapfrog Scheduler with Lookahead & Fallback Detection
         val safeRangeKm = sanitizedSettings.vehicleSafeRangeKm.toDouble()
         val arrivalBufferSoc = sanitizedSettings.arrivalBufferSocPercent
         val targetSoc = sanitizedSettings.targetChargingSocPercent
         val startSoc = sanitizedSettings.startBatteryPercent
+        val minChargerPowerKw = sanitizedSettings.minChargerPowerKw
+
+        // Subsequent leg reach limits assuming replenishment to targetSoc (85%): D_k = Range_safe * (targetSoc - arrivalBufferSoc) / 100
+        val nextLegCapacityKm = safeRangeKm * ((targetSoc - arrivalBufferSoc).coerceAtLeast(0) / 100.0)
 
         var currentDistKm = 0.0
         var currentSoC = startSoc
@@ -203,6 +208,7 @@ class EvSmartRoutePlanner(
         energyWaypoints.add(EnergyWaypoint(distanceKm = 0.0, batteryPercent = currentSoC, isChargingStop = false))
 
         var deadZoneWarning: DeadZoneWarning? = null
+        var insufficientPowerWarning: InsufficientPowerWarning? = null
 
         while (true) {
             val usableSoc = (currentSoC - arrivalBufferSoc).coerceAtLeast(0)
@@ -246,13 +252,56 @@ class EvSmartRoutePlanner(
                 break
             }
 
-            // Score and select best candidate in window
-            val sortedCandidates = inWindow.sortedByDescending { candidate ->
-                scoreCandidate(candidate, currentDistKm, maxSafeTravelKm)
+            // Classify projected corridor candidates into two tiers:
+            // Tier 1 (Target Power): maxPowerKw >= minChargerPowerKw
+            // Tier 2 (Fallback Power): 20.0 kW <= maxPowerKw < minChargerPowerKw
+            val tier1Candidates = inWindow.filter { it.maxPowerKw >= minChargerPowerKw }
+            val tier2Candidates = inWindow.filter { it.maxPowerKw < minChargerPowerKw }
+
+            // Forward-Reachability Lookahead: verify that selecting candidate leaves at least
+            // one subsequent station (or destination) reachable on the next leg (D_k).
+            val tier1Viable = tier1Candidates.filter { candidate ->
+                hasForwardConnectivity(candidate, eligibleCandidates, totalDistanceKm, nextLegCapacityKm)
             }
 
-            val bestCandidate = sortedCandidates.first()
-            val alternatives = sortedCandidates.drop(1).map { it.station }
+            val (bestCandidate, isFallback) = when {
+                tier1Viable.isNotEmpty() -> {
+                    val best = tier1Viable.maxByOrNull { scoreCandidate(it, currentDistKm, maxSafeTravelKm) }!!
+                    Pair(best, false)
+                }
+                tier1Candidates.isNotEmpty() -> {
+                    // All Tier 1 candidates in window lead to an avoidable dead-end.
+                    // Check if an earlier Tier 2 candidate maintains forward connectivity.
+                    val tier2Viable = tier2Candidates.filter { candidate ->
+                        hasForwardConnectivity(candidate, eligibleCandidates, totalDistanceKm, nextLegCapacityKm)
+                    }
+                    if (tier2Viable.isNotEmpty()) {
+                        val best = tier2Viable.maxByOrNull { scoreCandidate(it, currentDistKm, maxSafeTravelKm) }!!
+                        Pair(best, true)
+                    } else {
+                        // Unavoidable dead end ahead, pick best Tier 1 candidate to maximize progress
+                        val best = tier1Candidates.maxByOrNull { scoreCandidate(it, currentDistKm, maxSafeTravelKm) }!!
+                        Pair(best, false)
+                    }
+                }
+                else -> {
+                    // No Tier 1 candidate available in window: seamlessly fallback to Tier 2 candidate
+                    val tier2Viable = tier2Candidates.filter { candidate ->
+                        hasForwardConnectivity(candidate, eligibleCandidates, totalDistanceKm, nextLegCapacityKm)
+                    }
+                    val candidatePool = if (tier2Viable.isNotEmpty()) tier2Viable else tier2Candidates
+                    val best = candidatePool.maxByOrNull { scoreCandidate(it, currentDistKm, maxSafeTravelKm) }!!
+                    Pair(best, true)
+                }
+            }
+
+            val alternatives = inWindow
+                .filter { it.station.id != bestCandidate.station.id }
+                .sortedWith(
+                    compareByDescending<CandidateProjection> { it.maxPowerKw >= minChargerPowerKw }
+                        .thenByDescending { scoreCandidate(it, currentDistKm, maxSafeTravelKm) }
+                )
+                .map { it.station }
 
             // Leg calculations
             val legDistanceKm = bestCandidate.distanceAlongRouteKm - currentDistKm
@@ -263,7 +312,7 @@ class EvSmartRoutePlanner(
             // Charging duration estimation
             val packKwh = safeRangeKm * PACK_KWH_PER_KM
             val energyKwh = packKwh * (socToCharge / 100.0)
-            val effectivePowerKw = bestCandidate.maxPowerKw.coerceIn(30.0, 250.0)
+            val effectivePowerKw = bestCandidate.maxPowerKw.coerceIn(20.0, 250.0)
             val rawMinutes = if (socToCharge > 0) {
                 ((energyKwh / effectivePowerKw) * 60.0).roundToInt().coerceAtLeast(5)
             } else 0
@@ -272,8 +321,31 @@ class EvSmartRoutePlanner(
             // Live availability & busy queue time estimation
             val (status, queueMin) = evaluateAvailability(bestCandidate.station)
 
+            val currentStopIndex = stops.size + 1
+            if (isFallback && insufficientPowerWarning == null) {
+                insufficientPowerWarning = InsufficientPowerWarning(
+                    requiredPowerKw = minChargerPowerKw,
+                    fallbackStation = bestCandidate.station,
+                    fallbackPowerKw = bestCandidate.maxPowerKw,
+                    stopIndex = currentStopIndex,
+                    legDistanceKm = legDistanceKm,
+                    message = "Không tìm thấy trạm sạc đạt công suất yêu cầu ${minChargerPowerKw.toInt()} kW trong tầm pin. Đã chọn trạm thay thế ${bestCandidate.station.name} (${bestCandidate.maxPowerKw.toInt()} kW) để tiếp tục lộ trình."
+                )
+            }
+
+            val backupStation = selectBackupStation(
+                primaryCandidate = bestCandidate,
+                eligibleCandidates = eligibleCandidates,
+                allStations = stations,
+                polyline = polyline,
+                cumulativeDistances = cumulativeDistances,
+                currentDistKm = currentDistKm,
+                currentSoC = currentSoC,
+                safeRangeKm = safeRangeKm
+            )
+
             val stop = EvRouteStop(
-                stopIndex = stops.size + 1,
+                stopIndex = currentStopIndex,
                 station = bestCandidate.station,
                 distanceFromOriginKm = bestCandidate.distanceAlongRouteKm,
                 distanceFromPreviousStopKm = legDistanceKm,
@@ -285,7 +357,8 @@ class EvSmartRoutePlanner(
                 chargerTier = bestCandidate.chargerTier,
                 availabilityStatus = status,
                 estimatedQueueMinutes = queueMin,
-                alternativeStations = alternatives
+                alternativeStations = alternatives,
+                backupStation = backupStation
             )
             stops.add(stop)
 
@@ -312,6 +385,7 @@ class EvSmartRoutePlanner(
             energyProfile = energyWaypoints,
             polylineCoordinates = polyline,
             deadZoneWarning = deadZoneWarning,
+            insufficientPowerWarning = insufficientPowerWarning,
             finalBatteryPercent = finalBatteryPercent
         )
     }
@@ -354,13 +428,14 @@ class EvSmartRoutePlanner(
         val powerKw = extractMaxPowerKw(alternateStation)
         val packKwh = safeRangeKm * PACK_KWH_PER_KM
         val energyKwh = packKwh * (socToCharge / 100.0)
-        val effectivePowerKw = powerKw.coerceIn(30.0, 250.0)
+        val effectivePowerKw = powerKw.coerceIn(20.0, 250.0)
         val rawMinutes = if (socToCharge > 0) ((energyKwh / effectivePowerKw) * 60.0).roundToInt().coerceAtLeast(5) else 0
         val paddedMinutes = sanitizedSettings.applyDurationBuffer(rawMinutes)
 
         val (status, queueMin) = evaluateAvailability(alternateStation)
         val oldStop = originalPlan.stops[targetStopIdx]
         val updatedAlternatives = (listOf(oldStop.station) + oldStop.alternativeStations.filter { it.id != alternateStation.id }).distinctBy { it.id }
+        val newBackupStation = if (oldStop.station.id != alternateStation.id) oldStop.station else oldStop.backupStation
 
         val newStop = EvRouteStop(
             stopIndex = stopIndex,
@@ -375,7 +450,8 @@ class EvSmartRoutePlanner(
             chargerTier = ChargerTier.fromKw(powerKw),
             availabilityStatus = status,
             estimatedQueueMinutes = queueMin,
-            alternativeStations = updatedAlternatives
+            alternativeStations = updatedAlternatives,
+            backupStation = newBackupStation
         )
 
         val newStops = originalPlan.stops.toMutableList()
@@ -395,12 +471,103 @@ class EvSmartRoutePlanner(
         val finalSoc = (targetSoc - usedSocFinal).roundToInt().coerceIn(0, 100)
         newWaypoints.add(EnergyWaypoint(originalPlan.totalDistanceKm, finalSoc, false))
 
+        val firstFallback = newStops.firstOrNull { it.maxPowerKw < sanitizedSettings.minChargerPowerKw }
+        val updatedWarning = if (firstFallback != null) {
+            InsufficientPowerWarning(
+                requiredPowerKw = sanitizedSettings.minChargerPowerKw,
+                fallbackStation = firstFallback.station,
+                fallbackPowerKw = firstFallback.maxPowerKw,
+                stopIndex = firstFallback.stopIndex,
+                legDistanceKm = firstFallback.distanceFromPreviousStopKm,
+                message = "Không tìm thấy trạm sạc đạt công suất yêu cầu ${sanitizedSettings.minChargerPowerKw.toInt()} kW trong tầm pin. Đã chọn trạm thay thế ${firstFallback.station.name} (${firstFallback.maxPowerKw.toInt()} kW) để tiếp tục lộ trình."
+            )
+        } else {
+            null
+        }
+
         return originalPlan.copy(
             stops = newStops,
             totalChargingDurationMinutes = newStops.sumOf { it.estimatedChargingMinutes },
             energyProfile = newWaypoints,
+            insufficientPowerWarning = updatedWarning,
             finalBatteryPercent = finalSoc
         )
+    }
+
+    /**
+     * Recalculates route with a relaxed minimum charger power threshold.
+     */
+    suspend fun planRouteWithRelaxedPower(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double,
+        stations: List<Station>,
+        relaxedPowerKw: Double,
+        evSettings: EvRoutingSettings = EvRoutingSettings(),
+        routingSettings: RoutingSettings = RoutingSettings(),
+        customRoutePath: RoutePathResult? = null
+    ): EvSmartRoutePlan {
+        val updatedSettings = evSettings.copy(minChargerPowerKw = relaxedPowerKw)
+        return planRoute(
+            originLat = originLat,
+            originLng = originLng,
+            destLat = destLat,
+            destLng = destLng,
+            stations = stations,
+            evSettings = updatedSettings,
+            routingSettings = routingSettings,
+            customRoutePath = customRoutePath
+        )
+    }
+
+    /**
+     * Convenience overload to re-plan an existing [originalPlan] with relaxed power threshold,
+     * reusing its existing polyline coordinates and duration.
+     */
+    suspend fun planRouteWithRelaxedPower(
+        originalPlan: EvSmartRoutePlan,
+        stations: List<Station>,
+        relaxedPowerKw: Double,
+        evSettings: EvRoutingSettings = EvRoutingSettings(),
+        routingSettings: RoutingSettings = RoutingSettings()
+    ): EvSmartRoutePlan {
+        return planRouteWithRelaxedPower(
+            originLat = originalPlan.originLat,
+            originLng = originalPlan.originLng,
+            destLat = originalPlan.destinationLat,
+            destLng = originalPlan.destinationLng,
+            stations = stations,
+            relaxedPowerKw = relaxedPowerKw,
+            evSettings = evSettings,
+            routingSettings = routingSettings,
+            customRoutePath = RoutePathResult(
+                coordinates = originalPlan.polylineCoordinates,
+                distanceMeters = (originalPlan.totalDistanceKm * 1000).roundToLong(),
+                durationSeconds = originalPlan.totalDrivingDurationSeconds
+            )
+        )
+    }
+
+    /**
+     * Lookahead forward-reachability check: verifies that selecting [candidate] leaves at least
+     * one subsequent station (or destination) reachable on the subsequent leg.
+     */
+    internal fun hasForwardConnectivity(
+        candidate: CandidateProjection,
+        allCandidates: List<CandidateProjection>,
+        totalDistanceKm: Double,
+        nextLegCapacityKm: Double
+    ): Boolean {
+        val nextReachLimit = candidate.distanceAlongRouteKm + nextLegCapacityKm
+        if (nextReachLimit >= totalDistanceKm) {
+            return true
+        }
+        return allCandidates.any { nextStation ->
+            nextStation.distanceAlongRouteKm > candidate.distanceAlongRouteKm + 1.0 &&
+                    nextStation.distanceAlongRouteKm <= nextReachLimit &&
+                    nextStation.distanceAlongRouteKm <= totalDistanceKm - 0.5
+        }
     }
 
     /**
@@ -472,11 +639,11 @@ class EvSmartRoutePlanner(
                 continue // Reject opposite-carriageway or detour > 3km station immediately
             }
 
-            // Charger Power Hierarchy: exclude slow AC (<= 11 kW)
+            // Charger Power Hierarchy: exclude slow chargers (< 20 kW)
             val maxPowerKw = extractMaxPowerKw(station)
             val chargerTier = ChargerTier.fromKw(maxPowerKw)
-            if (chargerTier == ChargerTier.SLOW_AC || maxPowerKw <= MIN_MID_TRIP_CHARGER_KW) {
-                continue // Strictly exclude slow AC from mid-trip stop suggestions
+            if (chargerTier == ChargerTier.SLOW_AC || maxPowerKw < MIN_FALLBACK_CHARGER_KW) {
+                continue // Strictly exclude slow chargers (< 20 kW) from mid-trip stop suggestions
             }
 
             candidates.add(
@@ -677,6 +844,116 @@ class EvSmartRoutePlanner(
         val corridorPenalty = candidate.perpendicularDistanceKm * 2.0
 
         return powerScore + availabilityScore + progressScore - corridorPenalty
+    }
+
+    /**
+     * Straight-line distance between primary and backup stations in kilometers.
+     */
+    fun distanceFromPrimaryStationKm(primary: Station, backup: Station): Double {
+        return com.evcs.favorites.data.routing.distanceFromPrimaryStationKm(primary, backup)
+    }
+
+    private data class BackupCandidate(
+        val station: Station,
+        val maxPowerKw: Double,
+        val distanceFromPrimaryKm: Double,
+        val hasPlugs: Boolean
+    )
+
+    /**
+     * Identifies the optimal backup station adjacent to [primaryCandidate]:
+     * 1. Proximity: Within <= 10.0 km straight-line or corridor distance from primary station.
+     * 2. Highway safety: Must NOT be an opposite-carriageway highway trap (isHighwayTrap == false).
+     * 3. Detour penalty: Perpendicular distance from route corridor <= 5.0 km.
+     * 4. Energy reachability: Must be safely reachable from previous stop (arrivalSoc >= 5%).
+     * 5. Ranking: Prioritize live available plugs (totalAvailablePlugs > 0), higher power, and lower diversion distance.
+     */
+    internal fun selectBackupStation(
+        primaryCandidate: CandidateProjection,
+        eligibleCandidates: List<CandidateProjection>,
+        allStations: List<Station>,
+        polyline: List<RouteCoordinate>,
+        cumulativeDistances: DoubleArray,
+        currentDistKm: Double,
+        currentSoC: Int,
+        safeRangeKm: Double
+    ): Station? {
+        val eligibleMap = eligibleCandidates.associateBy { it.station.id }
+        val backupCandidates = mutableListOf<BackupCandidate>()
+
+        // 1. Evaluate all candidates already projected along route corridor
+        for (candidate in eligibleCandidates) {
+            if (candidate.station.id == primaryCandidate.station.id) continue
+
+            val straightDistKm = distanceFromPrimaryStationKm(primaryCandidate.station, candidate.station)
+            val corridorDistKm = kotlin.math.abs(candidate.distanceAlongRouteKm - primaryCandidate.distanceAlongRouteKm)
+
+            // Proximity: straight-line or corridor distance <= 10.0 km
+            if (straightDistKm > 10.0 && corridorDistKm > 10.0) continue
+
+            // Highway safety & corridor detour
+            if (candidate.isHighwayTrap) continue
+            if (candidate.perpendicularDistanceKm > 5.0) continue
+
+            // Energy reachability from previous stop: arrivalSoc >= 5%
+            val legDistKm = candidate.distanceAlongRouteKm - currentDistKm
+            if (legDistKm <= 0.0) continue
+            val arrivalSoc = currentSoC - (legDistKm / safeRangeKm) * 100.0
+            if (arrivalSoc < 5.0) continue
+
+            // Charger power hierarchy (must not be slow AC < 20kW)
+            if (candidate.maxPowerKw < MIN_FALLBACK_CHARGER_KW) continue
+
+            backupCandidates.add(
+                BackupCandidate(
+                    station = candidate.station,
+                    maxPowerKw = candidate.maxPowerKw,
+                    distanceFromPrimaryKm = straightDistKm,
+                    hasPlugs = candidate.station.totalAvailablePlugs > 0
+                )
+            )
+        }
+
+        // 2. Also inspect any stations in allStations within straight-line 10.0 km that might not be in eligibleCandidates
+        for (st in allStations) {
+            if (st.id == primaryCandidate.station.id || eligibleMap.containsKey(st.id)) continue
+            if (st.latitude == 0.0 && st.longitude == 0.0) continue
+
+            val straightDistKm = distanceFromPrimaryStationKm(primaryCandidate.station, st)
+            if (straightDistKm > 10.0) continue
+
+            val proj = projectPointOntoPolyline(st.latitude, st.longitude, polyline, cumulativeDistances) ?: continue
+            if (proj.perpendicularDistanceKm > 5.0) continue
+
+            val (isTrap, _) = evaluateHighwayDetour(st, proj.perpendicularDistanceKm)
+            if (isTrap) continue
+
+            val legDistKm = proj.distanceAlongRouteKm - currentDistKm
+            if (legDistKm <= 0.0) continue
+            val arrivalSoc = currentSoC - (legDistKm / safeRangeKm) * 100.0
+            if (arrivalSoc < 5.0) continue
+
+            val powerKw = extractMaxPowerKw(st)
+            if (powerKw < MIN_FALLBACK_CHARGER_KW) continue
+
+            backupCandidates.add(
+                BackupCandidate(
+                    station = st,
+                    maxPowerKw = powerKw,
+                    distanceFromPrimaryKm = straightDistKm,
+                    hasPlugs = st.totalAvailablePlugs > 0
+                )
+            )
+        }
+
+        return backupCandidates
+            .distinctBy { it.station.id }
+            .sortedWith(
+                compareByDescending<BackupCandidate> { it.hasPlugs }
+                    .thenByDescending { it.maxPowerKw }
+                    .thenBy { it.distanceFromPrimaryKm }
+            )
+            .firstOrNull()?.station
     }
 }
 

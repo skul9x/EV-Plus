@@ -31,12 +31,26 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
+ * State for Insufficient Power Fallback Alert Dialog.
+ */
+@Immutable
+data class InsufficientPowerDialogState(
+    val isVisible: Boolean = false,
+    val requiredPowerKw: Double = 60.0,
+    val fallbackStation: Station? = null,
+    val fallbackPowerKw: Double = 30.0,
+    val stopIndex: Int = 1,
+    val message: String = ""
+)
+
+/**
  * UI State for the Route Planning & Navigation Tab.
  */
 @Immutable
 data class RouteUiState(
     val safeRangeKm: Int = 200,
     val startBatteryPercent: Int = 100,
+    val minChargerPowerKw: Double = EvRoutingSettings.DEFAULT_MIN_CHARGER_POWER_KW,
     val originProvince: String = "Hà Nội",
     val originDistrict: String = "Hoàn Kiếm",
     val originCoordinate: LocationCoordinate? = null,
@@ -52,7 +66,8 @@ data class RouteUiState(
     val isLoading: Boolean = false,
     val routePlan: EvSmartRoutePlan? = null,
     val selectedStopForSwap: EvRouteStop? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val insufficientPowerDialog: InsufficientPowerDialogState = InsufficientPowerDialogState()
 )
 
 /**
@@ -87,11 +102,13 @@ class RouteViewModel(
             manager.evRoutingSettings.collect { settings ->
                 _uiState.update { current ->
                     if (current.safeRangeKm != settings.vehicleSafeRangeKm ||
-                        current.startBatteryPercent != settings.startBatteryPercent
+                        current.startBatteryPercent != settings.startBatteryPercent ||
+                        current.minChargerPowerKw != settings.minChargerPowerKw
                     ) {
                         current.copy(
                             safeRangeKm = settings.vehicleSafeRangeKm,
-                            startBatteryPercent = settings.startBatteryPercent
+                            startBatteryPercent = settings.startBatteryPercent,
+                            minChargerPowerKw = settings.minChargerPowerKw
                         )
                     } else {
                         current
@@ -128,6 +145,7 @@ class RouteViewModel(
         val savedEvSettings = routingPreferencesManager?.evRoutingSettings?.value
         val initialSafeRange = savedEvSettings?.vehicleSafeRangeKm ?: 200
         val initialStartSoc = savedEvSettings?.startBatteryPercent ?: 100
+        val initialMinPower = savedEvSettings?.minChargerPowerKw ?: EvRoutingSettings.DEFAULT_MIN_CHARGER_POWER_KW
 
         _uiState.update { current ->
             current.copy(
@@ -143,21 +161,49 @@ class RouteViewModel(
                 destinationDistrictNames = destDistricts.map { it.name },
                 destinationCoordinate = destCoord,
                 safeRangeKm = initialSafeRange,
-                startBatteryPercent = initialStartSoc
+                startBatteryPercent = initialStartSoc,
+                minChargerPowerKw = initialMinPower
             )
         }
     }
 
     fun onSafeRangeChanged(rangeKm: Int) {
         val clamped = rangeKm.coerceIn(100, 500)
-        _uiState.update { it.copy(safeRangeKm = clamped) }
+        _uiState.update { current ->
+            if (current.safeRangeKm != clamped) {
+                current.copy(safeRangeKm = clamped, routePlan = null)
+            } else {
+                current
+            }
+        }
         routingPreferencesManager?.updateVehicleSafeRangeKm(clamped)
     }
 
     fun onStartBatteryPercentChanged(batteryPercent: Int) {
         val clamped = batteryPercent.coerceIn(10, 100)
-        _uiState.update { it.copy(startBatteryPercent = clamped) }
+        _uiState.update { current ->
+            if (current.startBatteryPercent != clamped) {
+                current.copy(startBatteryPercent = clamped, routePlan = null)
+            } else {
+                current
+            }
+        }
         routingPreferencesManager?.updateStartBatteryPercent(clamped)
+    }
+
+    fun onMinPowerChanged(powerKw: Double) {
+        val clamped = powerKw.coerceIn(
+            EvRoutingSettings.MIN_CHARGER_POWER_KW,
+            EvRoutingSettings.MAX_CHARGER_POWER_KW
+        )
+        _uiState.update { current ->
+            if (current.minChargerPowerKw != clamped) {
+                current.copy(minChargerPowerKw = clamped, routePlan = null)
+            } else {
+                current
+            }
+        }
+        routingPreferencesManager?.updateMinChargerPowerKw(clamped)
     }
 
     fun onOriginProvinceSelected(province: String) {
@@ -309,7 +355,8 @@ class RouteViewModel(
 
                 val evSettings = (routingPreferencesManager?.evRoutingSettings?.value ?: EvRoutingSettings()).copy(
                     vehicleSafeRangeKm = state.safeRangeKm,
-                    startBatteryPercent = state.startBatteryPercent
+                    startBatteryPercent = state.startBatteryPercent,
+                    minChargerPowerKw = state.minChargerPowerKw
                 )
                 val baseRoutingSettings = routingPreferencesManager?.settings?.value ?: RoutingSettings()
                 val routingSettings = baseRoutingSettings.copy(autoFallbackEnabled = true)
@@ -326,7 +373,25 @@ class RouteViewModel(
                 )
 
                 withContext(dispatcher) {
-                    _uiState.update { it.copy(isLoading = false, routePlan = plan, errorMessage = null) }
+                    val dialogState = plan.insufficientPowerWarning?.let { warning ->
+                        InsufficientPowerDialogState(
+                            isVisible = true,
+                            requiredPowerKw = warning.requiredPowerKw,
+                            fallbackStation = warning.fallbackStation,
+                            fallbackPowerKw = warning.fallbackPowerKw,
+                            stopIndex = warning.stopIndex,
+                            message = warning.message
+                        )
+                    } ?: InsufficientPowerDialogState(isVisible = false)
+
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            routePlan = plan,
+                            insufficientPowerDialog = dialogState,
+                            errorMessage = null
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 withContext(dispatcher) {
@@ -341,6 +406,48 @@ class RouteViewModel(
         }
     }
 
+    fun onAcceptRelaxedPower() {
+        _uiState.update { current ->
+            current.copy(
+                insufficientPowerDialog = current.insufficientPowerDialog.copy(isVisible = false)
+            )
+        }
+    }
+
+    fun onOpenSwapFromDialog() {
+        _uiState.update { current ->
+            val targetStop = current.routePlan?.stops?.find { it.stopIndex == current.insufficientPowerDialog.stopIndex }
+                ?: current.routePlan?.stops?.getOrNull(current.insufficientPowerDialog.stopIndex - 1)
+            current.copy(
+                insufficientPowerDialog = current.insufficientPowerDialog.copy(isVisible = false),
+                selectedStopForSwap = targetStop
+            )
+        }
+    }
+
+    fun onDismissInsufficientPowerDialog() {
+        _uiState.update { current ->
+            current.copy(
+                insufficientPowerDialog = current.insufficientPowerDialog.copy(isVisible = false)
+            )
+        }
+    }
+
+    fun onRelaxPowerThresholdAndRecalculate(newPowerKw: Double) {
+        val clamped = newPowerKw.coerceIn(
+            EvRoutingSettings.MIN_CHARGER_POWER_KW,
+            EvRoutingSettings.MAX_CHARGER_POWER_KW
+        )
+        _uiState.update { current ->
+            current.copy(
+                minChargerPowerKw = clamped,
+                insufficientPowerDialog = current.insufficientPowerDialog.copy(isVisible = false)
+            )
+        }
+        routingPreferencesManager?.updateMinChargerPowerKw(clamped)
+        planRoute()
+    }
+
     fun selectStopForSwap(stop: EvRouteStop?) {
         _uiState.update { it.copy(selectedStopForSwap = stop) }
     }
@@ -353,7 +460,8 @@ class RouteViewModel(
         val currentPlan = _uiState.value.routePlan ?: return
         val evSettings = (routingPreferencesManager?.evRoutingSettings?.value ?: EvRoutingSettings()).copy(
             vehicleSafeRangeKm = _uiState.value.safeRangeKm,
-            startBatteryPercent = _uiState.value.startBatteryPercent
+            startBatteryPercent = _uiState.value.startBatteryPercent,
+            minChargerPowerKw = _uiState.value.minChargerPowerKw
         )
 
         val updatedPlan = evSmartRoutePlanner.recalculateWithAlternateStop(
@@ -369,6 +477,17 @@ class RouteViewModel(
                 selectedStopForSwap = null
             )
         }
+    }
+
+    /**
+     * Promotes the designated backupStation to become the active stop using [swapStation].
+     * Sets the old primary station as the new backup station, enabling 1-tap swap back.
+     */
+    fun swapStopWithBackup(stopIndex: Int) {
+        val currentPlan = _uiState.value.routePlan ?: return
+        val targetStop = currentPlan.stops.firstOrNull { it.stopIndex == stopIndex } ?: return
+        val backup = targetStop.backupStation ?: return
+        swapStation(stopIndex, backup)
     }
 
     fun buildRouteSession(): RouteSessionData? {

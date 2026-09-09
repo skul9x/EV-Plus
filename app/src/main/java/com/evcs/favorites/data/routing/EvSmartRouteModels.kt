@@ -2,7 +2,45 @@ package com.evcs.favorites.data.routing
 
 import androidx.compose.runtime.Immutable
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.domain.location.DistanceCalculator
 import kotlinx.serialization.Serializable
+
+/**
+ * Calculates straight-line distance in kilometers between primary and backup stations.
+ */
+fun distanceFromPrimaryStationKm(primary: Station, backup: Station): Double {
+    return DistanceCalculator.calculateDistanceKm(
+        primary.latitude,
+        primary.longitude,
+        backup.latitude,
+        backup.longitude
+    )
+}
+
+/**
+ * Extracts peak charging power in kW from station powers, labels, and text descriptions.
+ */
+fun extractStationMaxPowerKw(station: Station): Double {
+    val maxWatts = station.powers.maxOfOrNull { it.typeWatts } ?: 0L
+    if (maxWatts > 0) {
+        return maxWatts / 1000.0
+    }
+
+    val allText = buildString {
+        station.powers.forEach { append("${it.label} ${it.displayString} ") }
+        append("${station.connectors} ${station.summary} ${station.name}")
+    }
+
+    val kwMatches = Regex("""(\d+(?:\.\d+)?)\s*k[wW]""").findAll(allText)
+    val maxFromText = kwMatches.mapNotNull { it.groupValues[1].toDoubleOrNull() }.maxOrNull()
+    if (maxFromText != null) return maxFromText
+
+    if (allText.contains("DC", ignoreCase = true) || allText.contains("Super", ignoreCase = true)) {
+        return 60.0
+    }
+
+    return 11.0
+}
 
 /**
  * Geographic GPS coordinate along a route path.
@@ -28,19 +66,19 @@ data class RoutePathResult(
 
 /**
  * Charger classification hierarchy.
- * Priority: ULTRA_FAST_DC (>= 60kW) > STANDARD_DC (>= 30kW) > SLOW_AC (<= 11kW, strictly excluded from stops).
+ * Priority: ULTRA_FAST_DC (>= 60kW) > STANDARD_DC (>= 20kW) > SLOW_AC (< 20kW, strictly excluded from stops).
  */
 @Serializable
 enum class ChargerTier(val priority: Int, val minKw: Double) {
     ULTRA_FAST_DC(priority = 3, minKw = 60.0),
-    STANDARD_DC(priority = 2, minKw = 30.0),
+    STANDARD_DC(priority = 2, minKw = 20.0),
     SLOW_AC(priority = 1, minKw = 0.0);
 
     companion object {
         fun fromKw(kw: Double): ChargerTier {
             return when {
                 kw >= 60.0 -> ULTRA_FAST_DC
-                kw >= 30.0 -> STANDARD_DC
+                kw >= 20.0 -> STANDARD_DC
                 else -> SLOW_AC
             }
         }
@@ -92,6 +130,27 @@ data class DeadZoneWarning(
 )
 
 /**
+ * Warning emitted when routing selects a fallback charger below the preferred minimum power.
+ *
+ * @property requiredPowerKw The user's requested minimum charger power threshold (e.g. 60.0 kW).
+ * @property fallbackStation The station selected as a fallback stop.
+ * @property fallbackPowerKw The peak power available at the fallback station (e.g. 30.0 kW).
+ * @property stopIndex 1-based stop index of the fallback stop along the route.
+ * @property legDistanceKm The driving distance of the leg leading to this fallback stop.
+ * @property message Human-readable explanation in Vietnamese for UI dialog and warning banners.
+ */
+@Immutable
+@Serializable
+data class InsufficientPowerWarning(
+    val requiredPowerKw: Double,
+    val fallbackStation: Station,
+    val fallbackPowerKw: Double,
+    val stopIndex: Int,
+    val legDistanceKm: Double,
+    val message: String
+)
+
+/**
  * An individual charging stop scheduled along the route corridor.
  *
  * @property stopIndex 1-based order index of this charging stop (1, 2, ...).
@@ -123,7 +182,8 @@ data class EvRouteStop(
     val chargerTier: ChargerTier = ChargerTier.ULTRA_FAST_DC,
     val availabilityStatus: StopAvailabilityStatus = StopAvailabilityStatus.AVAILABLE,
     val estimatedQueueMinutes: Int = 0,
-    val alternativeStations: List<Station> = emptyList()
+    val alternativeStations: List<Station> = emptyList(),
+    val backupStation: Station? = null
 ) {
     /**
      * Live plug vacancy badge text for UI presentation.
@@ -140,6 +200,36 @@ data class EvRouteStop(
      */
     val powerDisplayLabel: String
         get() = if (maxPowerKw > 0) "⚡ ${maxPowerKw.toInt()} kW" else "⚡ DC"
+
+    /**
+     * Straight-line distance from primary station to designated backup station in kilometers.
+     */
+    val backupDistanceKm: Double?
+        get() = backupStation?.let { distanceFromPrimaryStationKm(station, it) }
+
+    /**
+     * Maximum power in kW for designated backup station.
+     */
+    val backupPowerKw: Double?
+        get() = backupStation?.let { extractStationMaxPowerKw(it) }
+
+    /**
+     * Power badge label for designated backup station.
+     */
+    val backupPowerDisplayLabel: String?
+        get() = backupPowerKw?.let { if (it > 0) "⚡ ${it.toInt()} kW" else "⚡ DC" }
+
+    /**
+     * Live plug vacancy badge text for designated backup station.
+     */
+    val backupLiveStatusBadge: String?
+        get() = backupStation?.let {
+            when {
+                it.totalPlugs == 0 -> "⚪ Chưa có dữ liệu thời gian thực"
+                it.totalAvailablePlugs > 0 -> "🟢 Trống ${it.totalAvailablePlugs}/${it.totalPlugs}"
+                else -> "🟠 Đang kín"
+            }
+        }
 }
 
 /**
@@ -159,10 +249,14 @@ data class EvSmartRoutePlan(
     val energyProfile: List<EnergyWaypoint>,
     val polylineCoordinates: List<RouteCoordinate> = emptyList(),
     val deadZoneWarning: DeadZoneWarning? = null,
+    val insufficientPowerWarning: InsufficientPowerWarning? = null,
     val finalBatteryPercent: Int = 0
 ) {
     val isSuccess: Boolean
         get() = deadZoneWarning == null
+
+    val hasInsufficientPowerWarning: Boolean
+        get() = insufficientPowerWarning != null
 
     val totalTripDurationSeconds: Long
         get() = totalDrivingDurationSeconds + (totalChargingDurationMinutes * 60L)

@@ -3,6 +3,7 @@ package com.evcs.favorites.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -30,6 +34,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +44,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,11 +63,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.evcs.favorites.data.locations.AdministrativeDistrict
+import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.routing.DeadZoneWarning
 import com.evcs.favorites.data.routing.EvRouteStop
+import com.evcs.favorites.data.routing.EvRoutingSettings
 import com.evcs.favorites.data.routing.EvSmartRoutePlan
 import com.evcs.favorites.data.routing.RouteSessionData
 import com.evcs.favorites.data.routing.StopAvailabilityStatus
+import com.evcs.favorites.data.routing.distanceFromPrimaryStationKm
+import com.evcs.favorites.data.routing.extractStationMaxPowerKw
 import com.evcs.favorites.ui.components.EnergyCorridorBar
 import com.evcs.favorites.ui.components.SwapStationBottomSheet
 import com.evcs.favorites.ui.theme.AppIcons
@@ -130,7 +141,9 @@ fun RouteScreen(
                                 safeRangeKm = uiState.safeRangeKm,
                                 onSafeRangeChanged = { viewModel.onSafeRangeChanged(it) },
                                 startBatteryPercent = uiState.startBatteryPercent,
-                                onStartBatteryPercentChanged = { viewModel.onStartBatteryPercentChanged(it) }
+                                onStartBatteryPercentChanged = { viewModel.onStartBatteryPercentChanged(it) },
+                                minChargerPowerKw = uiState.minChargerPowerKw,
+                                onMinPowerChanged = { viewModel.onMinPowerChanged(it) }
                             )
                         }
 
@@ -164,6 +177,7 @@ fun RouteScreen(
                     RouteResultsSection(
                         uiState = uiState,
                         onSwapStationClick = { stop -> viewModel.selectStopForSwap(stop) },
+                        onSwapWithBackupClick = { stopIndex -> viewModel.swapStopWithBackup(stopIndex) },
                         onStartNavigationClick = onStartNavClick
                     )
                 }
@@ -182,7 +196,9 @@ fun RouteScreen(
                         safeRangeKm = uiState.safeRangeKm,
                         onSafeRangeChanged = { viewModel.onSafeRangeChanged(it) },
                         startBatteryPercent = uiState.startBatteryPercent,
-                        onStartBatteryPercentChanged = { viewModel.onStartBatteryPercentChanged(it) }
+                        onStartBatteryPercentChanged = { viewModel.onStartBatteryPercentChanged(it) },
+                        minChargerPowerKw = uiState.minChargerPowerKw,
+                        onMinPowerChanged = { viewModel.onMinPowerChanged(it) }
                     )
                 }
 
@@ -209,10 +225,21 @@ fun RouteScreen(
                     RouteResultsSection(
                         uiState = uiState,
                         onSwapStationClick = { stop -> viewModel.selectStopForSwap(stop) },
+                        onSwapWithBackupClick = { stopIndex -> viewModel.swapStopWithBackup(stopIndex) },
                         onStartNavigationClick = onStartNavClick
                     )
                 }
             }
+        }
+
+        // Insufficient Power Fallback Alert Dialog
+        if (uiState.insufficientPowerDialog.isVisible) {
+            InsufficientPowerAlertDialog(
+                dialogState = uiState.insufficientPowerDialog,
+                onAccept = { viewModel.onAcceptRelaxedPower() },
+                onOpenSwap = { viewModel.onOpenSwapFromDialog() },
+                onDismiss = { viewModel.onDismissInsufficientPowerDialog() }
+            )
         }
 
         // Swap Station Modal Bottom Sheet
@@ -239,6 +266,8 @@ fun VehicleConfigurationCard(
     onSafeRangeChanged: (Int) -> Unit,
     startBatteryPercent: Int,
     onStartBatteryPercentChanged: (Int) -> Unit,
+    minChargerPowerKw: Double = EvRoutingSettings.DEFAULT_MIN_CHARGER_POWER_KW,
+    onMinPowerChanged: (Double) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var localSafeRange by remember(safeRangeKm) {
@@ -277,7 +306,7 @@ fun VehicleConfigurationCard(
                 )
 
                 Text(
-                    text = "${localSafeRange.roundToInt()} km • ${localStartBattery.roundToInt()}% pin",
+                    text = "${localSafeRange.roundToInt()} km • ${localStartBattery.roundToInt()}% pin • ≥${minChargerPowerKw.roundToInt()} kW",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -360,6 +389,68 @@ fun VehicleConfigurationCard(
                     color = EmeraldPrimaryLight,
                     modifier = Modifier.width(64.dp)
                 )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Power Selection Chips
+            Text(
+                text = "Công suất trạm sạc tối thiểu:",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Ưu tiên chọn trạm đạt công suất sạc mong muốn",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val powerPresets = listOf(
+                EvRoutingSettings.PRESET_POWER_STANDARD to "≥ 30 kW",
+                EvRoutingSettings.PRESET_POWER_FAST to "≥ 60 kW (Chuẩn)",
+                EvRoutingSettings.PRESET_POWER_ULTRA to "≥ 150 kW",
+                EvRoutingSettings.PRESET_POWER_SUPER to "≥ 250 kW"
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                powerPresets.forEach { (powerKw, label) ->
+                    val isSelected = kotlin.math.abs(minChargerPowerKw - powerKw) < 0.1
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onMinPowerChanged(powerKw) },
+                        label = {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            )
+                        },
+                        leadingIcon = if (isSelected) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else null,
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = EmeraldPrimary,
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
             }
         }
     }
@@ -718,6 +809,7 @@ fun StartNavigationCtaButton(
 fun RouteResultsSection(
     uiState: RouteUiState,
     onSwapStationClick: (EvRouteStop) -> Unit,
+    onSwapWithBackupClick: ((Int) -> Unit)? = null,
     onStartNavigationClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -773,7 +865,8 @@ fun RouteResultsSection(
                 originLabel = "${uiState.originProvince}, ${uiState.originDistrict}",
                 destinationLabel = "${uiState.destinationProvince}, ${uiState.destinationDistrict}",
                 startSoc = uiState.startBatteryPercent,
-                onSwapStationClick = onSwapStationClick
+                onSwapStationClick = onSwapStationClick,
+                onSwapWithBackupClick = onSwapWithBackupClick
             )
 
             // 4. Start Multi-Stop Navigation CTA
@@ -845,6 +938,7 @@ fun RouteTimelineCard(
     destinationLabel: String,
     startSoc: Int,
     onSwapStationClick: (EvRouteStop) -> Unit,
+    onSwapWithBackupClick: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -893,7 +987,8 @@ fun RouteTimelineCard(
                 TimelineConnectorLine()
                 TimelineChargingStopNode(
                     stop = stop,
-                    onSwapClick = { onSwapStationClick(stop) }
+                    onSwapClick = { onSwapStationClick(stop) },
+                    onSwapWithBackupClick = { onSwapWithBackupClick?.invoke(stop.stopIndex) }
                 )
             }
 
@@ -965,7 +1060,8 @@ fun TimelineConnectorLine() {
 @Composable
 fun TimelineChargingStopNode(
     stop: EvRouteStop,
-    onSwapClick: () -> Unit
+    onSwapClick: () -> Unit,
+    onSwapWithBackupClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1050,7 +1146,7 @@ fun TimelineChargingStopNode(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Text(
                         text = "Pin đến: ${stop.arrivalBatteryPercent}% ➔ Sạc lên ${stop.targetBatteryPercent}%",
                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
@@ -1062,6 +1158,8 @@ fun TimelineChargingStopNode(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // "Đổi trạm khác" button
                 OutlinedButton(
@@ -1077,6 +1175,146 @@ fun TimelineChargingStopNode(
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Dedicated BackupStationCard directly below primary station content
+            BackupStationCard(
+                primaryStation = stop.station,
+                backupStation = stop.backupStation,
+                onSwapWithBackup = { onSwapWithBackupClick?.invoke() }
+            )
+        }
+    }
+}
+
+/**
+ * Dedicated secondary card displaying the designated nearby backup charging station directly below primary stop.
+ * Features live telemetry vacancy badge, relative diversion distance, and 1-tap fast swap CTA.
+ */
+@Composable
+fun BackupStationCard(
+    primaryStation: Station,
+    backupStation: Station?,
+    onSwapWithBackup: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = DarkSurfaceVariant,
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkOutline)
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp)
+        ) {
+            Text(
+                text = "TRẠM DỰ PHÒNG LÂN CẬN",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (backupStation != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Station Name
+                Text(
+                    text = backupStation.name,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Address summary
+                val addressText = backupStation.address.ifBlank { backupStation.summary }
+                if (addressText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = addressText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                val distKm = distanceFromPrimaryStationKm(primaryStation, backupStation)
+                val powerKw = extractStationMaxPowerKw(backupStation)
+                val formattedDist = String.format(java.util.Locale.US, "%.1f", distKm)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Power Badge (e.g. ⚡ 60 kW)
+                    Box(
+                        modifier = Modifier
+                            .background(DarkCardBackground, RoundedCornerShape(4.dp))
+                            .border(1.dp, DarkOutline, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = if (powerKw > 0) "⚡ ${powerKw.toInt()} kW" else "⚡ DC",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = EmeraldPrimaryLight
+                        )
+                    }
+
+                    // Distance from Primary Station (e.g. Cách trạm chính 3.5 km)
+                    Text(
+                        text = "Cách trạm chính $formattedDist km",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Live Plug Availability Badge (e.g. 🟢 Trống 2/4 or 🟠 Đang kín)
+                val (liveText, liveColor) = when {
+                    backupStation.totalPlugs == 0 -> Pair("⚪ Chưa có dữ liệu thời gian thực", MaterialTheme.colorScheme.onSurfaceVariant)
+                    backupStation.totalAvailablePlugs > 0 -> Pair("🟢 Trống ${backupStation.totalAvailablePlugs}/${backupStation.totalPlugs}", StatusAvailable)
+                    else -> Pair("🟠 Đang kín", StatusMaintaining)
+                }
+                Text(
+                    text = liveText,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = liveColor
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // High-visibility action button [Đổi sang trạm này] with minimum touch height >= 48dp
+                OutlinedButton(
+                    onClick = onSwapWithBackup,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = EmeraldContainerDark.copy(alpha = 0.35f),
+                        contentColor = EmeraldPrimaryLight
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .sizeIn(minHeight = 48.dp)
+                ) {
+                    Text(
+                        text = "Đổi sang trạm này",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Không có trạm dự phòng trong bán kính 10 km",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -1137,3 +1375,138 @@ fun TimelineDestinationNode(
         }
     }
 }
+
+/**
+ * Automotive-grade Material 3 alert dialog informing the driver when routing
+ * had to select a charging station below their preferred minimum power threshold.
+ *
+ * Provides high contrast dark automotive styling (DarkCardBackground), amber accent (StatusMaintaining),
+ * and touch targets >= 48dp for automotive touch displays.
+ */
+@Composable
+fun InsufficientPowerAlertDialog(
+    dialogState: InsufficientPowerDialogState,
+    onAccept: () -> Unit,
+    onOpenSwap: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = AppIcons.ErrorOutline,
+                contentDescription = "Cảnh báo công suất sạc",
+                tint = StatusMaintaining,
+                modifier = Modifier.size(36.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "HẠ TIÊU CHUẨN CÔNG SUẤT SẠC",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = dialogState.message.ifBlank {
+                        "Không tìm thấy trạm sạc đạt công suất yêu cầu ${dialogState.requiredPowerKw.toInt()} kW trong tầm pin. Đã chọn trạm thay thế ${dialogState.fallbackStation?.name ?: "Trạm thay thế"} (${dialogState.fallbackPowerKw.toInt()} kW) để tiếp tục lộ trình an toàn."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusMaintaining.copy(alpha = 0.6f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Trạm dừng #${dialogState.stopIndex}: ${dialogState.fallbackStation?.name ?: "Trạm thay thế"}",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Công suất khả dụng: ${dialogState.fallbackPowerKw.toInt()} kW (Yêu cầu: ≥${dialogState.requiredPowerKw.toInt()} kW)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusMaintaining
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onAccept,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldPrimary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Text(
+                        text = "Chấp nhận & Dùng lộ trình này",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onOpenSwap,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldPrimary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Icon(
+                        imageVector = AppIcons.SwapHoriz,
+                        contentDescription = null,
+                        tint = EmeraldPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Đổi trạm khác",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = EmeraldPrimary
+                    )
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Text(
+                        text = "Đóng",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        shape = RoundedCornerShape(20.dp),
+        containerColor = DarkCardBackground,
+        modifier = modifier
+    )
+}
+
