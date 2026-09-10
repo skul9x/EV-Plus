@@ -4,6 +4,9 @@ import androidx.compose.runtime.Immutable
 import com.evcs.favorites.data.routing.DrivingMetrics
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Raw power plug configuration for an EVCS charging station.
@@ -16,8 +19,11 @@ data class EvsePowerRaw(
     val status: String? = null,
     val powerType: String? = null,
     val totalCharging: Int? = null,
-    val chargingKw: Double? = null
+    val chargingKw: JsonElement? = null
 ) {
+    val chargingKwDouble: Double?
+        get() = (chargingKw as? JsonPrimitive)?.content?.toDoubleOrNull()
+
     fun toDomainPowerPort(): PowerPort {
         val label = if (type > 0) {
             val kw = type / 1000.0
@@ -112,8 +118,20 @@ data class SearchStationRaw(
     val distance: Double? = null,
     val evse: String? = null,
     val totalCharging: Int? = null,
-    val chargingKw: Double? = null
+    val chargingKw: JsonElement? = null
 ) {
+    val chargingKwBreakdown: Map<String, Int>
+        get() = when (val elem = chargingKw) {
+            is JsonObject -> elem.mapNotNull { (k, v) ->
+                val count = (v as? JsonPrimitive)?.content?.toIntOrNull()
+                if (count != null) k to count else null
+            }.toMap()
+            else -> emptyMap()
+        }
+
+    val chargingKwDouble: Double?
+        get() = (chargingKw as? JsonPrimitive)?.content?.toDoubleOrNull()
+
     /**
      * Fallback to support both `locationId` and `id`.
      */

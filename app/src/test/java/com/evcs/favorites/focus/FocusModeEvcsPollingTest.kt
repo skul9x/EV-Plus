@@ -21,6 +21,8 @@ import org.junit.Test
 import java.io.IOException
 import java.util.Locale
 import java.util.TimeZone
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Single comprehensive test file verifying Phase 01: Focus Mode EVCS Fixed 10s Telemetry Polling.
@@ -84,12 +86,12 @@ class FocusModeEvcsPollingTest {
             longitude = lon,
             depotStatus = "Normal",
             evsePowers = listOf(
-                EvsePowerRaw(type = 250_000L, numberOfAvailableEvse = dc250Available, totalEvse = 4, totalCharging = 2, chargingKw = 250.0),
-                EvsePowerRaw(type = 60_000L, numberOfAvailableEvse = dc60Available, totalEvse = 2, totalCharging = 1, chargingKw = 60.0),
+                EvsePowerRaw(type = 250_000L, numberOfAvailableEvse = dc250Available, totalEvse = 4, totalCharging = 2, chargingKw = chargingKw?.let { JsonPrimitive(it) }),
+                EvsePowerRaw(type = 60_000L, numberOfAvailableEvse = dc60Available, totalEvse = 2, totalCharging = 1, chargingKw = chargingKw?.let { JsonPrimitive(it) }),
                 EvsePowerRaw(type = 11_000L, numberOfAvailableEvse = ac11Available, totalEvse = 2) // AC port
             ),
             totalCharging = totalCharging,
-            chargingKw = chargingKw
+            chargingKw = chargingKw?.let { JsonPrimitive(it) }
         )
     }
 
@@ -219,11 +221,30 @@ class FocusModeEvcsPollingTest {
         val deserializedStation = EvcsApiClient.json.decodeFromString<SearchStationRaw>(rawJson)
         assertEquals("loc_target_001", deserializedStation.locationId)
         assertEquals(3, deserializedStation.totalCharging)
-        assertEquals(250.0, deserializedStation.chargingKw)
+        assertEquals(250.0, deserializedStation.chargingKwDouble)
         assertEquals(3, deserializedStation.evsePowers.size)
         assertEquals(250000L, deserializedStation.evsePowers[0].type)
         assertEquals(1, deserializedStation.evsePowers[0].totalCharging)
-        assertEquals(250.0, deserializedStation.evsePowers[0].chargingKw)
+        assertEquals(250.0, deserializedStation.evsePowers[0].chargingKwDouble)
+
+        // 2a-2. Real EVCS API breakdown map deserialization (e.g. {"60":3, "150":2})
+        val realApiJson = """
+            {
+                "locationId": "C.BNI0018",
+                "stationName": "Chung cu Golden Park",
+                "latitude": 21.170145,
+                "longitude": 106.10141,
+                "totalCharging": 5,
+                "chargingKw": {
+                    "60": 3,
+                    "150": 2
+                }
+            }
+        """.trimIndent()
+        val realStation = EvcsApiClient.json.decodeFromString<SearchStationRaw>(realApiJson)
+        assertEquals("C.BNI0018", realStation.locationId)
+        assertEquals(5, realStation.totalCharging)
+        assertEquals(mapOf("60" to 3, "150" to 2), realStation.chargingKwBreakdown)
 
         val station = createInitialStation()
         val fakeClient = object : EvcsApiClient(sessionManager = sessionManager) {
