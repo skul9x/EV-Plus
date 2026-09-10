@@ -14,7 +14,9 @@ data class EvsePowerRaw(
     val numberOfAvailableEvse: Int = 0,
     val totalEvse: Int = 0,
     val status: String? = null,
-    val powerType: String? = null
+    val powerType: String? = null,
+    val totalCharging: Int? = null,
+    val chargingKw: Double? = null
 ) {
     fun toDomainPowerPort(): PowerPort {
         val label = if (type > 0) {
@@ -108,7 +110,9 @@ data class SearchStationRaw(
     val media: List<String>? = null,
     val verified: Boolean? = null,
     val distance: Double? = null,
-    val evse: String? = null
+    val evse: String? = null,
+    val totalCharging: Int? = null,
+    val chargingKw: Double? = null
 ) {
     /**
      * Fallback to support both `locationId` and `id`.
@@ -133,7 +137,10 @@ data class SearchResponse(
 @Serializable
 data class SearchRequest(
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val wattageTypes: List<String>? = null
 )
 
 /**

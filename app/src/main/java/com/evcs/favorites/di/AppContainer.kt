@@ -98,7 +98,7 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
     ): FocusModeTelemetryEngine {
         return FocusModeTelemetryEngine(
             initialStation = initialStation,
-            hereEvApiClient = hereEvApiClient,
+            evcsApiClient = evcsApiClient,
             locationProvider = locationProvider,
             coroutineScope = coroutineScope,
             stationNameResolver = evcsStationNameResolver

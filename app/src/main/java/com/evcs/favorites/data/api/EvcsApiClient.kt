@@ -340,20 +340,40 @@ open class EvcsApiClient(
     }
 
     /**
-     * Step 2: Queries native background search API for real-time station metrics.
+     * Queries native background search API for real-time station metrics.
      * Signs the request with HMAC-SHA256 according to EVCS protocol.
      */
     open suspend fun searchStations(
         latitude: Double,
         longitude: Double,
         token: String = DEFAULT_SEARCH_TOKEN
+    ): Result<List<SearchStationRaw>> = searchStations(latitude, longitude, token, null)
+
+    /**
+     * Queries native background search API with optional wattage filtering (e.g. FAST, SUPER_FAST).
+     */
+    open suspend fun searchStations(
+        latitude: Double,
+        longitude: Double,
+        wattageTypes: List<String>?
+    ): Result<List<SearchStationRaw>> = searchStations(latitude, longitude, DEFAULT_SEARCH_TOKEN, wattageTypes)
+
+    /**
+     * Full implementation of background search API with token and optional wattage filtering.
+     */
+    open suspend fun searchStations(
+        latitude: Double,
+        longitude: Double,
+        token: String,
+        wattageTypes: List<String>?
     ): Result<List<SearchStationRaw>> = withContext(Dispatchers.IO) {
         try {
             checkRateLimitOrThrow()
             val url = "$baseUrl/search?t=$token"
             val payload = SearchRequest(
                 latitude = latitude,
-                longitude = longitude
+                longitude = longitude,
+                wattageTypes = wattageTypes
             )
             val jsonString = json.encodeToString(payload)
             val timestamp = System.currentTimeMillis().toString()

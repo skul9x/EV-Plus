@@ -1,83 +1,75 @@
 {
-  "updated_at": "2026-09-09T14:24:00+07:00",
+  "updated_at": "2026-09-10T10:18:00+07:00",
   "working_on": {
-    "feature": "Landscape UI Optimization for Carlinkit TBox Android Box",
-    "task": "Completed 3 full phases: StationNameSanitizer & Marquee (Phase 01), Fullscreen Immersive & 58dp Navigation Rail (Phase 02), Dedicated Landscape Screens (Phase 03). All unit tests passing, pushed to GitHub main.",
+    "feature": "Telemetry Benchmarking, Rate-Limit Hardening & OSRM Real-Route Integration",
+    "task": "Completed 10-minute continuous polling benchmarks (HERE vs EVCS), verified 0 HTTP 429 rate limit errors, analyzed telemetry lag differences between VinFast official vs franchised stations, and evaluated OSRM real-road matrix routing across North-Central Vietnam.",
     "status": "completed",
     "files": [
-      ".gitignore",
-      "app/src/main/java/com/evcs/favorites/MainActivity.kt",
-      "app/src/main/java/com/evcs/favorites/navigation/AppNavigationRail.kt",
-      "app/src/main/java/com/evcs/favorites/ui/components/StationCard.kt",
-      "app/src/main/java/com/evcs/favorites/ui/layout/AdaptiveLayoutHelper.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/FavoritesScreen.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/landscape/FavoritesLandscapeScreen.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/landscape/LandscapeScreenContracts.kt",
-      "app/src/main/java/com/evcs/favorites/ui/screens/landscape/NearbyLandscapeScreen.kt",
-      "app/src/main/java/com/evcs/favorites/util/StationNameSanitizer.kt",
-      "app/src/test/java/com/evcs/favorites/navigation/LandscapeNavigationRailTest.kt",
-      "app/src/test/java/com/evcs/favorites/ui/LandscapeDedicatedScreensContractTest.kt",
-      "app/src/test/java/com/evcs/favorites/util/StationNameSanitizerTest.kt"
+      "docs/api/endpoints.md",
+      "docs/benchmarks/telemetry_benchmark_here_vs_evcs.md",
+      "docs/business/station_classification_rules.md",
+      ".brain/brain.json",
+      ".brain/session.json",
+      ".brain/handover.md"
     ],
     "blockers": [],
-    "notes": "Code tested, committed, and pushed to https://github.com/skul9x/EV-Plus.git main (commit 2e45142)."
+    "notes": "All benchmarks completed cleanly with zero HTTP 429 rate limit errors. Benchmark logs saved in project root and docs/."
   },
-  "pending_tasks": [],
+  "pending_tasks": [
+    {
+      "task": "Clean up or archive temporary benchmark log files (BNI0012.txt, C.BNI0324.txt, 6_STATIONS_LOG.txt) from project root",
+      "priority": "low",
+      "notes": "Can keep in root or move to docs/benchmarks/"
+    },
+    {
+      "task": "Implement hybrid telemetry routing in FocusModeTelemetryEngine (HERE for official stations, EVCS fallback for franchised stations)",
+      "priority": "medium",
+      "notes": "Reduces roaming batch lag for V-GREEN franchised stations"
+    }
+  ],
   "recent_changes": [
     {
-      "timestamp": "2026-09-09T14:19:00+07:00",
-      "type": "feature",
-      "description": "Landscape Carlinkit TBox UI Optimization: StationNameSanitizer + Marquee titles, Fullscreen Immersive Sticky mode, 58dp compact navigation rail, dedicated NearbyLandscapeScreen & FavoritesLandscapeScreen with 0 TopAppBar and reclaimed 95dp vertical space.",
+      "timestamp": "2026-09-10T10:16:00+07:00",
+      "type": "documentation",
+      "description": "Created telemetry benchmark documentation, station classification rules, updated API endpoints documentation and brain memory.",
       "files": [
-        ".gitignore",
-        "app/src/main/java/com/evcs/favorites/MainActivity.kt",
-        "app/src/main/java/com/evcs/favorites/navigation/AppNavigationRail.kt",
-        "app/src/main/java/com/evcs/favorites/ui/components/StationCard.kt",
-        "app/src/main/java/com/evcs/favorites/ui/layout/AdaptiveLayoutHelper.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/FavoritesScreen.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/NearbyScreen.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/landscape/FavoritesLandscapeScreen.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/landscape/LandscapeScreenContracts.kt",
-        "app/src/main/java/com/evcs/favorites/ui/screens/landscape/NearbyLandscapeScreen.kt",
-        "app/src/main/java/com/evcs/favorites/util/StationNameSanitizer.kt"
+        "docs/api/endpoints.md",
+        "docs/benchmarks/telemetry_benchmark_here_vs_evcs.md",
+        "docs/business/station_classification_rules.md",
+        ".brain/brain.json"
       ]
     },
     {
-      "timestamp": "2026-09-09T11:38:00+07:00",
-      "type": "feature",
-      "description": "Focus Mode Header Marquee, distance badge removal, and strict VinFast station search filtering (isVinFast).",
+      "timestamp": "2026-09-10T09:40:00+07:00",
+      "type": "investigation",
+      "description": "Multi-region OSRM real driving route analysis across Bắc Ninh, Long Biên Hà Nội, Mai Sơn Thanh Hóa, and Cẩm Xuyên Hà Tĩnh.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/focus/FocusModeFloatingViewManager.kt",
-        "app/src/main/java/com/evcs/favorites/domain/filter/NearbyStationFilter.kt",
-        "app/src/main/java/com/evcs/favorites/data/repository/EvcsRepository.kt"
+        "6_STATIONS_LOG.txt",
+        "BNI0012.txt",
+        "C.BNI0324.txt"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": ".gitignore rule 'lan*/' un-anchored pattern mistakenly matched 'app/src/main/java/.../landscape/' package",
-      "solution": "Changed pattern to root-scoped '/lan*/'",
+      "error": "EVCS.vn API exhibits periodic HTTP response latency spikes (up to 5.4s and occasional 10s timeout) under rapid polling",
+      "solution": "Documented need for client-side timeout guards and fallback to HERE Maps EV API which maintains strict 260-450ms bounds",
       "resolved": true
     },
     {
-      "error": "Unresolved reference AppIcons.Warning during FavoritesLandscapeScreen compilation",
-      "solution": "Replaced with AppIcons.Error which is registered in AppIcons registry",
+      "error": "HERE Maps EV API exhibits 15-30 minute roaming sync latency for V-GREEN franchised stations",
+      "solution": "Documented hybrid telemetry architecture where franchised stations cross-reference EVCS session data",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Separate dedicated landscape screens (NearbyLandscapeScreen & FavoritesLandscapeScreen) instead of nested conditionals inside portrait screens",
-      "reason": "Completely decouples automotive in-car rendering, enforces 0 nested if (!isLandscape) branches, and eliminates 95dp overhead from TopAppBar and summary pill"
+      "decision": "Adopt Hybrid Telemetry Engine: HERE Maps EV API as primary for official VinFast stations; EVCS as fallback/enhancement for franchised V-GREEN stations",
+      "reason": "Official stations push sub-second OCPP events to HERE and report OUT_OF_SERVICE hardware status. Franchised stations update faster on EVCS due to direct VinFast app session binding."
     },
     {
-      "decision": "Use 58dp navigation rail with 50dp touch targets and 26dp icons",
-      "reason": "Reclaims 14dp horizontal width compared to default 72dp rail while maintaining compliant automotive touch safety"
-    },
-    {
-      "decision": "Use StationNameSanitizer to strip redundant 'Trạm sạc VinFast' prefixes and enable horizontal marquee on station cards",
-      "reason": "Allows station cards in 360-400dp columns to show actual distinctive location names immediately at a glance"
+      "decision": "Rely on OSRM driving distance matrix rather than Haversine straight-line distance for reroute candidates",
+      "reason": "Haversine causes severe misdirection near rivers, estuaries, and expressways (e.g. 9.5 km straight-line vs 26.3 km driving route in Hà Tĩnh)."
     }
   ],
   "last_audit": {

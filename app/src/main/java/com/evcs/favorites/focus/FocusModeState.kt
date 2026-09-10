@@ -27,14 +27,28 @@ data class AlternativeStationRecommendation(
     val distanceKm: Double,
     val matchingPowerWatts: Long,
     val availableDcSlots: Int,
-    val totalDcSlots: Int
+    val totalDcSlots: Int,
+    val drivingDurationSeconds: Long? = null,
+    val drivingDistanceMeters: Long? = null
 ) {
     val matchingPowerKw: Int
         get() = (matchingPowerWatts / 1000L).toInt()
 
+    val effectiveDurationSeconds: Long?
+        get() = drivingDurationSeconds ?: station.effectiveDurationSeconds
+
+    val durationMinutes: Int
+        get() = calculateDurationMinutes(effectiveDurationSeconds)
+
     val displayRerouteLabel: String
         get() {
-            val distStr = if (distanceKm < 1.0) {
+            val distStr = if (drivingDistanceMeters != null) {
+                if (drivingDistanceMeters < 1000L) {
+                    "${drivingDistanceMeters}m"
+                } else {
+                    String.format(Locale.US, "%.1fkm", drivingDistanceMeters / 1000.0)
+                }
+            } else if (distanceKm < 1.0) {
                 "${(distanceKm * 1000).toInt()}m"
             } else {
                 String.format(Locale.US, "%.1fkm", distanceKm)
@@ -42,6 +56,13 @@ data class AlternativeStationRecommendation(
             val cleanName = com.evcs.favorites.util.StationNameSanitizer.sanitize(station.name).ifBlank { station.name }
             return "Đổi trạm: $cleanName (+$distStr)"
         }
+
+    companion object {
+        fun calculateDurationMinutes(durationSeconds: Long?): Int {
+            if (durationSeconds == null || durationSeconds < 60L) return 1
+            return ((durationSeconds + 30L) / 60L).toInt().coerceAtLeast(1)
+        }
+    }
 }
 
 /**

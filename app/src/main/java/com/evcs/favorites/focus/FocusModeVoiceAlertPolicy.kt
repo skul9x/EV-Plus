@@ -51,15 +51,34 @@ class FocusModeVoiceAlertPolicy(
         const val PROXIMITY_THRESHOLD_KM = 2.0
         const val ALERT_TEXT_STATION_FULL = "Cảnh báo: Trạm sạc vừa hết chỗ!"
         const val ALERT_TEXT_SLOT_AVAILABLE = "Trụ sạc vừa có súng trống!"
-        const val ALERT_TEXT_ALTERNATIVE_FOUND = "Trạm hiện tại đã hết trụ. Đã tìm thấy trạm thay thế còn trụ trống."
+        const val ALERT_TEXT_ALTERNATIVE_FOUND = "Trạm bạn muốn tới hiện tại đã hết cổng."
         const val ALERT_TEXT_PROXIMITY_REMINDER = "Sắp đến trạm sạc."
 
         /**
          * Formats alternative station recommendation announcement in Vietnamese.
+         * Exact format:
+         * "Trạm bạn muốn tới hiện tại đã hết cổng. Gợi ý đổi sang ${stationName}, cách ${distStr} cây số, đi mất ${durationMinutes} phút, còn ${slots} cổng ${powerKw}kW"
          */
-        fun formatAlternativeFoundText(distanceKm: Double, availableSlots: Int): String {
+        fun formatAlternativeFoundText(
+            stationName: String,
+            distanceKm: Double,
+            durationMinutes: Int,
+            availableSlots: Int,
+            powerKw: Int
+        ): String {
             val distStr = if (distanceKm % 1.0 == 0.0) "${distanceKm.toInt()}" else String.format(Locale.US, "%.1f", distanceKm)
-            return "Trạm hiện tại đã hết trụ. Đã tìm thấy trạm thay thế cách $distStr km còn $availableSlots trụ trống."
+            return "Trạm bạn muốn tới hiện tại đã hết cổng. Gợi ý đổi sang $stationName, cách $distStr cây số, đi mất $durationMinutes phút, còn $availableSlots cổng ${powerKw}kW"
+        }
+
+        @Deprecated("Use full signature with stationName, durationMinutes, and powerKw")
+        fun formatAlternativeFoundText(distanceKm: Double, availableSlots: Int): String {
+            return formatAlternativeFoundText(
+                stationName = "trạm lân cận",
+                distanceKm = distanceKm,
+                durationMinutes = 1,
+                availableSlots = availableSlots,
+                powerKw = 0
+            )
         }
 
         /**
@@ -200,7 +219,13 @@ class FocusModeVoiceAlertPolicy(
             }
             lastAlertTimestampMap[candidate] = timestamp
             return candidate.withText(
-                formatAlternativeFoundText(recommendation.distanceKm, recommendation.availableDcSlots)
+                formatAlternativeFoundText(
+                    stationName = recommendation.station.name,
+                    distanceKm = recommendation.distanceKm,
+                    durationMinutes = recommendation.durationMinutes,
+                    availableSlots = recommendation.availableDcSlots,
+                    powerKw = recommendation.matchingPowerKw
+                )
             )
         }
 

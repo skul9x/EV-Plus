@@ -49,6 +49,9 @@ curl_capture_*/
 /lan*/
 get.md
 *.log
+*_LOG.txt
+BNI*.txt
+C.BNI*.txt
 
 # Operating System files
 .DS_Store

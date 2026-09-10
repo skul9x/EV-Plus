@@ -89,7 +89,9 @@
     "Vietnamese Voice / Audio Announcements (vi-VN TTS) with Transient Audio Ducking on DC slot saturation/availability",
     "Native Station Detail Bottom Sheet with VinFast S3 Photo Carousel & Lightbox Zoom",
     "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In",
-    "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation"
+    "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation",
+    "OSRM Road Network Driving Distance Matrix Routing Engine (accurate driving km and ETA accounting for bridges, estuaries, and expressway exits)",
+    "Station Classification Engine (Differentiating Official VinFast Hubs from Franchised V-GREEN Private Stations)"
   ],
   "knowledge_items": {
     "patterns": [
@@ -117,7 +119,10 @@
       "Raw HereEvStation direct filtering before domain mapping to eliminate Garbage Collection churn during 5s polling",
       "Display metrics caching on ACTION_DOWN in floating WindowManager touch listeners to save Main Thread CPU cycles",
       "NearbyUiHelper pure function decision rules for auto-scrolling with timestamp verification",
-      "AGP 8.2+ Baseline Profile method wildcards require `->**(**)**` rather than bare `->*` to avoid profgen parser StringIndexOutOfBoundsException"
+      "AGP 8.2+ Baseline Profile method wildcards require `->**(**)**` rather than bare `->*` to avoid profgen parser StringIndexOutOfBoundsException",
+      "Telemetry Hybrid Source Routing: Use HERE Maps EV API as primary for official VinFast stations (sub-second OCPP push, hardware diagnostics OUT_OF_SERVICE) and EVCS API for franchised stations (avoids 15-30m roaming batch delay)",
+      "Road Network Distance vs Haversine: In coastal, riverine, and expressway zones, straight-line Haversine underestimates route distances by 2.5x-3x; OSRM routing matrix must be queried to avoid misleading navigation reroutes",
+      "Polling Resilience: Continuous 5-second interval polling on both HERE EV API and EVCS.vn API sustained 100+ requests over 10 minutes with 0 HTTP 429 rate limit errors and zero Cloudflare WAF blocks"
     ],
     "gotchas": [
       "Beware of generic .gitignore patterns like lan*/ which match any subdirectory starting with lan (e.g. ui/screens/landscape/); use root-relative /lan*/ instead.",
@@ -127,7 +132,11 @@
       "google-services.json and Keystore files (.jks) must always be kept out of git tracking and added to .gitignore.",
       "Audio ducking requires AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK; activeUtteranceCount must reach 0 before abandoning focus.",
       "FusedLocationProviderClient.lastLocation can return null; getCurrentLocation with PRIORITY_HIGH_ACCURACY and cancellation tokens must be used.",
-      "Double tap / fast spam clicks can trigger duplicate navigation intents or rapid Google sign-in launches if not debounced."
+      "Double tap / fast spam clicks can trigger duplicate navigation intents or rapid Google sign-in launches if not debounced.",
+      "Telemetry Latency Hierarchy: EVCS.vn updates available/occupied connector counts faster (near instant, tied directly to VinFast App in-country session backend), whereas HERE Maps EV API exhibits 3-15 minute latency due to Edge CDN caching and international gateway routing (VinFast VN -> Hubject/HERE Europe -> Asia CDN).",
+      "Franchised V-GREEN stations (e.g. C.HNO1100, C.HNO1215, C.BNI0324) update in 15-30 minute roaming batches on HERE Maps EV API; real-time plug events during short stops may only appear immediately in EVCS API.",
+      "EVCS.vn API suffers occasional network latency jitter (spikes up to 5.4s or 10s timeout), whereas HERE Maps EV API maintains strict 260-450ms response bounds.",
+      "HERE Maps provides physical EVSE connector-level state (AVAILABLE, OCCUPIED, OUT_OF_SERVICE) and exact serial cpoEvseEMI3Id, whereas EVCS only provides aggregate counts and cannot distinguish unpowered/broken chargers from occupied ones."
     ]
   }
 }

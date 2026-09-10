@@ -259,8 +259,20 @@ class FocusModeForegroundService : Service() {
                     // Ignore parse errors
                 }
             } else {
-                _currentState.value?.alternativeStation?.station?.let { alt ->
-                    handleReroute(alt)
+                _currentState.value?.alternativeStation?.let { alt ->
+                    handleFloatingReroute(alt)
+                } ?: run {
+                    serviceScope.launch {
+                        engine?.executeRerouteFlow()?.let { resolved ->
+                            val target = resolved.station
+                            MapNavigator.navigate(
+                                context = applicationContext,
+                                latitude = target.latitude,
+                                longitude = target.longitude,
+                                stationName = target.name
+                            )
+                        }
+                    }
                 }
             }
             return START_STICKY
@@ -330,11 +342,12 @@ class FocusModeForegroundService : Service() {
         ttsManager = newTtsManager
 
         val appContainer = (applicationContext as? EvPlusApplication)?.appContainer
-        val hereClient = appContainer?.hereEvApiClient ?: HereEvApiClient()
-        val resolver = appContainer?.evcsStationNameResolver
+            ?: com.evcs.favorites.di.DefaultAppContainer.getInstance(applicationContext)
+        val evcsClient = appContainer.evcsApiClient
+        val resolver = appContainer.evcsStationNameResolver
         val newEngine = FocusModeTelemetryEngine(
             initialStation = station,
-            hereEvApiClient = hereClient,
+            evcsApiClient = evcsClient,
             locationProvider = { locationService?.latestCoordinates },
             onVoiceAlert = { alert ->
                 newTtsManager.speak(alert.text)
@@ -359,7 +372,7 @@ class FocusModeForegroundService : Service() {
             floatingViewManager = FocusModeFloatingViewManager(
                 context = applicationContext,
                 onDismiss = { stopFocusMode() },
-                onReroute = { rec -> handleReroute(rec.station) }
+                onReroute = { rec -> handleFloatingReroute(rec) }
             ).apply {
                 showOverlay(newEngine.state.value)
             }
@@ -384,7 +397,7 @@ class FocusModeForegroundService : Service() {
                         floatingViewManager = FocusModeFloatingViewManager(
                             context = applicationContext,
                             onDismiss = { stopFocusMode() },
-                            onReroute = { rec -> handleReroute(rec.station) }
+                            onReroute = { rec -> handleFloatingReroute(rec) }
                         ).apply {
                             showOverlay(state)
                         }
@@ -416,6 +429,33 @@ class FocusModeForegroundService : Service() {
         }
 
         newEngine.start()
+    }
+
+    private fun handleFloatingReroute(recommendation: AlternativeStationRecommendation) {
+        AppDebugLogger.log(
+            tag = DebugLogTag.FOCUS_MODE,
+            level = DebugLogLevel.INFO,
+            message = "Focus Mode Service: Nhận lệnh chuyển hướng từ Floating HUD sang ${recommendation.station.name}"
+        )
+        serviceScope.launch {
+            val engineInstance = engine ?: return@launch
+            val resolvedRec = engineInstance.executeRerouteFlow()
+            val target = (resolvedRec ?: recommendation).station
+            if (resolvedRec == null) {
+                engineInstance.updateTargetStation(target)
+            }
+            AppDebugLogger.log(
+                tag = DebugLogTag.FOCUS_MODE,
+                level = DebugLogLevel.INFO,
+                message = "Focus Mode Service: Điều hướng sang trạm mới ${target.name} (id: ${target.id})"
+            )
+            MapNavigator.navigate(
+                context = applicationContext,
+                latitude = target.latitude,
+                longitude = target.longitude,
+                stationName = target.name
+            )
+        }
     }
 
     private fun handleReroute(newStation: Station) {

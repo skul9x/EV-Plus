@@ -58,6 +58,8 @@ class FocusModeFloatingViewManager(
     private var heroMetricContainer: LinearLayout? = null
     private var currentAlternativeStation: AlternativeStationRecommendation? = null
 
+    val alternativeStation: AlternativeStationRecommendation? get() = currentAlternativeStation
+
     internal var rerouteDebounceHelper = DebounceHelper(1000L)
 
     val testStationNameView: AppCompatTextView? get() = stationNameView
@@ -271,9 +273,9 @@ class FocusModeFloatingViewManager(
      * Updates text, badge colors, and reroute CTA visibility based on new [FocusModeState].
      */
     fun updateView(state: FocusModeState) {
+        currentAlternativeStation = state.alternativeStation
         if (!isViewAttached || floatingRootView == null) return
 
-        currentAlternativeStation = state.alternativeStation
         val viewState = FocusModeViewLayoutHelper.formatViewState(state)
 
         // Update Mini Pill HUD
