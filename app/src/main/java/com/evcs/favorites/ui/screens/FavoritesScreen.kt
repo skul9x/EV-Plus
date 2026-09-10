@@ -229,15 +229,6 @@ fun FavoritesScreen(
                             }
                         },
                         actions = {
-                            // Routing settings button
-                            IconButton(onClick = { showRoutingSettings = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Cài đặt lộ trình",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
                             // Refresh action
                             IconButton(onClick = onRefresh) {
                                 Icon(

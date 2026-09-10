@@ -1,72 +1,79 @@
-# 💡 BRIEF: Focus Mode EVCS Telemetry & OSRM Driving Matrix Reroute
+# 💡 BRIEF: Tinh chỉnh Giao diện Cài đặt và Thương hiệu EV+
 
 **Ngày tạo:** 2026-09-10  
-**Tác giả:** Antigravity Brainstorm Partner & skul9x  
-**Trạng thái:** Brainstorming Completed -> Ready for /plan  
+**Tác giả:** Antigravity Brainstorm Partner & Nguyễn Duy Trường  
+**Trạng thái:** Brainstorming Completed -> Sẵn sàng triển khai  
 
 ---
 
 ## 1. VẤN ĐỀ CẦN GIẢI QUYẾT
-1. **Khoảng cách chim bay (Haversine) gây sai lệch khi tìm trạm dự phòng:**
-   - Khi trạm đích hết cổng sạc, app gợi ý trạm thay thế theo đường chim bay. Trên thực tế (đặc biệt khi đi trên cao tốc hoặc khu vực có sông ngòi/cầu cống), trạm đo chim bay 1.5 - 9.5 km nhưng đường ô tô thực tế phải đi vòng 9 - 26 km, gây nguy cơ hết pin giữa đường.
-2. **Chu kỳ polling động (Dynamic Interval) phức tạp không cần thiết:**
-   - Hiện tại app thay đổi chu kỳ polling theo khoảng cách (15s > 3km, 10s 1.5-3km, 5s < 1.5km). Cần cố định 1 chu kỳ duy nhất đơn giản, ổn định cho Floating Window.
-3. **Nguồn dữ liệu Floating Window:**
-   - Cần dữ liệu phản ánh nhanh tình trạng cắm/rút thực tế tại Việt Nam cùng tên trạm tiếng Việt chuẩn xác từ EVCS.vn.
+1. **Bộ lọc công suất trong Cài đặt có phần Chọn nhanh dư thừa:**
+   - Mục "Chọn nhanh loại cổng / công suất" (các chip AC, DC <= 30kW, DC 30-60kW...) làm rối mắt và không cần thiết trong màn hình Cài đặt, vì tính năng lọc nhanh đã có sẵn ở màn hình bản đồ/trạm sạc bên ngoài.
+   - Người dùng cần một giao diện tập trung vào việc tùy chỉnh dải công suất mong muốn (Min/Max) với các nút chạm `+/- 10kW` tối ưu cho xe hơi.
+
+2. **Tên ứng dụng chưa đồng bộ và thừa thãi:**
+   - Tên ứng dụng chính thức là **EV+** (theo `strings.xml`), nhưng trong card Thông tin ứng dụng đang hiển thị là "EV+ Station Navigator". Cần chuẩn hóa thành **EV+**.
+
+3. **Vị trí và định dạng bản quyền chưa hợp lý:**
+   - Dòng chữ bản quyền đặt dưới nút "Đặt lại mặc định" ở sidebar bên trái gây chật chội và không đúng vị trí tự nhiên.
+   - Trong card Thông tin ứng dụng, hàng tác giả ghi "Nguyễn Duy Trường Copyright 2026" lặp lại thông tin bản quyền và tên tác giả.
+
+4. **Khu vực hiển thị bản quyền chính thức:**
+   - Cần một dòng chữ bản quyền `© 2026 Nguyễn Duy Trường` thanh lịch, đặt ở khoảng không gian nền đen bên phải (bên dưới card Thông tin ứng dụng), không nằm trong nền tím than của card.
 
 ---
 
 ## 2. GIẢI PHÁP ĐỀ XUẤT
-1. **EVCS Telemetry Engine cho Floating Window:**
-   - Lấy dữ liệu trực tiếp từ EVCS.vn API cho Floating Window.
-   - Chu kỳ polling cố định: **10 giây / lần** từ đầu đến cuối phiên Focus Mode (không phụ thuộc khoảng cách).
-   - Nếu EVCS phản hồi chậm hoặc timeout: Giữ nguyên dữ liệu hiển thị gần nhất, không fallback sang bên thứ ba làm nhiễu UI.
-   - Tin tưởng trạng thái trạm (bao gồm bảo trì/ngừng hoạt động) từ EVCS.
-2. **Kích hoạt OSRM Driving Matrix Reroute có điều kiện (On-Demand):**
-   - Chỉ kích hoạt tìm trạm thay thế với OSRM khi **thỏa mãn đồng thời cả 2 điều kiện**:
-     1. Trạm đích **thực sự hết cổng DC** (`availableDcSlots == 0`).
-     2. Người dùng **chủ động bấm đổi trạm sạc** trên Floating Window / UI.
-   - Quy trình tìm trạm 2 bước:
-     - **Bước 1 (Lọc thô):** Lấy Top 5–8 trạm gần nhất theo Haversine còn cổng DC khả dụng với công suất $\ge$ trạm đích.
-     - **Bước 2 (Sắp xếp tinh):** Gửi Top 5–8 trạm vào `OsrmRoutingClient` (OSRM Table Matrix) để sắp xếp lại theo **khoảng cách lái xe thực tế (km) gần nhất**.
-   - **Fallback:** Nếu OSRM lỗi mạng hoặc timeout, tự động giữ nguyên thứ tự sắp xếp theo Haversine.
-3. **UX & Voice Announcements (TTS):**
-   - Nút đổi trạm hiển thị tên trạm và khoảng cách lái xe OSRM.
-   - Mẫu câu TTS chuẩn:
-     > *"Trạm bạn muốn tới hiện tại đã hết cổng. Gợi ý đổi sang [Tên trạm B], cách [X] cây số, đi mất [Y] phút, còn [Z] cổng [P]kW"*
+
+### 2.1. Tinh gọn thẻ "Bộ lọc công suất" (`CustomFilterSettingsCard`)
+- **Loại bỏ phần Chọn nhanh:**
+  - Xóa bỏ khối "Chọn nhanh loại cổng / công suất" và hàng chip bộ lọc trong màn hình Cài đặt.
+- **Tập trung vào dải công suất tùy chỉnh:**
+  - Giữ lại duy nhất cụm Stepper +/- 10kW (`AutomotiveStepperBox`) cho Công suất Min và Công suất Max.
+  - Cập nhật dòng phụ mô tả: *"Tùy chỉnh khoảng công suất kW mong muốn"*.
+
+### 2.2. Chuẩn hóa tên ứng dụng thành "EV+" (`AboutAppCard`)
+- Đổi hằng số `AboutAppInfo.APP_NAME = "EV+"`.
+- Tiêu đề trong card Thông tin ứng dụng hiển thị ngắn gọn, sắc nét: **EV+**.
+
+### 2.3. Tối ưu Sidebar bên trái & Card Tác giả
+- **Sidebar trái:** Bỏ hoàn toàn dòng text bản quyền phía dưới nút "Đặt lại mặc định".
+- **Card Thông tin ứng dụng:**
+  - Dòng tiêu đề mục Tác giả (icon Người): **Nguyễn Duy Trường**
+  - Dòng phụ: **Tác giả** (loại bỏ từ "Copyright 2026" và việc lặp lại họ tên).
+
+### 2.4. Đặt dòng Bản quyền trên nền đen bên phải
+- Trong mục "Thông tin ứng dụng" (`SettingsCategory.ABOUT`), đặt dòng chữ:
+  ```
+  © 2026 Nguyễn Duy Trường
+  ```
+  ở phía dưới `AboutAppCard`, căn giữa, hiển thị trên nền đen (`MaterialTheme.colorScheme.background`) của màn hình bên phải, tách biệt khỏi nền tím than (`DarkCardBackground`) của card.
 
 ---
 
-## 3. ĐỐI TƯỢNG SỬ DỤNG
-- **Tài xế xe điện VinFast (VF3, VF5, VF8, VF9, e34...)** sử dụng điện thoại hoặc Android Box / Carlinkit TBox trên màn hình ô tô khi đang dẫn đường (Google Maps) kết hợp Floating Capsule HUD của EV-Plus.
+## 3. DANH SÁCH TÍNH NĂNG & THAY ĐỔI
+
+### 🚀 Triển khai ngay:
+- [ ] **`CustomFilterSettingsCard.kt`**:
+  - Thêm điều khiển ẩn/hiện Quick Chips (ẩn ở màn hình Cài đặt).
+  - Cập nhật phụ đề thành *"Tùy chỉnh khoảng công suất kW mong muốn"*.
+- [ ] **`AboutAppCard.kt`**:
+  - Cập nhật `APP_NAME = "EV+"`.
+  - Cập nhật hàng tác giả: Tiêu đề "Nguyễn Duy Trường", phụ đề "Tác giả".
+  - Cập nhật `COPYRIGHT = "© 2026 Nguyễn Duy Trường"`.
+- [ ] **`SettingsScreen.kt`**:
+  - Gỡ bỏ footer bản quyền ở cột sidebar bên trái (dưới nút Đặt lại mặc định).
+  - Thêm dòng text bản quyền `© 2026 Nguyễn Duy Trường` trên nền đen dưới `AboutAppCard`.
+- [ ] **Unit Tests**:
+  - Cập nhật `CommercialBrandingAndCopyrightContractTest` và `SettingsScreenComponentsAndAutoSaveTest` khớp 100% với cấu trúc mới.
 
 ---
 
-## 4. TÍNH NĂNG CHI TIẾT
-
-### 🚀 MVP (Bắt buộc có):
-- [ ] **Fixed 10s Telemetry Polling**: Chu kỳ cập nhật cố định 10s cho Floating Window từ EVCS.
-- [ ] **UI State Retention on Network Lag**: Giữ nguyên dữ liệu EVCS gần nhất khi mạng chập chờn / timeout.
-- [ ] **Conditional OSRM Reroute Engine**:
-  - Chỉ tính OSRM khi: `availableDcSlots == 0` VÀ `user_clicked_reroute == true`.
-  - Lọc thô 5–8 ứng viên qua Haversine -> Tính OSRM Table Matrix -> Sắp xếp theo `distanceMeters` tăng dần.
-  - Fallback về Haversine khi OSRM gặp sự cố.
-- [ ] **Voice Alert Scripting**: Định dạng đúng mẫu câu tiếng Việt: *"Trạm bạn muốn tới hiện tại đã hết cổng. Gợi ý đổi sang [Tên trạm B], cách [X] cây số, đi mất [Y] phút, còn [Z] cổng [P]kW"*.
-- [ ] **Unit Tests**: Kiểm thử đầy đủ các điều kiện kích hoạt, logic fallback OSRM, và format câu TTS.
-
-### 🎁 Phase 2 (Cân nhắc sau):
-- [ ] Cấu hình tùy chọn máy chủ OSRM riêng (Self-hosted OSRM endpoint) nếu server công cộng quá tải.
-- [ ] Lưu cache tuyến đường OSRM ngắn hạn để tái sử dụng nếu tài xế bấm đổi trạm nhiều lần.
+## 4. ƯỚC TÍNH SƠ BỘ & RỦI RO
+- **Độ phức tạp:** Đơn giản - Tinh chỉnh trực tiếp Composable UI và constant strings.
+- **Rủi ro:** Cần cập nhật đúng các unit test contract để Gradle build luôn xanh 100%.
 
 ---
 
-## 5. ƯỚC TÍNH SƠ BỘ & RỦI RO
-- **Độ phức tạp:** Trung bình (Clean Architecture đã có sẵn `OsrmRoutingClient` và `FocusModeTelemetryEngine`, chỉ cần cập nhật điều kiện kích hoạt, tích hợp OSRM matrix vào engine reroute và chỉnh sửa polling interval).
-- **Rủi ro:** 
-  - Server OSRM công cộng (`router.project-osrm.org`) có thể thỉnh thoảng phản hồi chậm hoặc `NoRoute` -> Đã có giải pháp fallback về Haversine.
-  - EVCS API có độ trễ biến thiên -> Đã có giải pháp giữ nguyên snapshot data gần nhất.
-
----
-
-## 6. BƯỚC TIẾP THEO
-→ Chuyển sang workflow `/plan` để lên bản thiết kế kỹ thuật chi tiết và danh sách task code.
+## 5. BƯỚC TIẾP THEO
+→ Khi người dùng sẵn sàng, gõ `/code` hoặc `/plan` để triển khai mã nguồn theo Brief này.

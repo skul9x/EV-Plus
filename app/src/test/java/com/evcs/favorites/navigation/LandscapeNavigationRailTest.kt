@@ -30,15 +30,17 @@ class LandscapeNavigationRailTest {
     @Test
     fun testActionOrderSequence() {
         val actionOrder = AppNavigationRailDefaults.ACTION_ORDER
-        assertEquals("Navigation rail must define exactly 4 actions", 4, actionOrder.size)
+        assertEquals("Navigation rail must define exactly 5 actions", 5, actionOrder.size)
 
         // Strict automotive action sequence
-        assertEquals("Index 0 must strictly be NEARBY", NavigationRailAction.NEARBY, actionOrder[0])
-        assertEquals("Index 1 must strictly be FAVORITES", NavigationRailAction.FAVORITES, actionOrder[1])
-        assertEquals("Index 2 must strictly be SETTINGS", NavigationRailAction.SETTINGS, actionOrder[2])
-        assertEquals("Index 3 must strictly be REFRESH", NavigationRailAction.REFRESH, actionOrder[3])
+        assertEquals("Index 0 must strictly be HOME", NavigationRailAction.HOME, actionOrder[0])
+        assertEquals("Index 1 must strictly be NEARBY", NavigationRailAction.NEARBY, actionOrder[1])
+        assertEquals("Index 2 must strictly be FAVORITES", NavigationRailAction.FAVORITES, actionOrder[2])
+        assertEquals("Index 3 must strictly be SETTINGS", NavigationRailAction.SETTINGS, actionOrder[3])
+        assertEquals("Index 4 must strictly be REFRESH", NavigationRailAction.REFRESH, actionOrder[4])
 
         // Verify titles/labels
+        assertEquals("Trang chủ xe", NavigationRailAction.HOME.title)
         assertEquals("Quanh đây", NavigationRailAction.NEARBY.title)
         assertEquals("Yêu thích", NavigationRailAction.FAVORITES.title)
         assertEquals("Cài đặt", NavigationRailAction.SETTINGS.title)
@@ -88,6 +90,7 @@ class LandscapeNavigationRailTest {
             isRefreshing = false
         )
         assertTrue("Settings click handler must be invoked", settingsClicked)
+        assertEquals(AppTab.SETTINGS, selectedTab)
         assertEquals(0, refreshClickCount)
 
         // Test REFRESH action dispatch when idle (isRefreshing = false)
@@ -137,9 +140,16 @@ class LandscapeNavigationRailTest {
         // When current tab is NEARBY
         assertTrue(AppNavigationRailHelper.isTabSelected(AppTab.NEARBY, currentTab = AppTab.NEARBY))
         assertFalse(AppNavigationRailHelper.isTabSelected(AppTab.FAVORITES, currentTab = AppTab.NEARBY))
+        assertFalse(AppNavigationRailHelper.isTabSelected(AppTab.SETTINGS, currentTab = AppTab.NEARBY))
 
         // When current tab is FAVORITES
         assertFalse(AppNavigationRailHelper.isTabSelected(AppTab.NEARBY, currentTab = AppTab.FAVORITES))
         assertTrue(AppNavigationRailHelper.isTabSelected(AppTab.FAVORITES, currentTab = AppTab.FAVORITES))
+        assertFalse(AppNavigationRailHelper.isTabSelected(AppTab.SETTINGS, currentTab = AppTab.FAVORITES))
+
+        // When current tab is SETTINGS
+        assertFalse(AppNavigationRailHelper.isTabSelected(AppTab.NEARBY, currentTab = AppTab.SETTINGS))
+        assertFalse(AppNavigationRailHelper.isTabSelected(AppTab.FAVORITES, currentTab = AppTab.SETTINGS))
+        assertTrue(AppNavigationRailHelper.isTabSelected(AppTab.SETTINGS, currentTab = AppTab.SETTINGS))
     }
 }

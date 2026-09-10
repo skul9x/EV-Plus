@@ -24,9 +24,9 @@ import androidx.activity.compose.BackHandler
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.Alignment
 import com.evcs.favorites.navigation.AppNavigationRail
 import com.evcs.favorites.navigation.AppNavigationRailHelper
-import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.layout.AdaptiveLayoutHelper
 import com.evcs.favorites.ui.state.FavoritesUiState
 import com.evcs.favorites.ui.theme.AppIcons
@@ -57,6 +57,7 @@ import com.evcs.favorites.data.auth.AuthEngine
 import com.evcs.favorites.data.auth.EncryptedSharedPrefsStorage
 import com.evcs.favorites.data.auth.PlainSharedPrefsStorage
 import com.evcs.favorites.data.auth.SessionManager
+import com.evcs.favorites.data.preferences.FocusModePreferences
 import com.evcs.favorites.data.preferences.NearbyFilterPreferences
 import com.evcs.favorites.data.preferences.OrientationPreferences
 import com.evcs.favorites.data.preferences.SmartFilterPreferences
@@ -70,6 +71,7 @@ import com.evcs.favorites.navigation.MapNavigator
 import com.evcs.favorites.ui.screens.FavoritesScreen
 import com.evcs.favorites.ui.screens.LoginScreen
 import com.evcs.favorites.ui.screens.NearbyScreen
+import com.evcs.favorites.ui.screens.SettingsScreen
 import com.evcs.favorites.ui.theme.EmeraldPrimary
 import com.evcs.favorites.ui.theme.EvcsFavoritesTheme
 import com.evcs.favorites.ui.viewmodel.FavoritesViewModel
@@ -94,6 +96,7 @@ class MainActivity : ComponentActivity() {
     private val nearbyFilterPreferences by lazy { NearbyFilterPreferences.create(applicationContext) }
     private val smartFilterPreferences by lazy { SmartFilterPreferences.create(applicationContext) }
     private val orientationPreferences by lazy { OrientationPreferences.create(applicationContext) }
+    private val focusModePreferences by lazy { FocusModePreferences.create(applicationContext) }
     private val telemetryRepository by lazy {
         com.evcs.favorites.data.repository.EvcsTelemetryRepository(
             com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource(sessionManager)
@@ -157,7 +160,10 @@ class MainActivity : ComponentActivity() {
                     FavoritesApp(
                         viewModel = favoritesViewModel,
                         nearbyViewModel = nearbyViewModel,
-                        locationService = locationService
+                        locationService = locationService,
+                        orientationPreferences = orientationPreferences,
+                        focusModePreferences = focusModePreferences,
+                        routingPreferencesManager = routingPreferencesManager
                     )
                 }
             }
@@ -190,9 +196,18 @@ fun FavoritesApp(
     viewModel: FavoritesViewModel,
     nearbyViewModel: NearbyViewModel? = null,
     locationService: LocationService? = null,
+    orientationPreferences: OrientationPreferences? = null,
+    focusModePreferences: FocusModePreferences? = null,
+    routingPreferencesManager: RoutingPreferencesManager? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val effectiveOrientationPrefs = remember(orientationPreferences, context) {
+        orientationPreferences ?: OrientationPreferences.create(context)
+    }
+    val effectiveFocusPrefs = remember(focusModePreferences, context) {
+        focusModePreferences ?: FocusModePreferences.create(context)
+    }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
     val routingSettings by viewModel.routingSettings.collectAsStateWithLifecycle()
@@ -200,16 +215,16 @@ fun FavoritesApp(
     var currentTab by rememberSaveable { mutableStateOf(AppTab.NEARBY) }
     var showPermissionRationale by rememberSaveable { mutableStateOf(false) }
     var rationaleDismissed by rememberSaveable { mutableStateOf(false) }
-    var showRoutingSettingsModal by rememberSaveable { mutableStateOf(false) }
 
-    BackHandler(enabled = showRoutingSettingsModal) {
-        showRoutingSettingsModal = false
+    BackHandler(enabled = AppNavigationRailHelper.shouldInterceptBack(currentTab)) {
+        currentTab = AppNavigationRailHelper.resolveBackTargetTab(currentTab)
     }
 
     val nearbyUiState by nearbyViewModel?.uiState?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(null) }
     val isRefreshing = when (currentTab) {
         AppTab.FAVORITES -> (uiState as? FavoritesUiState.Success)?.isRefreshing == true || uiState is FavoritesUiState.Loading
         AppTab.NEARBY -> nearbyUiState?.let { it.isSearching || it.isLocating } ?: false
+        AppTab.SETTINGS -> false
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -265,11 +280,11 @@ fun FavoritesApp(
                             AppNavigationRailHelper.dispatchSystemHome(context)
                         },
                         onTabSelected = { currentTab = it },
-                        onSettingsClick = { showRoutingSettingsModal = true },
                         onRefreshClick = {
                             when (currentTab) {
                                 AppTab.FAVORITES -> viewModel.refresh()
                                 AppTab.NEARBY -> nearbyViewModel?.refresh()
+                                AppTab.SETTINGS -> {}
                             }
                         },
                         isRefreshing = isRefreshing
@@ -360,12 +375,28 @@ fun FavoritesApp(
                                         onNavigateToLogin = {
                                             currentTab = AppTab.FAVORITES
                                         },
+                                        onNavigateToSettings = {
+                                            currentTab = AppTab.SETTINGS
+                                        },
                                         routingSettings = routingSettings,
                                         onSaveRoutingSettings = { nearbyViewModel.updateRoutingSettings(it) },
                                         onValidateGoogleApiKey = { nearbyViewModel.validateGoogleApiKey(it) },
                                         isLandscape = effectiveIsLandscape
                                     )
                                 }
+                            }
+
+                            AppTab.SETTINGS -> {
+                                SettingsScreen(
+                                    isLandscape = effectiveIsLandscape,
+                                    orientationPreferences = effectiveOrientationPrefs,
+                                    focusModePreferences = effectiveFocusPrefs,
+                                    customFilterConfig = nearbyUiState?.savedCustomConfig,
+                                    onSaveCustomFilter = { config ->
+                                        nearbyViewModel?.saveAndApplyCustomFilter(config)
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
                     }
@@ -434,22 +465,6 @@ fun FavoritesApp(
                 },
                 shape = RoundedCornerShape(16.dp),
                 containerColor = MaterialTheme.colorScheme.surface
-            )
-        }
-
-        // Routing & BYOK Settings Modal triggered from Navigation Rail
-        if (showRoutingSettingsModal) {
-            RoutingSettingsModal(
-                isLandscape = effectiveIsLandscape,
-                settings = routingSettings,
-                onSaveSettings = { newSettings ->
-                    viewModel.updateRoutingSettings(newSettings)
-                    nearbyViewModel?.updateRoutingSettings(newSettings)
-                },
-                onValidateKey = { key ->
-                    viewModel.validateGoogleApiKey(key)
-                },
-                onDismiss = { showRoutingSettingsModal = false }
             )
         }
     }

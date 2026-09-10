@@ -113,6 +113,7 @@ import kotlinx.coroutines.launch
 fun NearbyScreen(
     viewModel: NearbyViewModel,
     onNavigateToLogin: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     routingSettings: RoutingSettings = RoutingSettings(),
     onSaveRoutingSettings: (RoutingSettings) -> Unit = {},
     onValidateGoogleApiKey: (suspend (String) -> Result<Boolean>)? = null,
@@ -383,15 +384,6 @@ fun NearbyScreen(
                             }
                         },
                         actions = {
-                            // Settings gear icon
-                            IconButton(onClick = { showRoutingSettings = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Cài đặt lộ trình",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
                             // Refresh icon (visible when results exist)
                             if (uiState.hasSearched) {
                                 IconButton(onClick = { viewModel.refresh() }) {
@@ -506,7 +498,7 @@ fun NearbyScreen(
             CustomConfigPromptDialog(
                 onConfirmSetup = {
                     viewModel.dismissCustomPrompt()
-                    showRoutingSettings = true
+                    onNavigateToSettings()
                 },
                 onDismiss = {
                     viewModel.dismissCustomPrompt()

@@ -99,6 +99,7 @@ class SystemHomeAndImmersiveSettingsTest {
             isRefreshing = false
         )
         assertTrue(settingsClicked)
+        assertEquals(AppTab.SETTINGS, selectedTab)
 
         AppNavigationRailHelper.handleRailAction(
             action = NavigationRailAction.REFRESH,

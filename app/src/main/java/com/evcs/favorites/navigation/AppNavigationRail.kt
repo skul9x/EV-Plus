@@ -126,19 +126,26 @@ object AppNavigationRailHelper {
 
     fun isTabSelected(tab: AppTab, currentTab: AppTab): Boolean = tab == currentTab
 
+    fun shouldInterceptBack(currentTab: AppTab): Boolean = currentTab != AppTab.NEARBY
+
+    fun resolveBackTargetTab(currentTab: AppTab): AppTab = AppTab.NEARBY
+
     fun handleRailAction(
         action: NavigationRailAction,
         onHomeClick: () -> Unit = {},
         onTabSelected: (AppTab) -> Unit,
-        onSettingsClick: () -> Unit,
-        onRefreshClick: () -> Unit,
+        onSettingsClick: () -> Unit = {},
+        onRefreshClick: () -> Unit = {},
         isRefreshing: Boolean = false
     ) {
         when (action) {
             NavigationRailAction.HOME -> onHomeClick()
             NavigationRailAction.NEARBY -> onTabSelected(AppTab.NEARBY)
             NavigationRailAction.FAVORITES -> onTabSelected(AppTab.FAVORITES)
-            NavigationRailAction.SETTINGS -> onSettingsClick()
+            NavigationRailAction.SETTINGS -> {
+                onTabSelected(AppTab.SETTINGS)
+                onSettingsClick()
+            }
             NavigationRailAction.REFRESH -> {
                 if (shouldAllowRefresh(isRefreshing)) {
                     onRefreshClick()
@@ -154,14 +161,14 @@ object AppNavigationRailHelper {
  * 0. System Home (Return directly to Android launcher / Carlinkit home)
  * 1. Nearby (AppTab.NEARBY)
  * 2. Favorites (AppTab.FAVORITES)
- * 3. Settings (Routing & BYOK modal)
+ * 3. Settings (AppTab.SETTINGS)
  * 4. Refresh (Data refresh for active tab with animated rotation)
  */
 @Composable
 fun AppNavigationRail(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
-    onSettingsClick: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     onRefreshClick: () -> Unit,
     onHomeClick: () -> Unit = {},
     isRefreshing: Boolean = false,
@@ -215,11 +222,15 @@ fun AppNavigationRail(
             Spacer(modifier = Modifier.height(AppNavigationRailDefaults.ITEM_SPACING))
 
             // 3. Settings
+            val settingsSelected = AppNavigationRailHelper.isTabSelected(AppTab.SETTINGS, currentTab)
             RailIconButton(
-                icon = Icons.Default.Settings,
-                contentDescription = NavigationRailAction.SETTINGS.title,
-                isSelected = false,
-                onClick = onSettingsClick
+                icon = if (settingsSelected) AppTab.SETTINGS.selectedIcon else AppTab.SETTINGS.unselectedIcon,
+                contentDescription = AppTab.SETTINGS.label,
+                isSelected = settingsSelected,
+                onClick = {
+                    onTabSelected(AppTab.SETTINGS)
+                    onSettingsClick()
+                }
             )
 
             Spacer(modifier = Modifier.height(AppNavigationRailDefaults.ITEM_SPACING))
