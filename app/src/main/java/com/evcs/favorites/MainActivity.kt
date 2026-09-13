@@ -3,7 +3,9 @@ package com.evcs.favorites
 import com.evcs.favorites.data.model.Station
 
 import android.Manifest
+import android.content.res.Configuration
 import android.os.Bundle
+import com.evcs.favorites.util.AdaptiveSystemBarsHelper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -130,7 +132,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        applyImmersiveMode()
+        applyAdaptiveSystemBars()
 
         // Enforce startup orientation immediately before setContent to prevent visual flicker or layout jumps
         requestedOrientation = OrientationHelper.toActivityInfoOrientation(
@@ -144,6 +146,7 @@ class MainActivity : ComponentActivity() {
                 if (requestedOrientation != targetOrientation) {
                     requestedOrientation = targetOrientation
                 }
+                applyAdaptiveSystemBars()
             }
         }
 
@@ -175,16 +178,22 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            applyImmersiveMode()
+            applyAdaptiveSystemBars()
         }
     }
 
-    private fun applyImmersiveMode() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-        insetsController.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyAdaptiveSystemBars(newConfig.orientation)
+    }
+
+    internal fun applyAdaptiveSystemBars(
+        orientation: Int = resources.configuration.orientation
+    ): AdaptiveSystemBarsHelper.SystemBarsMode {
+        return AdaptiveSystemBarsHelper.applySystemBars(
+            window = window,
+            configurationOrientation = orientation
+        )
     }
 }
 

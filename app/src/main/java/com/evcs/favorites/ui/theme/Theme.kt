@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.evcs.favorites.util.AdaptiveSystemBarsHelper
 
 val CarDarkColorScheme = darkColorScheme(
     primary = CarAccentGreen,
@@ -98,8 +99,12 @@ fun EvcsFavoritesTheme(
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
-                window.statusBarColor = colorScheme.background.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme && !isCarMode
+                AdaptiveSystemBarsHelper.applySystemBarsAppearance(
+                    window = window,
+                    view = view,
+                    darkTheme = darkTheme,
+                    isCarMode = isCarMode
+                )
             }
         }
     }
