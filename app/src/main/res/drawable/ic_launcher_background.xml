@@ -1,30 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Deep Luxury Midnight Obsidian base -->
-    <path
-        android:pathData="M0,0h108v108h-108z"
-        android:fillColor="#090E11" />
-
-    <!-- Ambient Dark Emerald / Petrol gradient wash -->
-    <path
-        android:pathData="M54,16 A38,38 0 1,1 53.9,16 Z"
-        android:fillColor="#04201E"
-        android:fillAlpha="0.8" />
-
-    <!-- Subtle Radiant Energy Bloom -->
-    <path
-        android:pathData="M54,28 A26,26 0 1,1 53.9,28 Z"
-        android:fillColor="#064E3B"
-        android:fillAlpha="0.4" />
-
-    <!-- Soft Core Cyan Glow -->
-    <path
-        android:pathData="M54,38 A16,16 0 1,1 53.9,38 Z"
-        android:fillColor="#0E7490"
-        android:fillAlpha="0.25" />
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="0"
+                android:endX="54"
+                android:endY="108"
+                android:type="linear">
+                <item android:color="#14221F" android:offset="0.0" />
+                <item android:color="#070D0C" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
 </vector>

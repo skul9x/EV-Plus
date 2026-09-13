@@ -1,90 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ======================================================== -->
-    <!-- 1. AMBIENT NEON GLOW PASS (Soft lighting underneath)    -->
-    <!-- ======================================================== -->
-
-    <!-- Ambient Glow: Letter E -->
+    <!-- Stylized Letter E (Solid Crisp White) -->
     <path
-        android:pathData="M47,36 L35,36 C29,36 26,42 26,54 C26,66 29,72 35,72 L47,72 M26,54 L40,54"
-        android:strokeWidth="6"
-        android:strokeColor="#0284C7"
-        android:strokeAlpha="0.30"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000" />
+        android:pathData="M 35.3,39.3 L 50.0,39.3 L 51.3,40.0 L 51.7,41.4 L 51.2,44.2 L 50.3,45.6 L 48.8,46.3 L 39.7,46.3 L 38.9,50.9 L 46.6,50.9 L 47.8,51.5 L 48.3,53.0 L 47.9,55.0 L 47.0,56.5 L 45.4,57.1 L 37.7,57.1 L 36.9,61.7 L 46.0,61.7 L 47.3,62.4 L 47.8,63.8 L 47.3,66.6 L 46.3,68.0 L 44.8,68.7 L 30.1,68.7 L 28.8,68.0 L 28.4,66.6 L 32.8,41.4 L 33.8,40.0 Z"
+        android:fillColor="#FFFFFF" />
 
-    <!-- Ambient Glow: Lightning Bolt -->
+    <!-- Stylized Letter V - Left Stem (Solid Crisp White) -->
     <path
-        android:pathData="M57,28 L45,51 L53,51 L48,80 L64,48 L56,48 Z"
-        android:strokeWidth="5"
-        android:strokeColor="#059669"
-        android:strokeAlpha="0.35"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#042F2E"
-        android:fillAlpha="0.40" />
+        android:pathData="M 53.5,39.3 L 59.1,39.3 L 59.6,60.3 L 56.6,67.3 L 54.6,68.7 L 53.2,68.7 L 52.5,67.0 L 53.5,39.3 Z"
+        android:fillColor="#FFFFFF" />
 
-    <!-- Ambient Glow: V Right Wing -->
+    <!-- Stylized Letter V - Right Stem (Electric Emerald) -->
     <path
-        android:pathData="M74,38 L62,65"
-        android:strokeWidth="6"
-        android:strokeColor="#059669"
-        android:strokeAlpha="0.30"
-        android:strokeLineCap="round" />
+        android:pathData="M 59.6,60.3 L 68.9,39.3 L 74.5,39.3 L 63.2,65.9 L 61.0,68.3 L 58.8,68.7 L 56.8,68.0 L 56.6,67.3 L 59.6,60.3 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="59.6"
+                android:startY="60.3"
+                android:endX="74.5"
+                android:endY="39.3"
+                android:type="linear">
+                <item android:color="#059669" android:offset="0.0" />
+                <item android:color="#10B981" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
-    <!-- Ambient Glow: Plus Symbol -->
+    <!-- Superscript Plus (+) - Horizontal Bar -->
     <path
-        android:pathData="M67,66 L77,66 M72,61 L72,71"
-        android:strokeWidth="5"
-        android:strokeColor="#0284C7"
-        android:strokeAlpha="0.35"
-        android:strokeLineCap="round" />
+        android:pathData="M 72.0,41.8 L 80.4,41.8 L 80.0,43.9 L 71.6,43.9 Z"
+        android:fillColor="#10B981" />
 
-    <!-- ======================================================== -->
-    <!-- 2. CRISP FOREGROUND EMBLEM (Minimalist & Refined Lines)   -->
-    <!-- ======================================================== -->
-
-    <!-- Modern Letter E (Electric Cyan) -->
+    <!-- Superscript Plus (+) - Vertical Bar -->
     <path
-        android:pathData="M47,36 L35,36 C29,36 26,42 26,54 C26,66 29,72 35,72 L47,72 M26,54 L40,54"
-        android:strokeWidth="3.2"
-        android:strokeColor="#38BDF8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000" />
-
-    <!-- Lightning Bolt Interior Sheen (Subtle Glassmorphic fill) -->
-    <path
-        android:pathData="M57,28 L45,51 L53,51 L48,80 L64,48 L56,48 Z"
-        android:fillColor="#10B981"
-        android:fillAlpha="0.12" />
-
-    <!-- High-Voltage Lightning Bolt Contour (Neon Emerald & Pure White Apex) -->
-    <path
-        android:pathData="M57,28 L45,51 L53,51 L48,80 L64,48 L56,48 Z"
-        android:strokeWidth="3.2"
-        android:strokeColor="#10B981"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000" />
-
-    <!-- V-Monogram Right Wing (Emerald-Mint Slash) -->
-    <path
-        android:pathData="M74,38 L62,65"
-        android:strokeWidth="3.2"
-        android:strokeColor="#34D399"
-        android:strokeLineCap="round" />
-
-    <!-- Plus Symbol (+) - Precision Accent (Vibrant Cyan) -->
-    <path
-        android:pathData="M67,66 L77,66 M72,61 L72,71"
-        android:strokeWidth="2.6"
-        android:strokeColor="#00F2FE"
-        android:strokeLineCap="round" />
+        android:pathData="M 75.7,38.6 L 77.8,38.6 L 76.3,47.0 L 74.2,47.0 Z"
+        android:fillColor="#10B981" />
 </vector>
