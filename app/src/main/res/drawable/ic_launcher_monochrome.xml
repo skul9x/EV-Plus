@@ -5,46 +5,35 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Outer Keyline Ring for Android 13+ Themed Icons -->
+    <!-- Minimalist Monogram E -->
     <path
-        android:pathData="M54,26 A28,28 0 1,1 53.9,26 Z"
-        android:strokeWidth="1.5"
+        android:pathData="M47,36 L35,36 C29,36 26,42 26,54 C26,66 29,72 35,72 L47,72 M26,54 L40,54"
+        android:strokeWidth="3.2"
         android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.45"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
         android:fillColor="#00000000" />
 
-    <!-- E Plug Housing Backbone -->
+    <!-- Minimalist Lightning Bolt V-bridge -->
     <path
-        android:pathData="M28,38 C28,36.5 29.5,35 31,35 L33,35 C34.5,35 35.5,36 35.5,37.5 L35.5,70.5 C35.5,72 34.5,73 33,73 L31,73 C29.5,73 28,71.5 28,70 Z"
-        android:fillColor="#FFFFFF" />
+        android:pathData="M57,28 L45,51 L53,51 L48,80 L64,48 L56,48 Z"
+        android:strokeWidth="3.2"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
 
-    <!-- E Top Pin -->
+    <!-- V-Monogram Right Wing -->
     <path
-        android:pathData="M34,36 L43,36 C44.7,36 46,37.3 46,39 C46,40.7 44.7,42 43,42 L34,42 Z"
-        android:fillColor="#FFFFFF" />
+        android:pathData="M74,38 L62,65"
+        android:strokeWidth="3.2"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
 
-    <!-- E Middle Pin -->
+    <!-- Plus Symbol (+) -->
     <path
-        android:pathData="M34,51 L41.5,51 C43.2,51 44.5,52.3 44.5,54 C44.5,55.7 43.2,57 41.5,57 L34,57 Z"
-        android:fillColor="#FFFFFF" />
-
-    <!-- E Bottom Pin -->
-    <path
-        android:pathData="M34,66 L43,66 C44.7,66 46,67.3 46,69 C46,70.7 44.7,72 43,72 L34,72 Z"
-        android:fillColor="#FFFFFF" />
-
-    <!-- Clean V Lightning Bolt Silhouette (No overlapping shadows) -->
-    <path
-        android:pathData="M53,27 L38,52 L48,52 L43,78 L66,48 L55,48 L60,27 Z"
-        android:fillColor="#FFFFFF" />
-
-    <!-- Plus Symbol - Horizontal Bar -->
-    <path
-        android:pathData="M65,34.5 L75,34.5 C75.6,34.5 76,34.9 76,35.5 L76,36.5 C76,37.1 75.6,37.5 75,37.5 L65,37.5 C64.4,37.5 64,37.1 64,36.5 L64,35.5 C64,34.9 64.4,34.5 65,34.5 Z"
-        android:fillColor="#FFFFFF" />
-
-    <!-- Plus Symbol - Vertical Bar -->
-    <path
-        android:pathData="M68.5,31 L71.5,31 C72.1,31 72.5,31.4 72.5,32 L72.5,40 C72.5,40.6 72.1,41 71.5,41 L68.5,41 C67.9,41 67.5,40.6 67.5,40 L67.5,32 C67.5,31.4 67.9,31 68.5,31 Z"
-        android:fillColor="#FFFFFF" />
+        android:pathData="M67,66 L77,66 M72,61 L72,71"
+        android:strokeWidth="2.6"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
 </vector>
