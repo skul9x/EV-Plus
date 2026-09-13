@@ -1,5 +1,6 @@
 package com.evcs.favorites.car
 
+import android.annotation.SuppressLint
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
@@ -17,9 +18,16 @@ import androidx.lifecycle.lifecycleScope
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsRepository
 import com.evcs.favorites.di.DefaultAppContainer
+import com.evcs.favorites.domain.location.DistanceCalculator
+import com.google.android.gms.location.LocationServices
+import kotlin.coroutines.resume
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Main automotive screen rendering charging stations on [PlaceListMapTemplate].
@@ -30,11 +38,20 @@ class MainCarScreen(
     carContext: CarContext,
     private val repository: EvcsRepository? = null,
     private val stationProvider: (() -> List<Station>)? = null,
-    private val onNavigateAction: ((Station) -> Unit)? = null
+    private val onNavigateAction: ((Station) -> Unit)? = null,
+    private val permissionChecker: ((String) -> Int)? = null,
+    private val locationResolver: (suspend () -> Pair<Double, Double>?)? = null,
+    private val coroutineScope: CoroutineScope? = null,
+    private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 ) : Screen(carContext) {
 
     private var isLoading: Boolean = false
     private var stations: List<Station> = emptyList()
+    private var refreshJob: Job? = null
+    private var currentUserLocation: Pair<Double, Double>? = null
+
+    private val scope: CoroutineScope
+        get() = coroutineScope ?: lifecycleScope
 
     init {
         loadInitialStations()
@@ -44,8 +61,12 @@ class MainCarScreen(
 
     fun isLoading(): Boolean = isLoading
 
+    fun getRefreshJob(): Job? = refreshJob
+
+    fun getCurrentUserLocation(): Pair<Double, Double>? = currentUserLocation
+
     fun updateStations(newStations: List<Station>) {
-        stations = newStations
+        stations = CarStationFormatter.sortStationsByProximity(newStations, currentUserLocation)
         isLoading = false
         invalidate()
     }
@@ -57,22 +78,21 @@ class MainCarScreen(
 
     private fun loadInitialStations() {
         if (stationProvider != null) {
-            stations = stationProvider.invoke()
-        } else {
-            val repo = repository ?: resolveRepository()
-            val cached = repo?.getCachedFavorites().orEmpty()
-            if (cached.isNotEmpty()) {
-                stations = cached
-            }
+            stations = CarStationFormatter.sortStationsByProximity(stationProvider.invoke(), currentUserLocation)
+        }
+        if (stations.isEmpty()) {
+            refreshStations()
         }
     }
 
     fun refreshStations() {
+        refreshJob?.cancel()
         isLoading = true
         invalidate()
 
         if (stationProvider != null) {
-            stations = stationProvider.invoke()
+            val rawStations = stationProvider.invoke()
+            stations = CarStationFormatter.sortStationsByProximity(rawStations, currentUserLocation)
             isLoading = false
             invalidate()
             return
@@ -80,14 +100,39 @@ class MainCarScreen(
 
         val repo = repository ?: resolveRepository()
         if (repo != null) {
-            lifecycleScope.launch {
+            refreshJob = scope.launch {
                 try {
-                    val result = withContext(Dispatchers.IO) {
-                        repo.getFavorites()
+                    // Pre-populate with cached stations on IO dispatcher if currently empty
+                    if (stations.isEmpty()) {
+                        val cached = withContext(ioDispatcher) {
+                            repo.getCachedFavorites()
+                        }
+                        if (cached.isNotEmpty()) {
+                            stations = CarStationFormatter.sortStationsByProximity(cached, currentUserLocation)
+                            invalidate()
+                        }
                     }
-                    stations = result.getOrNull() ?: repo.getCachedFavorites()
+
+                    // Retrieve last known location via location resolver / FusedLocationProviderClient
+                    val loc = resolveUserLocation()
+                    if (loc != null) {
+                        currentUserLocation = loc
+                    }
+
+                    // Remote fetch on Dispatchers.IO
+                    val result = withContext(ioDispatcher) {
+                        repo.getFavorites(currentUserLocation?.first, currentUserLocation?.second)
+                    }
+
+                    val freshOrCached = result.getOrNull() ?: withContext(ioDispatcher) {
+                        repo.getCachedFavorites()
+                    }
+                    stations = CarStationFormatter.sortStationsByProximity(freshOrCached, currentUserLocation)
                 } catch (_: Exception) {
-                    stations = repo.getCachedFavorites()
+                    val fallbackCached = withContext(ioDispatcher) {
+                        repo.getCachedFavorites()
+                    }
+                    stations = CarStationFormatter.sortStationsByProximity(fallbackCached, currentUserLocation)
                 } finally {
                     isLoading = false
                     invalidate()
@@ -99,11 +144,47 @@ class MainCarScreen(
         }
     }
 
+    @SuppressLint("MissingPermission")
+    private suspend fun resolveUserLocation(): Pair<Double, Double>? {
+        if (locationResolver != null) {
+            return locationResolver.invoke()
+        }
+        if (!hasLocationPermission) {
+            return null
+        }
+        return withContext(ioDispatcher) {
+            try {
+                val client = LocationServices.getFusedLocationProviderClient(carContext)
+                withTimeoutOrNull(2_000L) {
+                    suspendCancellableCoroutine<android.location.Location?> { cont ->
+                        client.lastLocation
+                            .addOnSuccessListener { loc ->
+                                if (cont.isActive) cont.resume(loc)
+                            }
+                            .addOnFailureListener {
+                                if (cont.isActive) cont.resume(null)
+                            }
+                    }
+                }?.let { Pair(it.latitude, it.longitude) }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     private val effectiveCarApiLevel: Int
         get() = try {
             carContext.carAppApiLevel
         } catch (_: IllegalStateException) {
             CarServiceConfig.MIN_CAR_API_LEVEL
+        }
+
+    val hasLocationPermission: Boolean
+        get() {
+            val check = permissionChecker ?: { perm: String -> carContext.checkSelfPermission(perm) }
+            val fine = check(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val coarse = check(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            return fine || coarse
         }
 
     fun navigateToStation(station: Station) {
@@ -115,7 +196,8 @@ class MainCarScreen(
     }
 
     fun buildItemList(): ItemList {
-        val displayStations = CarStationFormatter.truncateStations(stations, CarPaneSpec.MAX_LIST_ITEMS)
+        val sortedStations = CarStationFormatter.sortStationsByProximity(stations, currentUserLocation)
+        val displayStations = CarStationFormatter.truncateStations(sortedStations, CarPaneSpec.MAX_LIST_ITEMS)
         val itemListBuilder = ItemList.Builder()
 
         if (displayStations.isEmpty()) {
@@ -127,18 +209,11 @@ class MainCarScreen(
                     .setMarker(PlaceMarker.Builder().setColor(markerColor).build())
                     .build()
 
-                val navAction = Action.Builder()
-                    .setTitle(CarPaneSpec.ACTION_NAVIGATE_AND_MONITOR)
-                    .setOnClickListener {
-                        navigateToStation(station)
-                    }
-                    .build()
-
-                val row = Row.Builder()
+                val rowBuilder = Row.Builder()
                     .setTitle(CarStationFormatter.formatTitle(station))
-                    .addText(CarStationFormatter.formatSubtitle(station))
+                    .addText(CarStationFormatter.formatSubtitleSpannable(station))
                     .setMetadata(Metadata.Builder().setPlace(place).build())
-                    .addAction(navAction)
+                    .setBrowsable(true)
                     .setOnClickListener {
                         screenManager.push(
                             StationDetailCarScreen(
@@ -148,9 +223,8 @@ class MainCarScreen(
                             )
                         )
                     }
-                    .build()
 
-                itemListBuilder.addItem(row)
+                itemListBuilder.addItem(rowBuilder.build())
             }
         }
         return itemListBuilder.build()
@@ -170,7 +244,7 @@ class MainCarScreen(
             val loadingBuilder = PlaceListMapTemplate.Builder()
                 .setTitle(CarPaneSpec.MAIN_SCREEN_TITLE)
                 .setLoading(true)
-                .setCurrentLocationEnabled(true)
+                .setCurrentLocationEnabled(hasLocationPermission)
                 .setActionStrip(actionStrip)
 
             if (effectiveCarApiLevel >= 5) {
@@ -182,20 +256,10 @@ class MainCarScreen(
         val itemList = buildItemList()
         val templateBuilder = PlaceListMapTemplate.Builder()
             .setTitle(CarPaneSpec.MAIN_SCREEN_TITLE)
-            .setCurrentLocationEnabled(true)
+            .setCurrentLocationEnabled(hasLocationPermission)
             .setActionStrip(actionStrip)
 
-        try {
-            templateBuilder.setItemList(itemList)
-        } catch (_: Exception) {
-            // In JVM unit tests without Robolectric, Android's SpannableString.getSpans() stub returns null,
-            // triggering an NPE in ModelUtils.checkCarTextHasSpanType. Safely inject mItemList for unit tests.
-            try {
-                val field = PlaceListMapTemplate.Builder::class.java.getDeclaredField("mItemList")
-                field.isAccessible = true
-                field.set(templateBuilder, itemList)
-            } catch (_: Exception) {}
-        }
+        templateBuilder.setItemList(itemList)
 
         if (effectiveCarApiLevel >= 5) {
             templateBuilder.setOnContentRefreshListener { refreshStations() }

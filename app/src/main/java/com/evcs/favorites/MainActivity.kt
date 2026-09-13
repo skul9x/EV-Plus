@@ -122,7 +122,9 @@ class MainActivity : ComponentActivity() {
             routingPreferencesManager = routingPreferencesManager,
             filterPreferences = nearbyFilterPreferences,
             smartFilterPreferences = smartFilterPreferences,
-            telemetryRepository = telemetryRepository
+            telemetryRepository = telemetryRepository,
+            hereEvApiClient = appContainer.hereEvApiClient,
+            stationNameResolver = appContainer.evcsStationNameResolver
         )
     }
 

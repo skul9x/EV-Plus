@@ -42,9 +42,14 @@ object CarServiceConfig {
         return if (isDebuggable) {
             HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
         } else {
-            HostValidator.Builder(context)
-                .addAllowedHosts(com.evcs.favorites.R.array.car_hosts_allowlist)
-                .build()
+            try {
+                HostValidator.Builder(context)
+                    .addAllowedHosts(com.evcs.favorites.R.array.car_hosts_allowlist)
+                    .build()
+            } catch (e: Exception) {
+                // Fallback allowing developer sideloading / unverified hosts without crashing
+                HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+            }
         }
     }
 

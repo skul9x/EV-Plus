@@ -100,8 +100,8 @@ fun NearbyLandscapeScreen(
     }
 
     // Auto-select nearest station upon search completion when selection is null
-    LaunchedEffect(uiState.top10DisplayStations, stationDetailState.station, hasAutoSelected) {
-        if (!hasAutoSelected && stationDetailState.station == null && uiState.top10DisplayStations.isNotEmpty()) {
+    LaunchedEffect(uiState.top10DisplayStations, stationDetailState.station, hasAutoSelected, uiState.isLoading) {
+        if (!uiState.isLoading && !hasAutoSelected && stationDetailState.station == null && uiState.top10DisplayStations.isNotEmpty()) {
             hasAutoSelected = true
             val nearest = AdaptiveLayoutHelper.resolveAutoSelectedStation(
                 isLandscape = true,
@@ -152,7 +152,7 @@ fun NearbyLandscapeScreen(
             ) {
                 when {
                     // Initial State (before search)
-                    !uiState.hasSearched && !uiState.isLocating && !uiState.isSearching -> {
+                    !uiState.hasSearched && !uiState.isLocating && !uiState.isSearching && !uiState.isLoading -> {
                         NearbyLandscapeInitialHero(
                             uiState = uiState,
                             onScanClick = onScanClick,
@@ -166,7 +166,7 @@ fun NearbyLandscapeScreen(
                     }
 
                     // Loading State
-                    !uiState.hasSearched && (uiState.isLocating || uiState.isSearching) -> {
+                    !uiState.hasSearched && (uiState.isLocating || uiState.isSearching || uiState.isLoading) -> {
                         NearbyLandscapeLoading(uiState = uiState)
                     }
 
@@ -202,9 +202,33 @@ fun NearbyLandscapeScreen(
                                 )
                             }
 
-                            // Note: Filter summary count pill is eliminated in landscape mode!
-                            // Cards begin directly below filter bar / progress indicator.
-                            if (uiState.top10DisplayStations.isEmpty()) {
+                            // Content: Loading spinner vs Empty state vs Station cards
+                            if (uiState.isLoading) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = EmeraldPrimary,
+                                            strokeWidth = 3.dp,
+                                            modifier = Modifier.size(40.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = "Đang tìm kiếm trạm AC...",
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            } else if (uiState.top10DisplayStations.isEmpty()) {
                                 NearbyLandscapeEmptyFilterContent(onClearFilters = onClearFilters)
                             } else {
                                 val isDcFilterActive = remember(uiState.activeFilterMode, uiState.isDcSubFilterVisible, uiState.selectedDcTier, uiState.savedCustomConfig) {
@@ -237,7 +261,10 @@ fun NearbyLandscapeScreen(
                                             isCarMode = true,
                                             isCompact = true,
                                             filterDcOnly = isDcFilterActive,
-                                            isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC
+                                            isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC ||
+                                                (uiState.activeFilterMode == SmartFilterMode.CUSTOM &&
+                                                 uiState.savedCustomConfig?.mode == com.evcs.favorites.domain.model.CustomFilterMode.QUICK_CHIP &&
+                                                 uiState.savedCustomConfig.quickChip == com.evcs.favorites.domain.model.QuickChipOption.AC)
                                         )
                                     }
                                 }
@@ -395,6 +422,7 @@ private fun NearbyLandscapeLoading(
     modifier: Modifier = Modifier
 ) {
     val loadingText = when {
+        uiState.isLoading -> "Đang tìm kiếm và xác thực trạm AC..."
         uiState.isLocating -> "Đang xác định vị trí GPS..."
         uiState.isSearching -> "Đang tải dữ liệu trạm sạc..."
         uiState.isRoutingLoading -> "Đang tính toán lộ trình..."

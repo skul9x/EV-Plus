@@ -49,7 +49,10 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
     }
 
     override val hereEvApiClient: HereEvApiClient by lazy {
-        HereEvApiClient(oauthManager = hereOAuthManager)
+        HereEvApiClient(
+            oauthManager = hereOAuthManager,
+            stationNameResolver = evcsStationNameResolver
+        )
     }
 
     override val sessionManager: SessionManager by lazy {

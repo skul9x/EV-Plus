@@ -38,10 +38,11 @@ class StationDetailCarScreen(
             paneBuilder.addRow(rowBuilder.build())
         }
 
-        // Primary Action: "⚡ DẪN ĐƯỜNG & THEO DÕI" with CarColor.GREEN
+        // Primary Action: "⚡ DẪN ĐƯỜNG & THEO DÕI" with CarColor.GREEN and Action.FLAG_PRIMARY
         val primaryAction = Action.Builder()
             .setTitle(paneSpec.primaryActionTitle)
             .setBackgroundColor(CarColor.GREEN)
+            .setFlags(Action.FLAG_PRIMARY)
             .setOnClickListener {
                 if (onNavigateAction != null) {
                     onNavigateAction.invoke(station)

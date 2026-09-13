@@ -59,6 +59,26 @@ data class HereEvStation(
         evse?.forEach { e -> list.addAll(e.connectors) }
         return list
     }
+
+    /**
+     * Checks whether this station possesses at least one car AC charging connector (11kW or 22kW)
+     * with verified live available plugs (numberOfAvailable > 0 and status is AVAILABLE).
+     * Stations where all AC ports are occupied, out-of-service, or non-car tiers (e.g. 3.5kW, 7kW) return false.
+     */
+    fun hasAvailableAcConnector(): Boolean {
+        val acConnectors = allConnectors().filter { it.isCarAcCharging }
+        if (acConnectors.isEmpty()) return false
+
+        return acConnectors.any { conn ->
+            val avail = conn.availableCount
+            val statuses = conn.allStatuses()
+            if (statuses.isNotEmpty()) {
+                avail > 0 && statuses.any { it.isAvailable }
+            } else {
+                avail > 0
+            }
+        }
+    }
 }
 
 /**
@@ -121,7 +141,9 @@ data class HereConnector(
     val maxPowerLevel: Double = 0.0, // in kW (e.g. 60.0) or Watts (e.g. 60000.0)
     val powerType: String? = null, // "DC", "AC_3_PHASE", "AC_1_PHASE"
     val connectorStatuses: HereConnectorStatusesContainer? = null,
-    val rawStatuses: List<HereConnectorStatus>? = null
+    val rawStatuses: List<HereConnectorStatus>? = null,
+    val numberOfAvailable: Int? = null,
+    val numberOfConnectors: Int? = null
 ) {
     fun allStatuses(): List<HereConnectorStatus> {
         return connectorStatuses?.connectorStatus ?: rawStatuses ?: emptyList()
@@ -143,6 +165,34 @@ data class HereConnector(
             }
             return powerKw >= 20.0 && powerKw != 22.0
         }
+
+    /**
+     * Identifies whether this connector represents a standard car AC charger (11kW or 22kW).
+     * Excludes low-power scooter AC chargers (e.g. 3.5kW, 7kW).
+     */
+    val isCarAcCharging: Boolean
+        get() {
+            if (powerType != null && powerType.contains("DC", ignoreCase = true)) {
+                return false
+            }
+            val kw = powerKw
+            return kw == 11.0 || kw == 22.0 || maxPowerLevel == 11.0 || maxPowerLevel == 22.0
+        }
+
+    /**
+     * Computes verified available slot count from explicit fields or individual statuses.
+     */
+    val availableCount: Int
+        get() {
+            if (numberOfAvailable != null) return numberOfAvailable
+            if (connectorStatuses?.numberOfAvailable != null) return connectorStatuses.numberOfAvailable
+            val statuses = allStatuses()
+            return if (statuses.isNotEmpty()) {
+                statuses.count { it.isAvailable }
+            } else {
+                0
+            }
+        }
 }
 
 /**
@@ -150,7 +200,8 @@ data class HereConnector(
  */
 @Serializable
 data class HereConnectorStatusesContainer(
-    val connectorStatus: List<HereConnectorStatus> = emptyList()
+    val connectorStatus: List<HereConnectorStatus> = emptyList(),
+    val numberOfAvailable: Int? = null
 )
 
 /**
@@ -231,12 +282,13 @@ object HereModelMapper {
      */
     fun aggregatePowerTiers(
         connectors: List<HereConnector>,
-        dcOnly: Boolean = true
+        dcOnly: Boolean = true,
+        carOnly: Boolean = true
     ): List<HerePowerTierAggregation> {
-        val filtered = if (dcOnly) {
-            connectors.filter { it.isDcCharging }
-        } else {
-            connectors
+        val filtered = when {
+            dcOnly -> connectors.filter { it.isDcCharging }
+            carOnly -> connectors.filter { it.isDcCharging || it.isCarAcCharging }
+            else -> connectors
         }
 
         // Group connectors by normalized power tier watts
@@ -259,8 +311,10 @@ object HereModelMapper {
                             ?: status.physicalReference?.takeIf { it.isNotBlank() }?.let { guns.add(it) }
                     }
                 } else {
-                    // If no explicit connectorStatus array provided, treat connector as 1 slot
-                    totalSum++
+                    val avail = conn.numberOfAvailable ?: 0
+                    val total = conn.numberOfConnectors ?: (if (avail > 0) avail else 1)
+                    availableSum += avail
+                    totalSum += total
                 }
             }
 
@@ -283,9 +337,10 @@ object HereModelMapper {
      */
     fun mapStationToDomain(
         hereStation: HereEvStation,
-        dcOnly: Boolean = true
+        dcOnly: Boolean = true,
+        carOnly: Boolean = true
     ): Station {
-        val aggregations = aggregatePowerTiers(hereStation.allConnectors(), dcOnly = dcOnly)
+        val aggregations = aggregatePowerTiers(hereStation.allConnectors(), dcOnly = dcOnly, carOnly = carOnly)
         val powerPorts = aggregations.map { it.toDomainPowerPort() }
 
         val totalAvailable = powerPorts.sumOf { it.availablePlugs }

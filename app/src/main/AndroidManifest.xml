@@ -50,7 +50,7 @@
             android:resource="@xml/automotive_app_desc" />
         <meta-data
             android:name="com.google.android.gms.car.notification.SmallIcon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_car_notification" />
 
         <activity
             android:name=".MainActivity"

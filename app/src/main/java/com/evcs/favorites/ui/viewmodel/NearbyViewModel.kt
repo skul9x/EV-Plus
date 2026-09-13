@@ -13,12 +13,16 @@ import com.evcs.favorites.data.routing.MultiTierRoutingCoordinator
 import com.evcs.favorites.data.routing.RoutingDestination
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
 import com.evcs.favorites.data.routing.RoutingSettings
+import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.domain.filter.NearbyStationFilter
 import com.evcs.favorites.domain.location.LocationService
 import com.evcs.favorites.domain.model.CustomFilterConfig
+import com.evcs.favorites.domain.model.CustomFilterMode
 import com.evcs.favorites.domain.model.DcWattageTier
+import com.evcs.favorites.domain.model.QuickChipOption
 import com.evcs.favorites.data.repository.EvcsTelemetryRepository
 import com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource
+import com.evcs.favorites.focus.EvcsStationNameResolver
 import com.evcs.favorites.ui.state.StationDetailUiState
 import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.domain.model.WattageOption
@@ -28,6 +32,7 @@ import com.evcs.favorites.ui.state.NearbyUiEvent
 import com.evcs.favorites.ui.state.NearbyUiState
 import com.evcs.favorites.util.DebounceHelper
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -52,6 +57,7 @@ import kotlinx.coroutines.withContext
  * - Top 10 nearest stations extraction via Haversine calculation.
  * - Targeted driving metrics dispatch strictly for the Top 10 nearest stations via [MultiTierRoutingCoordinator].
  * - Cloud favorites toggle with authentication guard and two-way state synchronization.
+ * - Zero-login live telemetry and authentic EVCS name resolution via HERE Maps EV API hybrid pipeline.
  */
 class NearbyViewModel(
     private val repository: EvcsRepository,
@@ -62,11 +68,18 @@ class NearbyViewModel(
     private val filterPreferences: NearbyFilterPreferences? = null,
     private val smartFilterPreferences: SmartFilterPreferences? = null,
     telemetryRepository: EvcsTelemetryRepository? = null,
+    private val hereEvApiClient: HereEvApiClient? = null,
+    private val stationNameResolver: EvcsStationNameResolver? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val defaultDispatcher: CoroutineDispatcher = if (ioDispatcher === Dispatchers.IO) Dispatchers.Default else ioDispatcher,
     private val routingDebounceMs: Long = 600L
 ) : ViewModel() {
+
+    private val hereClient: HereEvApiClient = hereEvApiClient ?: HereEvApiClient(
+        stationNameResolver = stationNameResolver
+    )
+    private val nameResolver: EvcsStationNameResolver? = stationNameResolver
 
     private val telemetryRepo: EvcsTelemetryRepository = telemetryRepository ?: EvcsTelemetryRepository(
         dataSource = EvcsTelemetryDataSource(sessionManager = sessionManager, ioDispatcher = ioDispatcher),
@@ -171,6 +184,23 @@ class NearbyViewModel(
     var routingDebounceJob: Job? = null
         private set
 
+    var acDiscoveryJob: Job? = null
+        private set
+
+    /**
+     * Checks if the active filter represents AC charging mode:
+     * either SmartFilterMode.AC or QuickChipOption.AC in CustomFilterMode.QUICK_CHIP.
+     */
+    fun isAcModeActive(
+        mode: SmartFilterMode = _uiState.value.activeFilterMode,
+        config: CustomFilterConfig? = _uiState.value.savedCustomConfig ?: smartFilterPrefs.getCustomConfig()
+    ): Boolean {
+        return mode == SmartFilterMode.AC ||
+                (mode == SmartFilterMode.CUSTOM &&
+                 config?.mode == CustomFilterMode.QUICK_CHIP &&
+                 config.quickChip == QuickChipOption.AC)
+    }
+
     init {
         // Observe repository favorite IDs to keep UI state automatically in sync
         viewModelScope.launch(dispatcher) {
@@ -210,13 +240,14 @@ class NearbyViewModel(
      */
     fun scanNearbyStations(): Job {
         scanJob?.let { activeJob ->
-            if (activeJob.isActive && (_uiState.value.isLocating || _uiState.value.isSearching)) {
+            if (activeJob.isActive && (_uiState.value.isLocating || _uiState.value.isSearching || _uiState.value.isLoading)) {
                 return activeJob
             }
         }
         scanJob?.cancel()
         routingJob?.cancel()
         routingDebounceJob?.cancel()
+        acDiscoveryJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             if (!locationService.hasLocationPermission()) {
@@ -232,6 +263,7 @@ class NearbyViewModel(
                     it.copy(
                         isLocating = false,
                         isSearching = false,
+                        isLoading = false,
                         errorMessage = "Không thể lấy vị trí hiện tại. Vui lòng kiểm tra GPS và thử lại."
                     )
                 }
@@ -241,43 +273,59 @@ class NearbyViewModel(
             val lat = location.latitude
             val lon = location.longitude
 
-            _uiState.update {
-                it.copy(
-                    isLocating = false,
-                    isSearching = true,
-                    userLatitude = lat,
-                    userLongitude = lon,
-                    errorMessage = null
-                )
-            }
-
-            val searchResult = repository.searchNearbyVinFast(lat, lon)
-            if (searchResult.isFailure) {
+            if (isAcModeActive()) {
                 _uiState.update {
                     it.copy(
+                        isLocating = false,
                         isSearching = false,
-                        errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
+                        userLatitude = lat,
+                        userLongitude = lon,
+                        hasSearched = true,
+                        isLoading = true,
+                        errorMessage = null
                     )
                 }
-                return@launch
-            }
+                executeAcHybridPipeline(lat, lon, triggerType = RefreshTriggerType.USER_REFRESH)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isLocating = false,
+                        isSearching = true,
+                        isLoading = false,
+                        userLatitude = lat,
+                        userLongitude = lon,
+                        errorMessage = null
+                    )
+                }
 
-            val raw = searchResult.getOrThrow()
-            _uiState.update {
-                it.copy(
+                val searchResult = repository.searchNearbyVinFast(lat, lon)
+                if (searchResult.isFailure) {
+                    _uiState.update {
+                        it.copy(
+                            isSearching = false,
+                            errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
+                        )
+                    }
+                    return@launch
+                }
+
+                val raw = searchResult.getOrThrow()
+                _uiState.update {
+                    it.copy(
+                        rawStations = raw,
+                        hasSearched = true,
+                        isSearching = false
+                    )
+                }
+
+                executeFilterAndRoutingPipeline(
                     rawStations = raw,
-                    hasSearched = true,
-                    isSearching = false
+                    userLat = lat,
+                    userLon = lon,
+                    selectedWattages = _uiState.value.selectedWattages,
+                    debounce = false
                 )
             }
-
-            executeFilterAndRoutingPipeline(
-                rawStations = raw,
-                userLat = lat,
-                userLon = lon,
-                selectedWattages = _uiState.value.selectedWattages,
-                debounce = false
-            )
         }
         scanJob = job
         return job
@@ -598,13 +646,14 @@ class NearbyViewModel(
      */
     fun refresh(triggerType: RefreshTriggerType = RefreshTriggerType.USER_REFRESH): Job {
         scanJob?.let { activeJob ->
-            if (activeJob.isActive && (_uiState.value.isLocating || _uiState.value.isSearching)) {
+            if (activeJob.isActive && (_uiState.value.isLocating || _uiState.value.isSearching || _uiState.value.isLoading)) {
                 return activeJob
             }
         }
         scanJob?.cancel()
         routingJob?.cancel()
         routingDebounceJob?.cancel()
+        acDiscoveryJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             if (!locationService.hasLocationPermission()) {
@@ -620,6 +669,7 @@ class NearbyViewModel(
                     it.copy(
                         isLocating = false,
                         isSearching = false,
+                        isLoading = false,
                         errorMessage = "Không thể lấy vị trí hiện tại. Vui lòng kiểm tra GPS và thử lại."
                     )
                 }
@@ -629,44 +679,60 @@ class NearbyViewModel(
             val newLat = location.latitude
             val newLon = location.longitude
 
-            _uiState.update {
-                it.copy(
-                    userLatitude = newLat,
-                    userLongitude = newLon,
-                    isLocating = false,
-                    isSearching = true,
-                    errorMessage = null
-                )
-            }
-
-            val searchResult = repository.searchNearbyVinFast(newLat, newLon)
-            if (searchResult.isFailure) {
+            if (isAcModeActive()) {
                 _uiState.update {
                     it.copy(
+                        userLatitude = newLat,
+                        userLongitude = newLon,
+                        isLocating = false,
                         isSearching = false,
-                        errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
+                        hasSearched = true,
+                        isLoading = true,
+                        errorMessage = null
                     )
                 }
-                return@launch
-            }
+                executeAcHybridPipeline(newLat, newLon, triggerType = triggerType)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        userLatitude = newLat,
+                        userLongitude = newLon,
+                        isLocating = false,
+                        isSearching = true,
+                        isLoading = false,
+                        errorMessage = null
+                    )
+                }
 
-            val raw = searchResult.getOrThrow()
-            _uiState.update {
-                it.copy(
+                val searchResult = repository.searchNearbyVinFast(newLat, newLon)
+                if (searchResult.isFailure) {
+                    _uiState.update {
+                        it.copy(
+                            isSearching = false,
+                            errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
+                        )
+                    }
+                    return@launch
+                }
+
+                val raw = searchResult.getOrThrow()
+                _uiState.update {
+                    it.copy(
+                        rawStations = raw,
+                        hasSearched = true,
+                        isSearching = false
+                    )
+                }
+
+                executeFilterAndRoutingPipeline(
                     rawStations = raw,
-                    hasSearched = true,
-                    isSearching = false
+                    userLat = newLat,
+                    userLon = newLon,
+                    selectedWattages = _uiState.value.selectedWattages,
+                    debounce = false,
+                    triggerType = triggerType
                 )
             }
-
-            executeFilterAndRoutingPipeline(
-                rawStations = raw,
-                userLat = newLat,
-                userLon = newLon,
-                selectedWattages = _uiState.value.selectedWattages,
-                debounce = false,
-                triggerType = triggerType
-            )
         }
         scanJob = job
         return job
@@ -760,6 +826,27 @@ class NearbyViewModel(
         val lon = _uiState.value.userLongitude
         val raw = _uiState.value.rawStations
 
+        if (isAcModeActive()) {
+            if (lat != null && lon != null) {
+                acDiscoveryJob?.cancel()
+                routingJob?.cancel()
+                routingDebounceJob?.cancel()
+
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+
+                val job = viewModelScope.launch(dispatcher) {
+                    executeAcHybridPipeline(lat, lon, triggerType = triggerType)
+                }
+                acDiscoveryJob = job
+                return job
+            }
+            return null
+        }
+
+        // Non-AC mode: cancel any pending AC hybrid jobs
+        acDiscoveryJob?.cancel()
+        _uiState.update { it.copy(isLoading = false) }
+
         if (raw.isNotEmpty()) {
             routingJob?.cancel()
             val job = viewModelScope.launch(dispatcher) {
@@ -773,8 +860,162 @@ class NearbyViewModel(
             }
             routingJob = job
             return job
+        } else if (lat != null && lon != null && _uiState.value.hasSearched) {
+            // In case initial scan was performed in AC mode and rawStations is empty, fetch from repository
+            routingJob?.cancel()
+            val job = viewModelScope.launch(dispatcher) {
+                _uiState.update { it.copy(isSearching = true, errorMessage = null) }
+                val searchResult = repository.searchNearbyVinFast(lat, lon)
+                if (searchResult.isFailure) {
+                    _uiState.update {
+                        it.copy(
+                            isSearching = false,
+                            errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
+                        )
+                    }
+                    return@launch
+                }
+                val fetchedRaw = searchResult.getOrThrow()
+                _uiState.update {
+                    it.copy(
+                        rawStations = fetchedRaw,
+                        isSearching = false
+                    )
+                }
+                executeFilterAndRoutingPipeline(
+                    rawStations = fetchedRaw,
+                    userLat = lat,
+                    userLon = lon,
+                    selectedWattages = _uiState.value.selectedWattages,
+                    triggerType = triggerType
+                )
+            }
+            routingJob = job
+            return job
         }
         return null
+    }
+
+    /**
+     * Executes the hybrid pipeline for AC charging stations:
+     * 1. Queries HERE EV API for stations with available AC ports (10km radius).
+     * 2. If no AC stations found, expands search to 20km before concluding empty results.
+     * 3. Resolves authentic station names via EVCS HTML detail pages for Top 10 candidate stations.
+     * 4. Emits resolved stations and clears loading indicator.
+     * 5. Initiates debounced background driving route calculation.
+     */
+    private suspend fun executeAcHybridPipeline(
+        lat: Double,
+        lon: Double,
+        triggerType: RefreshTriggerType = RefreshTriggerType.PASSIVE_BACKGROUND
+    ) {
+        try {
+            val result = withContext(ioDispatcher) {
+                var acResult = hereClient.fetchNearbyAvailableAcStations(
+                    latitude = lat,
+                    longitude = lon,
+                    radiusMeters = 10_000,
+                    maxLimit = 10,
+                    nameResolver = nameResolver
+                )
+                if (acResult.isSuccess && acResult.getOrThrow().isEmpty()) {
+                    acResult = hereClient.fetchNearbyAvailableAcStations(
+                        latitude = lat,
+                        longitude = lon,
+                        radiusMeters = 20_000,
+                        maxLimit = 10,
+                        nameResolver = nameResolver
+                    )
+                }
+                acResult
+            }
+
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc AC"
+                    )
+                }
+                return
+            }
+
+            val resolvedStations = result.getOrThrow()
+            val isUserRefresh = triggerType == RefreshTriggerType.USER_REFRESH
+            val isScrollTrigger = triggerType == RefreshTriggerType.USER_REFRESH || triggerType == RefreshTriggerType.FILTER_CHANGE
+            val refreshTimestamp = if (isScrollTrigger) System.currentTimeMillis() else _uiState.value.lastRefreshTimestamp
+
+            _uiState.update {
+                it.copy(
+                    top10DisplayStations = resolvedStations,
+                    isLoading = false,
+                    isSearching = false,
+                    isLocating = false,
+                    lastRefreshTimestamp = refreshTimestamp,
+                    errorMessage = null
+                )
+            }
+
+            if (isUserRefresh) {
+                _events.send(NearbyUiEvent.ScrollToTop(refreshTimestamp))
+            }
+
+            if (resolvedStations.isNotEmpty()) {
+                routingDebounceJob?.cancel()
+
+                val destinations = resolvedStations.take(10).map { station ->
+                    RoutingDestination(
+                        id = station.id,
+                        latitude = station.latitude,
+                        longitude = station.longitude
+                    )
+                }
+
+                suspend fun calculateAndApplyRoutes() {
+                    val metrics = withContext(ioDispatcher) {
+                        routingCoordinator.calculateRoutes(
+                            originLat = lat,
+                            originLng = lon,
+                            destinations = destinations,
+                            settings = prefsManager.settings.value,
+                            forceRefresh = isUserRefresh
+                        )
+                    }
+                    val routedTop10 = resolvedStations.map { station ->
+                        val m = metrics[station.id]
+                        if (m != null) station.copy(drivingMetrics = m) else station
+                    }
+                    val sorted = withContext(defaultDispatcher) {
+                        NearbyStationFilter.sortByDrivingDistance(routedTop10)
+                    }
+                    _uiState.update {
+                        it.copy(
+                            top10DisplayStations = sorted,
+                            routingMetrics = metrics,
+                            isRoutingLoading = false
+                        )
+                    }
+                }
+
+                if (routingDebounceMs <= 0L) {
+                    calculateAndApplyRoutes()
+                } else {
+                    routingDebounceJob = viewModelScope.launch(dispatcher) {
+                        delay(routingDebounceMs)
+                        calculateAndApplyRoutes()
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = e.message ?: "Lỗi tải trạm sạc AC"
+                )
+            }
+        }
     }
 
     /**
@@ -896,6 +1137,7 @@ class NearbyViewModel(
         scanJob?.cancel()
         routingJob?.cancel()
         routingDebounceJob?.cancel()
+        acDiscoveryJob?.cancel()
         toggleJobs.clear()
         stationDetailCoordinator.dismissStationDetail()
     }
@@ -910,6 +1152,8 @@ class NearbyViewModel(
             filterPreferences: NearbyFilterPreferences? = null,
             smartFilterPreferences: SmartFilterPreferences? = null,
             telemetryRepository: EvcsTelemetryRepository? = null,
+            hereEvApiClient: HereEvApiClient? = null,
+            stationNameResolver: EvcsStationNameResolver? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Main,
             ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
             defaultDispatcher: CoroutineDispatcher = if (ioDispatcher === Dispatchers.IO) Dispatchers.Default else ioDispatcher,
@@ -926,6 +1170,8 @@ class NearbyViewModel(
                     filterPreferences = filterPreferences,
                     smartFilterPreferences = smartFilterPreferences,
                     telemetryRepository = telemetryRepository,
+                    hereEvApiClient = hereEvApiClient,
+                    stationNameResolver = stationNameResolver,
                     dispatcher = dispatcher,
                     ioDispatcher = ioDispatcher,
                     defaultDispatcher = defaultDispatcher,

@@ -9,6 +9,7 @@ import com.evcs.favorites.data.network.AppOkHttpClientProvider
 import com.evcs.favorites.data.network.here.model.HereEvStationsResponse
 import com.evcs.favorites.data.network.here.model.HereModelMapper
 import com.evcs.favorites.domain.location.DistanceCalculator
+import com.evcs.favorites.focus.EvcsStationNameResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -28,12 +29,14 @@ import java.util.concurrent.TimeUnit
  * - Dynamic prox queries (`prox={lat},{lon},{radius}`).
  * - Parsing multi-gun EVSE connector statuses (AVAILABLE vs OCCUPIED).
  * - DC-only port filtering (>= 30kW) and mapping into domain [Station] models.
+ * - Specialized AC discovery with strict 100% availability enforcement and EVCS canonical HTML name resolution.
  */
 open class HereEvApiClient(
     private val oauthManager: HereOAuthManager? = null,
     private val client: OkHttpClient = defaultClient(),
     private val baseUrl: String = DEFAULT_BASE_URL,
-    private val defaultApiKey: String? = VINFAST_EXTRACTED_API_KEY
+    private val defaultApiKey: String? = VINFAST_EXTRACTED_API_KEY,
+    private val stationNameResolver: EvcsStationNameResolver? = null
 ) {
     companion object {
         const val DEFAULT_BASE_URL = "https://ev-v2.cc.api.here.com/ev"
@@ -155,6 +158,65 @@ open class HereEvApiClient(
         }
 
         Result.success(stations)
+    }
+
+    /**
+     * Queries HERE Maps EV API for AC charging stations (11kW and 22kW), strictly filtering for
+     * stations with available ports (numberOfAvailable > 0 and status is AVAILABLE), excluding stations
+     * where all AC ports are OCCUPIED, OTHER, or OUT_OF_SERVICE.
+     * Sorts qualifying stations nearest-first by Haversine distance from [latitude], [longitude],
+     * caps to [maxLimit] (default 10), and resolves authentic names via EVCS HTML detail pages.
+     *
+     * @param latitude Target user latitude.
+     * @param longitude Target user longitude.
+     * @param radiusMeters Search radius in meters (default 10_000m / 10km).
+     * @param maxLimit Maximum stations to return (default 10).
+     * @param nameResolver Optional name resolver instance (defaults to injected constructor resolver).
+     * @return Result containing qualifying [Station] domain models.
+     */
+    open suspend fun fetchNearbyAvailableAcStations(
+        latitude: Double,
+        longitude: Double,
+        radiusMeters: Int = 10_000,
+        maxLimit: Int = 10,
+        nameResolver: EvcsStationNameResolver? = stationNameResolver
+    ): Result<List<Station>> = withContext(Dispatchers.IO) {
+        val rawResult = fetchStationsRaw(latitude, longitude, radiusMeters, maxResults = 50)
+        if (rawResult.isFailure) {
+            return@withContext Result.failure(rawResult.exceptionOrNull()!!)
+        }
+
+        val hereResponse = rawResult.getOrThrow()
+        val qualifyingHereStations = hereResponse.allStations.filter { it.hasAvailableAcConnector() }
+
+        val mappedStations = qualifyingHereStations.map { hereStation ->
+            val domainStation = HereModelMapper.mapStationToDomain(hereStation, dcOnly = false)
+            val distanceKm = DistanceCalculator.calculateDistanceKm(
+                lat1 = latitude,
+                lon1 = longitude,
+                lat2 = domainStation.latitude,
+                lon2 = domainStation.longitude
+            )
+            domainStation.copy(distanceKm = distanceKm)
+        }
+
+        val topStations = mappedStations
+            .sortedBy { it.distanceKm ?: Double.MAX_VALUE }
+            .take(maxLimit)
+
+        val finalStations = if (nameResolver != null && topStations.isNotEmpty()) {
+            nameResolver.resolveStationNamesBatch(topStations)
+        } else {
+            topStations
+        }
+
+        AppDebugLogger.log(
+            tag = DebugLogTag.FOCUS_MODE,
+            level = DebugLogLevel.INFO,
+            message = "fetchNearbyAvailableAcStations tìm thấy ${finalStations.size} trạm AC khả dụng quanh ($latitude, $longitude)"
+        )
+
+        Result.success(finalStations)
     }
 
     /**

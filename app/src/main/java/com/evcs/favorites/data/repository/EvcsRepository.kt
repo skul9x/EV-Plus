@@ -216,7 +216,7 @@ open class EvcsRepository(
     /**
      * Retrieves cached favorites list from persistent storage if available.
      */
-    fun getCachedFavorites(): List<Station> {
+    open fun getCachedFavorites(): List<Station> {
         if (firestoreFavoritesRepository != null) {
             return firestoreFavoritesRepository.getCachedFavorites()
         }

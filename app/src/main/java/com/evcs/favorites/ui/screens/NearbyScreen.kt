@@ -436,8 +436,8 @@ fun NearbyScreen(
                             )
                         }
 
-                        // 2. Initial Full Loading State (GPS locating or raw station search)
-                        !uiState.hasSearched && (uiState.isLocating || uiState.isSearching) -> {
+                        // 2. Initial Full Loading State (GPS locating, raw station search, or AC hybrid resolution)
+                        !uiState.hasSearched && (uiState.isLocating || uiState.isSearching || uiState.isLoading) -> {
                             NearbyLoadingContent(uiState = uiState)
                         }
 
@@ -725,6 +725,7 @@ private fun NearbyLoadingContent(
     modifier: Modifier = Modifier
 ) {
     val loadingText = when {
+        uiState.isLoading -> "Đang tìm kiếm và xác thực trạm sạc AC..."
         uiState.isLocating -> "Đang xác định vị trí GPS..."
         uiState.isSearching -> "Đang tải dữ liệu trạm sạc..."
         uiState.isRoutingLoading -> "Đang tính toán lộ trình Top 10..."
@@ -844,8 +845,40 @@ private fun NearbyResultContent(
             }
         }
 
-        // Content: Empty State vs Stations List
-        if (uiState.top10DisplayStations.isEmpty()) {
+        // Content: Loading State vs Empty State vs Stations List
+        if (uiState.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = EmeraldPrimary,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(52.dp)
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = "Đang tìm kiếm và xác thực trạm sạc AC...",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Đang kiểm tra cổng sạc khả dụng và đối chiếu thông tin trạm",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else if (uiState.top10DisplayStations.isEmpty()) {
             NearbyEmptyFilterContent(onClearFilters = onClearFilters)
         } else {
             val isDcFilterActive = remember(uiState.activeFilterMode, uiState.isDcSubFilterVisible, uiState.selectedDcTier, uiState.savedCustomConfig) {
@@ -878,7 +911,10 @@ private fun NearbyResultContent(
                         isCarMode = isLandscape,
                         isCompact = isLandscape,
                         filterDcOnly = isLandscape && isDcFilterActive,
-                        isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC
+                        isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC ||
+                            (uiState.activeFilterMode == SmartFilterMode.CUSTOM &&
+                             uiState.savedCustomConfig?.mode == com.evcs.favorites.domain.model.CustomFilterMode.QUICK_CHIP &&
+                             uiState.savedCustomConfig.quickChip == com.evcs.favorites.domain.model.QuickChipOption.AC)
                     )
                 }
             }

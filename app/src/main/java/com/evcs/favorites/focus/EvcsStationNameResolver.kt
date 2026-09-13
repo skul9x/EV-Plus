@@ -3,8 +3,17 @@ package com.evcs.favorites.focus
 import com.evcs.favorites.data.api.EvcsApiClient
 import com.evcs.favorites.data.model.SearchStationRaw
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.data.network.AppOkHttpClientProvider
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.util.StationNameSanitizer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -14,11 +23,14 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Prevents generic station names such as "Trạm sạc VinFast" or "VinFast" from Here EV API
  * from masking specific location identifiers (e.g. "VinFast Landmark 81").
  *
- * Provides in-memory caching and matching by station/location ID or coordinate proximity (<= 100 meters).
+ * Provides in-memory caching and matching by station/location ID or coordinate proximity (<= 100 meters),
+ * as well as direct canonical HTML name resolution without persistent caching for hybrid AC workflows.
  */
-class EvcsStationNameResolver(
+open class EvcsStationNameResolver(
     private val searchStationsProvider: (suspend (lat: Double, lon: Double) -> Result<List<SearchStationRaw>>)? = null,
-    private val apiClient: EvcsApiClient? = null
+    private val apiClient: EvcsApiClient? = null,
+    private val httpClient: OkHttpClient = AppOkHttpClientProvider.getSharedClient(),
+    private val htmlBaseUrl: String = DEFAULT_HTML_BASE_URL
 ) {
     data class CachedStationCoord(
         val latitude: Double,
@@ -31,6 +43,7 @@ class EvcsStationNameResolver(
     private val coordCache = CopyOnWriteArrayList<CachedStationCoord>()
 
     companion object {
+        const val DEFAULT_HTML_BASE_URL = "https://evcs.vn"
         const val MAX_COORDINATE_MATCH_METERS = 100.0
 
         private val GENERIC_NAMES = setOf(
@@ -59,6 +72,56 @@ class EvcsStationNameResolver(
             if (sanitized.isBlank()) return true
             if (sanitized in GENERIC_NAMES) return true
             return false
+        }
+
+        private val TITLE_TAG_REGEX = Regex("""<title[^>]*>([^<]+)</title>""", RegexOption.IGNORE_CASE)
+        private val META_NAME_TITLE_REGEX = Regex("""<meta[^>]*name=["']title["'][^>]*content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+        private val META_CONTENT_FIRST_REGEX = Regex("""<meta[^>]*content=["']([^"']+)["'][^>]*name=["']title["']""", RegexOption.IGNORE_CASE)
+        private val HTML_TITLE_PREFIX_REGEX = Regex("""^(?:Trạm|Tram)\s+(?:sạc|sac)\s+VinFast\s*[-–—:]\s*""", RegexOption.IGNORE_CASE)
+        private val HTML_TITLE_SUFFIX_REGEX = Regex("""\s*[-–—:]\s*(?:Trạm|Tram)\s+(?:Sạc|Sac)\s+EV\s*$""", RegexOption.IGNORE_CASE)
+
+        /**
+         * Extracts raw title from HTML string via <title> tag or <meta name="title">.
+         */
+        fun extractTitleFromHtml(html: String): String? {
+            val raw = TITLE_TAG_REGEX.find(html)?.groupValues?.getOrNull(1)
+                ?: META_NAME_TITLE_REGEX.find(html)?.groupValues?.getOrNull(1)
+                ?: META_CONTENT_FIRST_REGEX.find(html)?.groupValues?.getOrNull(1)
+                ?: return null
+
+            val unescaped = raw.replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&#39;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .trim()
+
+            return unescaped.ifBlank { null }
+        }
+
+        /**
+         * Cleans HTML title by stripping "Trạm sạc VinFast - " prefix and " - Trạm Sạc EV" suffix,
+         * followed by sanitization through [StationNameSanitizer].
+         */
+        fun cleanExtractedTitle(title: String): String {
+            val withoutPrefix = title.replace(HTML_TITLE_PREFIX_REGEX, "").trim()
+            val withoutSuffix = withoutPrefix.replace(HTML_TITLE_SUFFIX_REGEX, "").trim()
+            val sanitized = StationNameSanitizer.sanitize(withoutSuffix).ifBlank { withoutSuffix }.trim()
+            return sanitized
+        }
+
+        /**
+         * Formats fallback name using "VinFast - $fallbackAddress".
+         */
+        fun formatFallbackAddress(fallbackAddress: String = ""): String {
+            val clean = fallbackAddress.trim()
+            return when {
+                clean.isBlank() -> "VinFast - "
+                clean.startsWith("VinFast - ", ignoreCase = true) -> clean
+                clean.startsWith("VinFast", ignoreCase = true) -> "VinFast - ${clean.removePrefix("VinFast").trim().removePrefix("-").trim()}"
+                else -> "VinFast - $clean"
+            }
         }
     }
 
@@ -238,6 +301,86 @@ class EvcsStationNameResolver(
      */
     suspend fun enrichCandidateStation(station: Station): Station {
         return resolveStation(station)
+    }
+
+    /**
+     * Resolves the canonical station name from the EVCS HTML detail page:
+     * `https://evcs.vn/tram-sac-vinfast-${locationId.lowercase()}.html`.
+     *
+     * Uses [EvcsApiClient.USER_AGENT_BROWSER] mobile headers.
+     * Extracts title text from `<title>` or `<meta name="title">`, stripping prefix
+     * "Trạm sạc VinFast - " and suffix " - Trạm Sạc EV".
+     * If request fails, times out (5s), or HTML lacks title, falls back to "VinFast - ${fallbackAddress}".
+     *
+     * Note: Per user specification, results are resolved live and NOT retained in persistent or in-memory cache.
+     */
+    suspend fun resolveStationNameFromHtml(
+        locationId: String,
+        fallbackAddress: String = ""
+    ): String = withContext(Dispatchers.IO) {
+        val cleanLocationId = locationId.trim().lowercase()
+            .removePrefix("tram-sac-vinfast-")
+            .removeSuffix(".html")
+
+        if (cleanLocationId.isBlank()) {
+            return@withContext formatFallbackAddress(fallbackAddress)
+        }
+
+        val cleanBase = htmlBaseUrl.trimEnd('/')
+        val url = "$cleanBase/tram-sac-vinfast-$cleanLocationId.html"
+
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", EvcsApiClient.USER_AGENT_BROWSER)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .get()
+            .build()
+
+        val htmlBody = withTimeoutOrNull(5000L) {
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        response.body?.string()
+                    } else {
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        if (htmlBody.isNullOrBlank()) {
+            return@withContext formatFallbackAddress(fallbackAddress)
+        }
+
+        val rawTitle = extractTitleFromHtml(htmlBody)
+        if (rawTitle.isNullOrBlank()) {
+            return@withContext formatFallbackAddress(fallbackAddress)
+        }
+
+        val cleanedName = cleanExtractedTitle(rawTitle)
+        if (cleanedName.isBlank()) {
+            return@withContext formatFallbackAddress(fallbackAddress)
+        }
+
+        cleanedName
+    }
+
+    /**
+     * Concurrently resolves canonical names for a list of candidate stations using [coroutineScope]
+     * and [async]/[awaitAll] with bounded 5-second timeout.
+     */
+    open suspend fun resolveStationNamesBatch(stations: List<Station>): List<Station> = coroutineScope {
+        stations.map { station ->
+            async {
+                val resolved = resolveStationNameFromHtml(
+                    locationId = station.id,
+                    fallbackAddress = station.address
+                )
+                station.copy(name = resolved)
+            }
+        }.awaitAll()
     }
 
     /**

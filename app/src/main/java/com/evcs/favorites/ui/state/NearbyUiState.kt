@@ -34,6 +34,7 @@ data class NearbyUiState(
     val hasSearched: Boolean = false,
     val isLocating: Boolean = false,
     val isSearching: Boolean = false,
+    val isLoading: Boolean = false,
     val isRoutingLoading: Boolean = false,
     val userLatitude: Double? = null,
     val userLongitude: Double? = null,
@@ -52,6 +53,11 @@ data class NearbyUiState(
     val togglingStationIds: Set<String> = emptySet()
 ) {
     /**
+     * Convenience alias for top10DisplayStations representing currently active stations.
+     */
+    val stations: List<Station>
+        get() = top10DisplayStations
+    /**
      * Dynamic feedback string for the info pill above stations list.
      */
     val filterSummaryPillText: String
@@ -67,7 +73,15 @@ data class NearbyUiState(
                         "Top 10 trạm sạc VinFast gần nhất còn cổng trống"
                     }
                 }
-                SmartFilterMode.CUSTOM -> "Tìm thấy $count trạm theo bộ lọc tùy chỉnh"
+                SmartFilterMode.CUSTOM -> {
+                    if (savedCustomConfig?.mode == com.evcs.favorites.domain.model.CustomFilterMode.QUICK_CHIP &&
+                        savedCustomConfig.quickChip == com.evcs.favorites.domain.model.QuickChipOption.AC
+                    ) {
+                        "Tìm thấy $count trạm có cổng AC khả dụng"
+                    } else {
+                        "Tìm thấy $count trạm theo bộ lọc tùy chỉnh"
+                    }
+                }
             }
         }
 }

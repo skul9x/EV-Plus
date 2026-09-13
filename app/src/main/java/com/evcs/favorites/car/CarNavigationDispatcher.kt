@@ -3,6 +3,10 @@ package com.evcs.favorites.car
 import android.content.Intent
 import android.net.Uri
 import androidx.car.app.CarContext
+import com.evcs.favorites.data.logging.AppDebugLogger
+import com.evcs.favorites.data.logging.DebugLogEntry
+import com.evcs.favorites.data.logging.DebugLogLevel
+import com.evcs.favorites.data.logging.DebugLogTag
 import com.evcs.favorites.data.model.Station
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -49,13 +53,17 @@ object CarNavigationDispatcher {
 
     /**
      * Encodes station label for inclusion in Geo URI query parameters.
+     * Sanitizes parentheses by percent-encoding '(' as '%28' and ')' as '%29'
+     * so that nested parentheses within station names do not corrupt the outer 'geo:0,0?q=lat,lng(Label)' syntax.
      */
     fun encodeStationName(stationName: String): String {
-        return try {
-            Uri.encode(stationName.trim()) ?: URLEncoder.encode(stationName.trim(), StandardCharsets.UTF_8.name()).replace("+", "%20")
+        val trimmed = stationName.trim()
+        val encoded = try {
+            Uri.encode(trimmed) ?: URLEncoder.encode(trimmed, StandardCharsets.UTF_8.name()).replace("+", "%20")
         } catch (_: Throwable) {
-            URLEncoder.encode(stationName.trim(), StandardCharsets.UTF_8.name()).replace("+", "%20")
+            URLEncoder.encode(trimmed, StandardCharsets.UTF_8.name()).replace("+", "%20")
         }
+        return encoded.replace("(", "%28").replace(")", "%29")
     }
 
     /**
@@ -107,6 +115,17 @@ object CarNavigationDispatcher {
      * @return true if dispatched via in-car head unit host, false if fallback was triggered.
      */
     fun startNavigation(carContext: CarContext, station: Station): Boolean {
+        if (station.latitude == 0.0 && station.longitude == 0.0) {
+            AppDebugLogger.log(
+                DebugLogEntry(
+                    tag = DebugLogTag.ROUTING,
+                    level = DebugLogLevel.WARN,
+                    message = "Cannot navigate: Station '${station.name}' has invalid coordinates (0.0, 0.0)"
+                )
+            )
+            return false
+        }
+
         var dispatchedInCar: Boolean
         val carSpec = getCarNavigationIntentSpec(station)
         try {
@@ -150,6 +169,17 @@ object CarNavigationDispatcher {
      * and notifies [CarFocusModeBridge] of the new destination station.
      */
     fun rerouteNavigation(carContext: CarContext, newStation: Station): Boolean {
+        if (newStation.latitude == 0.0 && newStation.longitude == 0.0) {
+            AppDebugLogger.log(
+                DebugLogEntry(
+                    tag = DebugLogTag.ROUTING,
+                    level = DebugLogLevel.WARN,
+                    message = "Cannot reroute: Station '${newStation.name}' has invalid coordinates (0.0, 0.0)"
+                )
+            )
+            return false
+        }
+
         var dispatchedInCar: Boolean
         val carSpec = getCarNavigationIntentSpec(newStation)
         try {

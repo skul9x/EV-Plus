@@ -3,9 +3,11 @@ package com.evcs.favorites.car
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsRepository
+import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.util.StationNameSanitizer
 import java.util.Locale
 import kotlin.math.roundToInt
+
 
 /**
  * Automotive text and template formatting utility.
@@ -104,6 +106,62 @@ object CarStationFormatter {
         }
 
         return parts.joinToString(" • ")
+    }
+
+    /**
+     * Formats list row subtitle with hero metric and live distance,
+     * attaching [androidx.car.app.model.DistanceSpan] to the distance substring for Car App Library contract compliance.
+     */
+    fun formatSubtitleSpannable(station: Station): CharSequence {
+        val subtitle = formatSubtitle(station)
+        val km = station.effectiveDistanceKm ?: station.distanceKm
+        val distanceText = formatDistance(station)
+        if (km != null && km >= 0.0 && !distanceText.isNullOrBlank()) {
+            val startIndex = subtitle.lastIndexOf(distanceText)
+            if (startIndex >= 0) {
+                val spannable = android.text.SpannableString(subtitle)
+                val distance = androidx.car.app.model.Distance.create(km, androidx.car.app.model.Distance.UNIT_KILOMETERS)
+                spannable.setSpan(
+                    androidx.car.app.model.DistanceSpan.create(distance),
+                    startIndex,
+                    startIndex + distanceText.length,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                return spannable
+            }
+        }
+        return subtitle
+    }
+
+    /**
+     * Sorts stations ascending by distance (nearest first).
+     * If [userLocation] is provided, recalculates [Station.distanceKm] using [DistanceCalculator.calculateDistanceKm].
+     * Sorts stations by `effectiveDistanceKm ?: distanceKm ?: Double.MAX_VALUE` ascending.
+     */
+    fun sortStationsByProximity(
+        stations: List<Station>,
+        userLocation: Pair<Double, Double>? = null
+    ): List<Station> {
+        val stationsWithDistance = if (userLocation != null) {
+            val (userLat, userLng) = userLocation
+            stations.map { station ->
+                if (station.latitude != 0.0 || station.longitude != 0.0) {
+                    val distKm = DistanceCalculator.calculateDistanceKm(
+                        lat1 = userLat,
+                        lon1 = userLng,
+                        lat2 = station.latitude,
+                        lon2 = station.longitude
+                    )
+                    station.copy(distanceKm = distKm)
+                } else {
+                    station.copy(distanceKm = null)
+                }
+            }
+        } else {
+            stations
+        }
+
+        return stationsWithDistance.sortedBy { it.effectiveDistanceKm ?: it.distanceKm ?: Double.MAX_VALUE }
     }
 
     /**
@@ -224,7 +282,10 @@ object CarStationFormatter {
         )
     }
 
-    private fun isDcPort(port: PowerPort): Boolean {
+    internal fun isDcPort(port: PowerPort): Boolean {
+        if (port.label.contains("AC", ignoreCase = true) || port.displayString.contains("AC", ignoreCase = true)) {
+            return false
+        }
         if (port.typeWatts >= DC_POWER_THRESHOLD_WATTS) return true
         if (port.label.contains("DC", ignoreCase = true)) return true
         if (port.displayString.contains("DC", ignoreCase = true)) return true

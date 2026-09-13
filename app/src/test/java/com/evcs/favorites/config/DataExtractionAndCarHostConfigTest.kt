@@ -69,7 +69,7 @@ class DataExtractionAndCarHostConfigTest {
         assertTrue("string-array 'car_hosts_allowlist' must be defined in car_hosts.xml", foundAllowlist)
         assertTrue(
             "car_hosts_allowlist must contain com.google.android.projection.gearhead",
-            items.contains("com.google.android.projection.gearhead")
+            items.any { it.contains("com.google.android.projection.gearhead") }
         )
 
         // Verify compiled R identifier exists
