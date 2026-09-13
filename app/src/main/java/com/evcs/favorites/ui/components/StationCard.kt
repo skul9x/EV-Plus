@@ -60,6 +60,7 @@ import com.evcs.favorites.data.routing.DrivingMetrics
 import com.evcs.favorites.data.routing.RoutingEngineType
 import com.evcs.favorites.data.routing.TrafficCondition
 import com.evcs.favorites.domain.location.formattedDistance
+import com.evcs.favorites.domain.model.isAc
 import com.evcs.favorites.ui.theme.AutomotiveDimens
 import com.evcs.favorites.ui.theme.CAR_BUTTON_HEIGHT
 import com.evcs.favorites.ui.theme.CAR_CARD_MIN_HEIGHT
@@ -101,6 +102,7 @@ fun StationCard(
     isCarMode: Boolean = false,
     isCompact: Boolean = false,
     filterDcOnly: Boolean = false,
+    isAcFilterActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -304,7 +306,10 @@ fun StationCard(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     displayPowers.forEach { powerPort ->
-                        WattageChip(powerPort = powerPort)
+                        WattageChip(
+                            powerPort = powerPort,
+                            isHighlighted = isAcFilterActive && powerPort.isAc()
+                        )
                     }
                 }
             } else if (station.connectors.isNotBlank()) {
@@ -783,6 +788,7 @@ fun DistanceBadge(
 @Composable
 fun WattageChip(
     powerPort: PowerPort,
+    isHighlighted: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val hasLive = powerPort.hasLiveTelemetry
@@ -791,24 +797,24 @@ fun WattageChip(
 
     val (badgeBg, badgeBorder, badgeText) = when {
         !hasLive -> Triple(
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-            MaterialTheme.colorScheme.onSurfaceVariant
+            if (isHighlighted) StatusAvailableContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+            if (isHighlighted) EmeraldPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+            if (isHighlighted) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
         )
         isAvailable -> Triple(
             StatusAvailableContainer,
-            StatusAvailable.copy(alpha = 0.7f),
+            if (isHighlighted) EmeraldPrimary else StatusAvailable.copy(alpha = 0.7f),
             StatusAvailable
         )
         isFull -> Triple(
             StatusBusyContainer,
-            StatusBusy.copy(alpha = 0.7f),
+            if (isHighlighted) EmeraldPrimary else StatusBusy.copy(alpha = 0.7f),
             StatusBusy
         )
         else -> Triple(
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-            MaterialTheme.colorScheme.onSurfaceVariant
+            if (isHighlighted) StatusAvailableContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
+            if (isHighlighted) EmeraldPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+            if (isHighlighted) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 
@@ -817,7 +823,10 @@ fun WattageChip(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(badgeBg)
-            .border(1.dp, badgeBorder, RoundedCornerShape(8.dp))
+            .border(
+                border = if (isHighlighted) BorderStroke(1.5.dp, EmeraldPrimary) else BorderStroke(1.dp, badgeBorder),
+                shape = RoundedCornerShape(8.dp)
+            )
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
@@ -830,11 +839,19 @@ fun WattageChip(
         Text(
             text = powerPort.chipDisplayString,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Medium
+                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
             ),
             color = badgeText
         )
     }
+}
+
+/**
+ * Resolves whether a wattage chip should be visually highlighted.
+ * Highlights 11kW and 22kW AC ports when the AC filter mode is active.
+ */
+fun shouldHighlightWattageChip(isAcFilterActive: Boolean, powerPort: PowerPort): Boolean {
+    return isAcFilterActive && powerPort.isAc()
 }
 
 /**

@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.repository.EvcsRepository
+import com.evcs.favorites.domain.model.isAc
 import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.ui.theme.AutomotiveDimens
 
@@ -145,4 +146,12 @@ object StationCardHelper {
         countColor = countColor,
         separatorColor = separatorColor
     )
+
+    /**
+     * Resolves whether a wattage chip should be visually highlighted.
+     * Highlights 11kW and 22kW AC ports when the AC filter mode is active.
+     */
+    fun shouldHighlightChip(isAcFilterActive: Boolean, powerPort: PowerPort): Boolean {
+        return isAcFilterActive && powerPort.isAc()
+    }
 }

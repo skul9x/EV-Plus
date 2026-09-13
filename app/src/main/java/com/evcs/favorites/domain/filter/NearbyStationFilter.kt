@@ -150,7 +150,7 @@ object NearbyStationFilter {
                 }
                 SmartFilterMode.AC -> {
                     station.powers.any { power ->
-                        power.isAc() && (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0))
+                        power.isAc() && power.availablePlugs > 0
                     }
                 }
                 SmartFilterMode.DC -> {
@@ -168,12 +168,20 @@ object NearbyStationFilter {
                         station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
                     } else when (customConfig.mode) {
                         CustomFilterMode.QUICK_CHIP -> {
-                            if (customConfig.quickChip == QuickChipOption.ALL) {
-                                station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
-                            } else {
-                                station.powers.any { power ->
-                                    power.matchesQuickChip(customConfig.quickChip) &&
-                                            (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0))
+                            when (customConfig.quickChip) {
+                                QuickChipOption.ALL -> {
+                                    station.totalAvailablePlugs > 0 || (includeFullStations && station.totalPlugs > 0)
+                                }
+                                QuickChipOption.AC -> {
+                                    station.powers.any { power ->
+                                        power.isAc() && power.availablePlugs > 0
+                                    }
+                                }
+                                else -> {
+                                    station.powers.any { power ->
+                                        power.matchesQuickChip(customConfig.quickChip) &&
+                                                (power.availablePlugs > 0 || (includeFullStations && power.totalPlugs > 0))
+                                    }
                                 }
                             }
                         }

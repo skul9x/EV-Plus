@@ -87,6 +87,7 @@ import com.evcs.favorites.ui.components.NativeStationDetailContent
 import com.evcs.favorites.ui.components.NativeStationDetailSheet
 import com.evcs.favorites.ui.components.NativeStationDetailSheetHelper
 import com.evcs.favorites.ui.components.NearbyUiHelper
+import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.components.SmartFilterBar
 import com.evcs.favorites.ui.components.SmartFilterUiHelper
@@ -876,7 +877,8 @@ private fun NearbyResultContent(
                         isSelected = isLandscape && station.id == selectedStationId,
                         isCarMode = isLandscape,
                         isCompact = isLandscape,
-                        filterDcOnly = isLandscape && isDcFilterActive
+                        filterDcOnly = isLandscape && isDcFilterActive,
+                        isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC
                     )
                 }
             }

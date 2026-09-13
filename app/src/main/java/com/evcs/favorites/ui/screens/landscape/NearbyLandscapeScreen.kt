@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.model.DcWattageTier
+import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.ui.components.NativeStationDetailContent
 import com.evcs.favorites.ui.components.NearbyUiHelper
 import com.evcs.favorites.ui.components.SmartFilterBar
@@ -235,7 +236,8 @@ fun NearbyLandscapeScreen(
                                             isSelected = station.id == stationDetailState.station?.id,
                                             isCarMode = true,
                                             isCompact = true,
-                                            filterDcOnly = isDcFilterActive
+                                            filterDcOnly = isDcFilterActive,
+                                            isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC
                                         )
                                     }
                                 }
