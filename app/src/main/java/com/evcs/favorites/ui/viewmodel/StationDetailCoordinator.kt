@@ -4,6 +4,7 @@ import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsTelemetryRepository
 import com.evcs.favorites.domain.StationPortStatus
 import com.evcs.favorites.domain.StationTelemetryParser
+import com.evcs.favorites.focus.EvcsStationNameResolver
 import com.evcs.favorites.ui.state.StationDetailUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -31,15 +32,20 @@ import kotlinx.coroutines.withTimeoutOrNull
 class StationDetailCoordinator(
     private val coroutineScope: CoroutineScope,
     private val telemetryRepository: EvcsTelemetryRepository,
+    private val photoResolver: EvcsStationNameResolver? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val statsTimeoutMs: Long = 4000L
 ) {
+    private val resolver: EvcsStationNameResolver = photoResolver ?: EvcsStationNameResolver()
 
     private val _stationDetailState = MutableStateFlow(StationDetailUiState())
     val stationDetailState: StateFlow<StationDetailUiState> = _stationDetailState.asStateFlow()
 
     var activeJob: Job? = null
+        private set
+
+    var photoJob: Job? = null
         private set
 
     /**
@@ -73,6 +79,7 @@ class StationDetailCoordinator(
      */
     fun selectStationForDetail(station: Station): Job {
         activeJob?.cancel()
+        photoJob?.cancel()
 
         // Instant Opening (0ms) synchronously
         val initialPorts = deriveInitialPortStatuses(station)
@@ -83,6 +90,8 @@ class StationDetailCoordinator(
             isRefreshing = false,
             portStatuses = initialPorts
         )
+
+        launchPhotoResolution(station)
 
         val job = coroutineScope.launch(mainDispatcher) {
             loadStationDetails(station)
@@ -100,6 +109,7 @@ class StationDetailCoordinator(
             return null
         }
         activeJob?.cancel()
+        photoJob?.cancel()
 
         _stationDetailState.update {
             it.copy(
@@ -109,6 +119,8 @@ class StationDetailCoordinator(
                 error = null
             )
         }
+
+        launchPhotoResolution(currentStation)
 
         val job = coroutineScope.launch(mainDispatcher) {
             loadStationDetails(currentStation)
@@ -123,10 +135,45 @@ class StationDetailCoordinator(
     fun dismissStationDetail() {
         activeJob?.cancel()
         activeJob = null
+        photoJob?.cancel()
+        photoJob = null
         _stationDetailState.value = StationDetailUiState()
     }
 
+    private fun launchPhotoResolution(station: Station) {
+        if (station.images.isEmpty()) {
+            photoJob = coroutineScope.launch(ioDispatcher) {
+                try {
+                    val resolvedPhotos = resolver.resolveStationPhotos(station)
+                    if (resolvedPhotos.isNotEmpty()) {
+                        _stationDetailState.update { current ->
+                            val curStation = current.station
+                            if (curStation != null && curStation.id.equals(station.id, ignoreCase = true)) {
+                                current.copy(
+                                    station = curStation.copy(
+                                        images = resolvedPhotos,
+                                        image = resolvedPhotos.firstOrNull()
+                                    )
+                                )
+                            } else {
+                                current
+                            }
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Graceful resilience: retain existing station state without crashing
+                }
+            }
+        }
+    }
+
     private suspend fun loadStationDetails(station: Station) {
+        if (photoJob == null && station.images.isEmpty()) {
+            launchPhotoResolution(station)
+        }
+
         try {
             // Stage 1a: Ephemeral tokens and rating handshake
             val tokensResult = withContext(ioDispatcher) {

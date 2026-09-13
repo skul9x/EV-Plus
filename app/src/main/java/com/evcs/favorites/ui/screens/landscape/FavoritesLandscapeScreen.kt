@@ -234,8 +234,10 @@ fun FavoritesLandscapeScreen(
                         stationDetailState.copy(station = activeStationForDetail)
                     }
 
+                    val effectiveStation = effectiveDetailState.station ?: activeStationForDetail
+
                     NativeStationDetailContent(
-                        station = activeStationForDetail,
+                        station = effectiveStation,
                         uiState = effectiveDetailState,
                         isFavorite = true,
                         isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },

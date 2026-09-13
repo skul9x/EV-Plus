@@ -203,6 +203,28 @@ data class RefreshButtonSpec(
 )
 
 /**
+ * Model representing resolved specification for the station photo loading placeholder.
+ */
+data class PhotoPlaceholderSpec(
+    val isVisible: Boolean,
+    val aspectRatio: Float = 16f / 9f,
+    val cornerRadiusDp: Float = 16f,
+    val containerColor: Color = Color.Unspecified,
+    val contentDescription: String = "Đang tải hình ảnh trạm sạc"
+)
+
+/**
+ * Layout specification for station photo carousel and loading placeholder framing.
+ */
+data class PhotoLayoutSpec(
+    val aspectRatio: Float = 16f / 9f,
+    val cornerRadiusDp: Float = 16f,
+    val minDotIndicatorCount: Int = 2,
+    val maxDotIndicatorCount: Int = 5,
+    val isRgb565PreferredForThumbnails: Boolean = true
+)
+
+/**
  * Isolated animated refresh icon to prevent recomposition storm on parent sheet content.
  */
 @Composable
@@ -380,6 +402,84 @@ object NativeStationDetailSheetHelper {
      */
     fun shouldShowCarousel(images: List<String>): Boolean {
         return images.isNotEmpty()
+    }
+
+    /**
+     * Overload accepting [Station] to determine if photo carousel should be displayed.
+     */
+    fun shouldShowCarousel(station: Station): Boolean {
+        return shouldShowCarousel(station.images)
+    }
+
+    /**
+     * Determines if station photo placeholder frame should be displayed
+     * while photo resolution or detail loading is in progress for stations with empty initial images.
+     */
+    fun shouldShowPhotoPlaceholder(images: List<String>, isLoading: Boolean): Boolean {
+        return images.isEmpty() && isLoading
+    }
+
+    /**
+     * Overload accepting [Station].
+     */
+    fun shouldShowPhotoPlaceholder(station: Station, isLoading: Boolean): Boolean {
+        return shouldShowPhotoPlaceholder(station.images, isLoading)
+    }
+
+    /**
+     * Resolves the placeholder specification for station photo loading.
+     */
+    fun resolvePhotoPlaceholderSpec(
+        images: List<String>,
+        isLoading: Boolean,
+        containerColor: Color = Color.Unspecified
+    ): PhotoPlaceholderSpec {
+        return PhotoPlaceholderSpec(
+            isVisible = shouldShowPhotoPlaceholder(images, isLoading),
+            aspectRatio = 16f / 9f,
+            cornerRadiusDp = 16f,
+            containerColor = containerColor
+        )
+    }
+
+    /**
+     * Overload accepting [Station].
+     */
+    fun resolvePhotoPlaceholderSpec(
+        station: Station,
+        isLoading: Boolean,
+        containerColor: Color = Color.Unspecified
+    ): PhotoPlaceholderSpec {
+        return resolvePhotoPlaceholderSpec(station.images, isLoading, containerColor)
+    }
+
+    /**
+     * Returns standard photo layout specifications across portrait and landscape configurations.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun getPhotoLayoutSpec(isLandscape: Boolean = false): PhotoLayoutSpec {
+        return PhotoLayoutSpec(
+            aspectRatio = 16f / 9f,
+            cornerRadiusDp = 16f,
+            minDotIndicatorCount = 2,
+            maxDotIndicatorCount = 5,
+            isRgb565PreferredForThumbnails = true
+        )
+    }
+
+    /**
+     * Evaluates whether the full-screen photo viewer lightbox modal should be activated.
+     * Enforces the exact same interaction contract for both AC and DC stations.
+     */
+    fun shouldActivateLightbox(selectedIndex: Int?, images: List<String>): Boolean {
+        return selectedIndex != null && selectedIndex in images.indices
+    }
+
+    /**
+     * Overload accepting [Station].
+     */
+    fun shouldActivateLightbox(selectedIndex: Int?, station: Station): Boolean {
+        return shouldActivateLightbox(selectedIndex, station.images)
     }
 
     /**
@@ -1287,23 +1387,30 @@ fun NativeStationDetailContent(
         }
 
         // ---------------------------------------------------------------------
-        // 6. Photo Carousel (Auto-collapses to zero height when empty, placed at bottom)
+        // 6. Photo Carousel / Placeholder (Placed at bottom of sheet content)
         // ---------------------------------------------------------------------
+        val effectiveStation = uiState.station?.takeIf { it.id == station.id } ?: station
         var activeLightboxIndex by remember { mutableStateOf<Int?>(null) }
 
-        if (activeLightboxIndex != null && station.images.isNotEmpty()) {
+        if (NativeStationDetailSheetHelper.shouldActivateLightbox(activeLightboxIndex, effectiveStation.images)) {
             StationPhotoViewerModal(
-                images = station.images,
+                images = effectiveStation.images,
                 initialIndex = activeLightboxIndex ?: 0,
                 onDismiss = { activeLightboxIndex = null }
             )
         }
 
-        if (NativeStationDetailSheetHelper.shouldShowCarousel(station.images)) {
+        if (NativeStationDetailSheetHelper.shouldShowCarousel(effectiveStation.images)) {
             StationPhotoCarousel(
-                images = station.images,
+                images = effectiveStation.images,
                 onImageClick = { index -> activeLightboxIndex = index }
             )
+        } else if (NativeStationDetailSheetHelper.shouldShowPhotoPlaceholder(
+                images = effectiveStation.images,
+                isLoading = uiState.isLoadingTelemetry || uiState.isRefreshing
+            )
+        ) {
+            StationPhotoPlaceholder()
         }
     }
 }
@@ -1493,4 +1600,23 @@ fun StationPhotoCarousel(
             }
         }
     }
+}
+
+/**
+ * Neutral placeholder frame rendered while station photos are resolving / loading.
+ * Preserves 16:9 aspect ratio and rounded corners to prevent abrupt layout shifts.
+ */
+@Composable
+fun StationPhotoPlaceholder(
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant
+) {
+    val layoutSpec = remember { NativeStationDetailSheetHelper.getPhotoLayoutSpec() }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(layoutSpec.aspectRatio)
+            .clip(RoundedCornerShape(layoutSpec.cornerRadiusDp.dp))
+            .background(containerColor)
+    )
 }
