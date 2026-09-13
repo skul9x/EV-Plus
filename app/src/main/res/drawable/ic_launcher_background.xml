@@ -4,26 +4,33 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Solid dark slate-emerald background -->
+
+    <!-- Deep Space Dark Teal / Emerald Slate base -->
     <path
         android:pathData="M0,0h108v108h-108z"
-        android:fillColor="#071312" />
+        android:fillColor="#071313" />
 
-    <!-- Ambient outer emerald glow -->
+    <!-- Outer Ambient Energy Field -->
     <path
-        android:pathData="M54,16 A38,38 0 1 1 53.9,16 Z"
+        android:pathData="M54,16 A38,38 0 1,1 53.9,16 Z"
+        android:fillColor="#042F2E"
+        android:fillAlpha="0.75" />
+
+    <!-- Mid-level Cyan/Emerald Glow -->
+    <path
+        android:pathData="M54,24 A30,30 0 1,1 53.9,24 Z"
         android:fillColor="#064E3B"
-        android:fillAlpha="0.6" />
+        android:fillAlpha="0.65" />
 
-    <!-- Ambient inner cyan glow -->
+    <!-- Core High-Intensity Energy Bloom -->
     <path
-        android:pathData="M54,26 A28,28 0 1 1 53.9,26 Z"
-        android:fillColor="#0E7490"
-        android:fillAlpha="0.3" />
+        android:pathData="M54,32 A22,22 0 1,1 53.9,32 Z"
+        android:fillColor="#0D9488"
+        android:fillAlpha="0.45" />
 
-    <!-- Core emerald energy highlight -->
+    <!-- Center Soft Radial Aura -->
     <path
-        android:pathData="M54,34 A20,20 0 1 1 53.9,34 Z"
-        android:fillColor="#059669"
-        android:fillAlpha="0.4" />
+        android:pathData="M54,40 A14,14 0 1,1 53.9,40 Z"
+        android:fillColor="#14B8A6"
+        android:fillAlpha="0.30" />
 </vector>
