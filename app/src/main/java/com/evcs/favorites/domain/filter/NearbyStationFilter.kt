@@ -18,12 +18,21 @@ import com.evcs.favorites.util.BoundedLruCache
 import java.util.PriorityQueue
 
 private val connectorCompatibilityCache = BoundedLruCache<String, Boolean>(256)
+private val connectorDcCache = BoundedLruCache<String, Boolean>(256)
 
 /**
  * Clears the connector compatibility cache. Primarily used for testing.
  */
 fun clearConnectorCompatibilityCache() {
     connectorCompatibilityCache.clear()
+    connectorDcCache.clear()
+}
+
+/**
+ * Clears the connector DC compatibility cache. Primarily used for testing.
+ */
+fun clearConnectorDcCache() {
+    connectorDcCache.clear()
 }
 
 /**
@@ -44,6 +53,26 @@ fun Station.hasCarCompatiblePorts(): Boolean {
     return connectorCompatibilityCache.computeIfAbsent(connectors) { conn ->
         val portList = EvcsRepository.parseConnectorsToPowers(conn)
         portList.any { it.isDc() || it.isAc() || it.typeWatts >= 11_000L }
+    }
+}
+
+/**
+ * Extension function on [Station] to check if it has any DC fast charging ports.
+ *
+ * Rules:
+ * - Returns true if `powers.any { it.isDc() }`.
+ * - If `powers` is empty and `connectors` is not blank, parses connectors via [EvcsRepository.parseConnectorsToPowers]
+ *   with thread-safe memoization to avoid repetitive regex and string allocations.
+ * - Returns false otherwise.
+ */
+fun Station.hasDcPorts(): Boolean {
+    if (powers.isNotEmpty()) {
+        return powers.any { it.isDc() }
+    }
+    if (connectors.isBlank()) return false
+    return connectorDcCache.computeIfAbsent(connectors) { conn ->
+        val portList = EvcsRepository.parseConnectorsToPowers(conn)
+        portList.any { it.isDc() }
     }
 }
 

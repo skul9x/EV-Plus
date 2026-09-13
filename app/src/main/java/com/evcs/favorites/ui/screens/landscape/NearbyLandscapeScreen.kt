@@ -51,7 +51,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.domain.model.CustomFilterMode
 import com.evcs.favorites.domain.model.DcWattageTier
+import com.evcs.favorites.domain.model.QuickChipOption
 import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.ui.components.NativeStationDetailContent
 import com.evcs.favorites.ui.components.NearbyUiHelper
@@ -289,11 +291,16 @@ fun NearbyLandscapeScreen(
             ) {
                 val currentStation = stationDetailState.station
                 if (currentStation != null) {
+                    val isAcActive = uiState.activeFilterMode == SmartFilterMode.AC ||
+                        (uiState.activeFilterMode == SmartFilterMode.CUSTOM &&
+                            uiState.savedCustomConfig?.mode == CustomFilterMode.QUICK_CHIP &&
+                            uiState.savedCustomConfig?.quickChip == QuickChipOption.AC)
                     NativeStationDetailContent(
                         station = currentStation,
                         uiState = stationDetailState,
                         isFavorite = uiState.favoriteStationIds.contains(currentStation.id),
                         isToggleInProgress = uiState.togglingStationIds.contains(currentStation.id),
+                        isAcFilterActive = isAcActive,
                         onRefresh = onRefreshDetail,
                         onDismiss = onDismissDetail,
                         onNavigate = onNavigateClick,

@@ -87,6 +87,8 @@ import com.evcs.favorites.ui.components.NativeStationDetailContent
 import com.evcs.favorites.ui.components.NativeStationDetailSheet
 import com.evcs.favorites.ui.components.NativeStationDetailSheetHelper
 import com.evcs.favorites.ui.components.NearbyUiHelper
+import com.evcs.favorites.domain.model.CustomFilterMode
+import com.evcs.favorites.domain.model.QuickChipOption
 import com.evcs.favorites.domain.model.SmartFilterMode
 import com.evcs.favorites.ui.components.RoutingSettingsModal
 import com.evcs.favorites.ui.components.SmartFilterBar
@@ -466,12 +468,17 @@ fun NearbyScreen(
             // Station Detail Bottom Sheet (100% Native Jetpack Compose, shown in portrait)
             if (stationDetailState.station != null) {
                 val isCurrentStationFavorite = uiState.favoriteStationIds.contains(stationDetailState.station?.id)
+                val isAcActive = uiState.activeFilterMode == SmartFilterMode.AC ||
+                    (uiState.activeFilterMode == SmartFilterMode.CUSTOM &&
+                        uiState.savedCustomConfig?.mode == CustomFilterMode.QUICK_CHIP &&
+                        uiState.savedCustomConfig?.quickChip == QuickChipOption.AC)
                 NativeStationDetailSheet(
                     uiState = stationDetailState,
                     onDismiss = { viewModel.dismissStationDetail() },
                     onRefresh = { viewModel.refreshStationDetail() },
                     isFavorite = isCurrentStationFavorite,
                     isToggleInProgress = stationDetailState.station?.id?.let { uiState.togglingStationIds.contains(it) } ?: false,
+                    isAcFilterActive = isAcActive,
                     onNavigate = onNavigateClick,
                     onToggleFavorite = onFavoriteClick
                 )
@@ -766,7 +773,25 @@ private fun NearbyLoadingContent(
 }
 
 /**
- * Result Content displaying SmartFilterBar, dynamic info pill, and scrollable Top 10 list.
+ * Helper utilities for Nearby portrait layout management and contract verification.
+ */
+object NearbyPortraitLayoutHelper {
+    /**
+     * Whether the portrait summary pill banner is enabled.
+     * Always returns false as summary pills are removed across all filter modes in portrait.
+     */
+    fun isSummaryPillVisible(): Boolean = false
+
+    /**
+     * Whether the centered routing indicator should be displayed in the station viewport.
+     */
+    fun shouldShowCenteredRoutingIndicator(isRoutingLoading: Boolean, isLoading: Boolean): Boolean {
+        return isRoutingLoading && !isLoading
+    }
+}
+
+/**
+ * Result Content displaying SmartFilterBar, centered routing indicator, and scrollable Top 10 list.
  */
 @Composable
 private fun NearbyResultContent(
@@ -813,108 +838,99 @@ private fun NearbyResultContent(
             )
         }
 
-        // Header info pill: Dynamic feedback reflecting active filter and station count
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
+        // Stations list viewport container with centered routing progress indicator
+        Box(
+            modifier = Modifier.fillMaxSize()
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(EmeraldContainerDark.copy(alpha = 0.5f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = uiState.filterSummaryPillText,
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = EmeraldPrimary
-                    )
-                )
-            }
-
-            if (uiState.isRoutingLoading) {
-                Spacer(modifier = Modifier.width(8.dp))
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp,
-                    color = EmeraldPrimary
-                )
-            }
-        }
-
-        // Content: Loading State vs Empty State vs Stations List
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+            // Content: Loading State vs Empty State vs Stations List
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(
-                        color = EmeraldPrimary,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(52.dp)
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        text = "Đang tìm kiếm và xác thực trạm sạc AC...",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Đang kiểm tra cổng sạc khả dụng và đối chiếu thông tin trạm",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = EmeraldPrimary,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(52.dp)
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = "Đang tìm kiếm và xác thực trạm sạc AC...",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Đang kiểm tra cổng sạc khả dụng và đối chiếu thông tin trạm",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else if (uiState.top10DisplayStations.isEmpty()) {
+                NearbyEmptyFilterContent(onClearFilters = onClearFilters)
+            } else {
+                val isDcFilterActive = remember(uiState.activeFilterMode, uiState.isDcSubFilterVisible, uiState.selectedDcTier, uiState.savedCustomConfig) {
+                    SmartFilterUiHelper.isDcFilterActive(
+                        activeFilterMode = uiState.activeFilterMode,
+                        isDcSubFilterVisible = uiState.isDcSubFilterVisible,
+                        selectedDcTier = uiState.selectedDcTier,
+                        savedCustomConfig = uiState.savedCustomConfig
                     )
                 }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(if (isLandscape) 8.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (isLandscape) 8.dp else 12.dp)
+                ) {
+                    items(
+                        items = uiState.top10DisplayStations,
+                        key = { it.id },
+                        contentType = { "station_card" }
+                    ) { station ->
+                        StationCard(
+                            station = station,
+                            onNavigateClick = onNavigateClick,
+                            onFavoriteClick = onFavoriteClick,
+                            isFavorite = uiState.favoriteStationIds.contains(station.id),
+                            isToggleInProgress = uiState.togglingStationIds.contains(station.id),
+                            onStationClick = onStationClick,
+                            isSelected = isLandscape && station.id == selectedStationId,
+                            isCarMode = isLandscape,
+                            isCompact = isLandscape,
+                            filterDcOnly = isLandscape && isDcFilterActive,
+                            isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC ||
+                                (uiState.activeFilterMode == SmartFilterMode.CUSTOM &&
+                                 uiState.savedCustomConfig?.mode == com.evcs.favorites.domain.model.CustomFilterMode.QUICK_CHIP &&
+                                 uiState.savedCustomConfig.quickChip == com.evcs.favorites.domain.model.QuickChipOption.AC)
+                        )
+                    }
+                }
             }
-        } else if (uiState.top10DisplayStations.isEmpty()) {
-            NearbyEmptyFilterContent(onClearFilters = onClearFilters)
-        } else {
-            val isDcFilterActive = remember(uiState.activeFilterMode, uiState.isDcSubFilterVisible, uiState.selectedDcTier, uiState.savedCustomConfig) {
-                SmartFilterUiHelper.isDcFilterActive(
-                    activeFilterMode = uiState.activeFilterMode,
-                    isDcSubFilterVisible = uiState.isDcSubFilterVisible,
-                    selectedDcTier = uiState.selectedDcTier,
-                    savedCustomConfig = uiState.savedCustomConfig
-                )
-            }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(if (isLandscape) 8.dp else 16.dp),
-                verticalArrangement = Arrangement.spacedBy(if (isLandscape) 8.dp else 12.dp)
-            ) {
-                items(
-                    items = uiState.top10DisplayStations,
-                    key = { it.id },
-                    contentType = { "station_card" }
-                ) { station ->
-                    StationCard(
-                        station = station,
-                        onNavigateClick = onNavigateClick,
-                        onFavoriteClick = onFavoriteClick,
-                        isFavorite = uiState.favoriteStationIds.contains(station.id),
-                        isToggleInProgress = uiState.togglingStationIds.contains(station.id),
-                        onStationClick = onStationClick,
-                        isSelected = isLandscape && station.id == selectedStationId,
-                        isCarMode = isLandscape,
-                        isCompact = isLandscape,
-                        filterDcOnly = isLandscape && isDcFilterActive,
-                        isAcFilterActive = uiState.activeFilterMode == SmartFilterMode.AC ||
-                            (uiState.activeFilterMode == SmartFilterMode.CUSTOM &&
-                             uiState.savedCustomConfig?.mode == com.evcs.favorites.domain.model.CustomFilterMode.QUICK_CHIP &&
-                             uiState.savedCustomConfig.quickChip == com.evcs.favorites.domain.model.QuickChipOption.AC)
+
+            // Centered routing progress indicator
+            if (NearbyPortraitLayoutHelper.shouldShowCenteredRoutingIndicator(uiState.isRoutingLoading, uiState.isLoading)) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        strokeWidth = 3.dp,
+                        color = EmeraldPrimary
                     )
                 }
             }

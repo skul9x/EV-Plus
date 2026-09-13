@@ -333,6 +333,7 @@ fun FavoritesScreen(
                     onRefresh = onRefreshDetail,
                     isFavorite = true,
                     isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
+                    isAcFilterActive = false,
                     onNavigate = onNavigateClick,
                     onToggleFavorite = onToggleFavoriteDetail ?: onRemoveFavoriteClick,
                     onShare = onShareDetail

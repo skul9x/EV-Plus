@@ -239,6 +239,7 @@ fun FavoritesLandscapeScreen(
                         uiState = effectiveDetailState,
                         isFavorite = true,
                         isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
+                        isAcFilterActive = false,
                         onRefresh = onRefreshDetail,
                         onDismiss = onDismissDetail,
                         onNavigate = onNavigateClick,

@@ -101,6 +101,7 @@ import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.domain.Station24hStats
 import com.evcs.favorites.domain.StationPortStatus
 import com.evcs.favorites.domain.StationRating
+import com.evcs.favorites.domain.filter.hasDcPorts
 import com.evcs.favorites.domain.model.isDc
 import com.evcs.favorites.navigation.MapIntentSpec
 import com.evcs.favorites.navigation.MapNavigator
@@ -282,24 +283,32 @@ object NativeStationDetailSheetHelper {
      * Determines whether a station has at least one DC charging port capable of fast charging.
      */
     fun hasDcCharging(station: Station): Boolean {
-        return station.powers.any { it.isDc() }
+        return station.hasDcPorts()
     }
 
     /**
      * Determines whether Focus Mode button should be visible for the given station.
      */
     fun shouldShowFocusModeButton(station: Station): Boolean {
-        return hasDcCharging(station)
+        return shouldShowFocusButton(station, isAcFilterActive = false)
+    }
+
+    /**
+     * Determines whether Focus Mode button should be visible for the given station,
+     * accounting for station DC capabilities and active AC filter mode.
+     */
+    fun shouldShowFocusButton(station: Station, isAcFilterActive: Boolean = false): Boolean {
+        return station.hasDcPorts() && !isAcFilterActive
     }
 
     /**
      * Resolves the primary action button layout spec (Chỉ đường and ⚡ Focus Mode).
      */
-    fun resolvePrimaryActionLayout(station: Station): PrimaryActionLayoutSpec {
-        val hasDc = hasDcCharging(station)
+    fun resolvePrimaryActionLayout(station: Station, isAcFilterActive: Boolean = false): PrimaryActionLayoutSpec {
+        val showFocus = shouldShowFocusButton(station, isAcFilterActive)
         return PrimaryActionLayoutSpec(
-            showFocusMode = hasDc,
-            isNavigateFullWidth = !hasDc
+            showFocusMode = showFocus,
+            isNavigateFullWidth = !showFocus
         )
     }
 
@@ -725,6 +734,7 @@ fun NativeStationDetailSheet(
     onRefresh: () -> Unit,
     isFavorite: Boolean = false,
     isToggleInProgress: Boolean = false,
+    isAcFilterActive: Boolean = false,
     onNavigate: ((Station) -> Unit)? = null,
     onToggleFavorite: ((Station) -> Unit)? = null,
     onShare: ((Station) -> Unit)? = null,
@@ -834,6 +844,7 @@ fun NativeStationDetailSheet(
             uiState = uiState,
             isFavorite = isFavorite,
             isToggleInProgress = isToggleInProgress,
+            isAcFilterActive = isAcFilterActive,
             onRefresh = onRefresh,
             onDismiss = handleDismiss,
             onNavigate = handleNavigate,
@@ -856,6 +867,7 @@ fun NativeStationDetailContent(
     uiState: StationDetailUiState,
     isFavorite: Boolean,
     isToggleInProgress: Boolean = false,
+    isAcFilterActive: Boolean = false,
     onRefresh: () -> Unit,
     onDismiss: () -> Unit,
     onNavigate: (Station) -> Unit,
@@ -1092,6 +1104,7 @@ fun NativeStationDetailContent(
         val onShareClick = remember(onShare, station) { { onShare(station) } }
 
         // Primary Automotive Action Buttons Row: [ Chỉ Đường ] & [ Focus ] (Height >= 56dp)
+        val showFocusButton = NativeStationDetailSheetHelper.shouldShowFocusButton(station, isAcFilterActive)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1099,6 +1112,18 @@ fun NativeStationDetailContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val navModifier = if (showFocusButton) {
+                Modifier
+                    .weight(1f, fill = true)
+                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
+            }
+
             // Button 1: "Chỉ Đường" (Pure turn-by-turn navigation via Google Maps, height >= 56dp)
             Button(
                 onClick = onNavigateOnlyClick,
@@ -1108,10 +1133,7 @@ fun NativeStationDetailContent(
                     contentColor = Color.White
                 ),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                modifier = Modifier
-                    .weight(1f, fill = true)
-                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
-                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                modifier = navModifier
             ) {
                 Icon(
                     imageVector = AppIcons.Navigation,
@@ -1131,36 +1153,38 @@ fun NativeStationDetailContent(
                 )
             }
 
-            // Button 2: "Focus" (Navigation + Real-time Telemetry Tracking Overlay, height >= 56dp)
-            Button(
-                onClick = onFocusClick,
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = EmeraldPrimary,
-                    contentColor = Color.White
-                ),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                modifier = Modifier
-                    .weight(1f, fill = true)
-                    .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
-                    .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
-            ) {
-                Icon(
-                    imageVector = AppIcons.Bolt,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = NativeStationDetailSheetHelper.LABEL_FOCUS,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = NativeStationDetailSheetHelper.CAR_BUTTON_FONT_WEIGHT,
-                        fontSize = 15.sp
+            if (showFocusButton) {
+                // Button 2: "Focus" (Navigation + Real-time Telemetry Tracking Overlay, height >= 56dp)
+                Button(
+                    onClick = onFocusClick,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldPrimary,
+                        contentColor = Color.White
                     ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .weight(1f, fill = true)
+                        .heightIn(min = AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                        .height(AutomotiveDimens.CAR_BUTTON_HEIGHT)
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Bolt,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = NativeStationDetailSheetHelper.LABEL_FOCUS,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = NativeStationDetailSheetHelper.CAR_BUTTON_FONT_WEIGHT,
+                            fontSize = 15.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
