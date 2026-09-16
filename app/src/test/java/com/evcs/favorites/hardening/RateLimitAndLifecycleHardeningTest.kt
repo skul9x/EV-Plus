@@ -235,6 +235,7 @@ class RateLimitAndLifecycleHardeningTest {
                         "data": [
                             {
                                 "station_name": "Trạm Sạc VinFast Thăng Long",
+                                "evse": "VinFast",
                                 "locationId": "LOC_TL_01",
                                 "latitude": 21.0100,
                                 "longitude": 105.8000,

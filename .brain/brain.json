@@ -91,7 +91,8 @@
     "Local-First Firestore Favorites Sync with Anonymous & 1-Tap Google Sign-In",
     "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation",
     "OSRM Road Network Driving Distance Matrix Routing Engine (accurate driving km and ETA accounting for bridges, estuaries, and expressway exits)",
-    "Station Classification Engine (Differentiating Official VinFast Hubs from Franchised V-GREEN Private Stations)"
+    "Station Classification Engine (Differentiating Official VinFast Hubs from Franchised V-GREEN Private Stations)",
+    "AC Charging Flow Performance Optimization (Low-allocation mapping, streaming HTML title resolution, and 2-stage progressive rendering)"
   ],
   "knowledge_items": {
     "patterns": [
@@ -122,7 +123,11 @@
       "AGP 8.2+ Baseline Profile method wildcards require `->**(**)**` rather than bare `->*` to avoid profgen parser StringIndexOutOfBoundsException",
       "Telemetry Hybrid Source Routing: Use HERE Maps EV API as primary for official VinFast stations (sub-second OCPP push, hardware diagnostics OUT_OF_SERVICE) and EVCS API for franchised stations (avoids 15-30m roaming batch delay)",
       "Road Network Distance vs Haversine: In coastal, riverine, and expressway zones, straight-line Haversine underestimates route distances by 2.5x-3x; OSRM routing matrix must be queried to avoid misleading navigation reroutes",
-      "Polling Resilience: Continuous 5-second interval polling on both HERE EV API and EVCS.vn API sustained 100+ requests over 10 minutes with 0 HTTP 429 rate limit errors and zero Cloudflare WAF blocks"
+      "Polling Resilience: Continuous 5-second interval polling on both HERE EV API and EVCS.vn API sustained 100+ requests over 10 minutes with 0 HTTP 429 rate limit errors and zero Cloudflare WAF blocks",
+      "Low-Allocation DTO Mapping: Filter raw HereEvStation on JSON/DTO level before instantiating domain models or power ports, drastically reducing object allocations during nearby discovery",
+      "Streaming HTML Title Resolution: Stream-based regex matching directly on OkHttp ResponseBody byteStream avoids buffering multi-megabyte HTML strings into memory",
+      "Progressive 2-Stage UI Rendering: Immediately emit top 10 candidate stations with fallback address names in ~300ms from HERE API with isLoading=false, followed by background asynchronous canonical name enrichment and debounced routing",
+      "Safe Coroutine Job Tracking & Cancellation: Decouple discovery (acDiscoveryJob) and background enrichment (acEnrichmentJob) so filter switches abort pending enrichment jobs without state leakage or race conditions"
     ],
     "gotchas": [
       "Beware of generic .gitignore patterns like lan*/ which match any subdirectory starting with lan (e.g. ui/screens/landscape/); use root-relative /lan*/ instead.",
@@ -136,7 +141,9 @@
       "Telemetry Latency Hierarchy: EVCS.vn updates available/occupied connector counts faster (near instant, tied directly to VinFast App in-country session backend), whereas HERE Maps EV API exhibits 3-15 minute latency due to Edge CDN caching and international gateway routing (VinFast VN -> Hubject/HERE Europe -> Asia CDN).",
       "Franchised V-GREEN stations (e.g. C.HNO1100, C.HNO1215, C.BNI0324) update in 15-30 minute roaming batches on HERE Maps EV API; real-time plug events during short stops may only appear immediately in EVCS API.",
       "EVCS.vn API suffers occasional network latency jitter (spikes up to 5.4s or 10s timeout), whereas HERE Maps EV API maintains strict 260-450ms response bounds.",
-      "HERE Maps provides physical EVSE connector-level state (AVAILABLE, OCCUPIED, OUT_OF_SERVICE) and exact serial cpoEvseEMI3Id, whereas EVCS only provides aggregate counts and cannot distinguish unpowered/broken chargers from occupied ones."
+      "HERE Maps provides physical EVSE connector-level state (AVAILABLE, OCCUPIED, OUT_OF_SERVICE) and exact serial cpoEvseEMI3Id, whereas EVCS only provides aggregate counts and cannot distinguish unpowered/broken chargers from occupied ones.",
+      "Calling delay() inside coroutines throws CancellationException when parent job is cancelled; any try/catch blocks handling CancellationException must rethrow it to allow coroutines to abort properly.",
+      "When decoupling multi-stage pipelines into separate coroutine jobs, ensure child enrichment jobs are cancelled on filter switches to prevent background jobs from leaking stale state into newly selected modes (e.g. leaking AC stations into DC mode)."
     ]
   }
 }

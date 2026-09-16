@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-16] - In-Car Automotive GPS Acquisition Resilience & Multi-Tier Fallback
+
+### Enhanced & Fixed
+- **In-Car Automotive GPS Acquisition (`LocationService`)**:
+  - Upgraded location request priority from `PRIORITY_BALANCED_POWER_ACCURACY` to `PRIORITY_HIGH_ACCURACY` to actively activate vehicle GNSS/satellite chipsets on car head units and Carlinkit TBox adapters.
+  - Implemented 3-tier resilient fallback:
+    1. Active high-accuracy GNSS fix via `FusedLocationProviderClient.getCurrentLocation`.
+    2. Cached fix fallback via `FusedLocationProviderClient.lastLocation` when fresh location returns null (resolving the issue where null success responses did not invoke failure listeners).
+    3. Direct hardware fallback to Android framework `LocationManager` enabled providers (`GPS_PROVIDER`, `NETWORK_PROVIDER`, `PASSIVE_PROVIDER`) for non-GAS and AOSP automotive systems.
+  - Added `isLocationEnabled()` checking system-wide location services via `LocationManagerCompat`.
+  - Enforced atomic coroutine resumption (`AtomicBoolean`) preventing double-resume and concurrency race conditions.
+  - Verification: `LocationServiceGpsResilienceTest.kt` (100% PASS).
+
 ## [2026-09-16] - AC Charging Flow Performance Optimization (Phases 01 - 03)
 
 ### Added & Optimized
