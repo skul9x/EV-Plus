@@ -12,6 +12,9 @@ import com.evcs.favorites.data.preferences.SmartFilterPreferences
 import com.evcs.favorites.data.routing.MultiTierRoutingCoordinator
 import com.evcs.favorites.data.routing.RoutingDestination
 import com.evcs.favorites.data.routing.RoutingPreferencesManager
+import com.evcs.favorites.data.logging.AppDebugLogger
+import com.evcs.favorites.data.logging.DebugLogLevel
+import com.evcs.favorites.data.logging.DebugLogTag
 import com.evcs.favorites.data.routing.RoutingSettings
 import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.domain.filter.NearbyStationFilter
@@ -187,6 +190,9 @@ class NearbyViewModel(
     var acDiscoveryJob: Job? = null
         private set
 
+    var acEnrichmentJob: Job? = null
+        private set
+
     /**
      * Checks if the active filter represents AC charging mode:
      * either SmartFilterMode.AC or QuickChipOption.AC in CustomFilterMode.QUICK_CHIP.
@@ -248,6 +254,7 @@ class NearbyViewModel(
         routingJob?.cancel()
         routingDebounceJob?.cancel()
         acDiscoveryJob?.cancel()
+        acEnrichmentJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             if (!locationService.hasLocationPermission()) {
@@ -654,6 +661,7 @@ class NearbyViewModel(
         routingJob?.cancel()
         routingDebounceJob?.cancel()
         acDiscoveryJob?.cancel()
+        acEnrichmentJob?.cancel()
 
         val job = viewModelScope.launch(dispatcher) {
             if (!locationService.hasLocationPermission()) {
@@ -829,6 +837,7 @@ class NearbyViewModel(
         if (isAcModeActive()) {
             if (lat != null && lon != null) {
                 acDiscoveryJob?.cancel()
+                acEnrichmentJob?.cancel()
                 routingJob?.cancel()
                 routingDebounceJob?.cancel()
 
@@ -845,6 +854,7 @@ class NearbyViewModel(
 
         // Non-AC mode: cancel any pending AC hybrid jobs
         acDiscoveryJob?.cancel()
+        acEnrichmentJob?.cancel()
         _uiState.update { it.copy(isLoading = false) }
 
         if (raw.isNotEmpty()) {
@@ -897,12 +907,16 @@ class NearbyViewModel(
     }
 
     /**
-     * Executes the hybrid pipeline for AC charging stations:
-     * 1. Queries HERE EV API for stations with available AC ports (10km radius).
-     * 2. If no AC stations found, expands search to 20km before concluding empty results.
-     * 3. Resolves authentic station names via EVCS HTML detail pages for Top 10 candidate stations.
-     * 4. Emits resolved stations and clears loading indicator.
-     * 5. Initiates debounced background driving route calculation.
+     * Executes the progressive 2-stage hybrid pipeline for AC charging stations:
+     * Stage 1 (Instant Discovery Emit):
+     *   - Queries HERE EV API for stations with available AC ports (10km radius, expanding to 20km if empty)
+     *     with nameResolver = null to defer blocking HTML scraping latency.
+     *   - Immediately emits candidate stations to top10DisplayStations with fallback address names.
+     *   - Clears loading indicators (isLoading = false, isSearching = false, isLocating = false) and dispatches ScrollToTop on user refresh.
+     * Stage 2 (Asynchronous Enrichment):
+     *   - Concurrently resolves canonical station names in the background via nameResolver.
+     *   - Smoothly updates matching station names in top10DisplayStations without resetting loading flags.
+     *   - Initiates debounced driving route calculation via routingCoordinator.calculateRoutes.
      */
     private suspend fun executeAcHybridPipeline(
         lat: Double,
@@ -910,13 +924,16 @@ class NearbyViewModel(
         triggerType: RefreshTriggerType = RefreshTriggerType.PASSIVE_BACKGROUND
     ) {
         try {
+            acEnrichmentJob?.cancel()
+            routingDebounceJob?.cancel()
+
             val result = withContext(ioDispatcher) {
                 var acResult = hereClient.fetchNearbyAvailableAcStations(
                     latitude = lat,
                     longitude = lon,
                     radiusMeters = 10_000,
                     maxLimit = 10,
-                    nameResolver = nameResolver
+                    nameResolver = null
                 )
                 if (acResult.isSuccess && acResult.getOrThrow().isEmpty()) {
                     acResult = hereClient.fetchNearbyAvailableAcStations(
@@ -924,7 +941,7 @@ class NearbyViewModel(
                         longitude = lon,
                         radiusMeters = 20_000,
                         maxLimit = 10,
-                        nameResolver = nameResolver
+                        nameResolver = null
                     )
                 }
                 acResult
@@ -934,20 +951,22 @@ class NearbyViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        isSearching = false,
+                        isLocating = false,
                         errorMessage = result.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc AC"
                     )
                 }
                 return
             }
 
-            val resolvedStations = result.getOrThrow()
+            val candidateStations = result.getOrThrow()
             val isUserRefresh = triggerType == RefreshTriggerType.USER_REFRESH
             val isScrollTrigger = triggerType == RefreshTriggerType.USER_REFRESH || triggerType == RefreshTriggerType.FILTER_CHANGE
             val refreshTimestamp = if (isScrollTrigger) System.currentTimeMillis() else _uiState.value.lastRefreshTimestamp
 
             _uiState.update {
                 it.copy(
-                    top10DisplayStations = resolvedStations,
+                    top10DisplayStations = candidateStations,
                     isLoading = false,
                     isSearching = false,
                     isLocating = false,
@@ -960,58 +979,109 @@ class NearbyViewModel(
                 _events.send(NearbyUiEvent.ScrollToTop(refreshTimestamp))
             }
 
-            if (resolvedStations.isNotEmpty()) {
-                routingDebounceJob?.cancel()
+            if (candidateStations.isEmpty()) {
+                return
+            }
 
-                val destinations = resolvedStations.take(10).map { station ->
-                    RoutingDestination(
-                        id = station.id,
-                        latitude = station.latitude,
-                        longitude = station.longitude
-                    )
-                }
-
-                suspend fun calculateAndApplyRoutes() {
-                    val metrics = withContext(ioDispatcher) {
-                        routingCoordinator.calculateRoutes(
-                            originLat = lat,
-                            originLng = lon,
-                            destinations = destinations,
-                            settings = prefsManager.settings.value,
-                            forceRefresh = isUserRefresh
+            // Stage 2: Asynchronous Enrichment & Routing
+            acEnrichmentJob = viewModelScope.launch(dispatcher) {
+                val resolver = nameResolver
+                if (resolver != null) {
+                    try {
+                        val resolvedStations = withContext(ioDispatcher) {
+                            resolver.resolveStationNamesBatch(candidateStations)
+                        }
+                        val resolvedNameMap = resolvedStations.associate { it.id to it.name }
+                        _uiState.update { state ->
+                            val updatedStations = state.top10DisplayStations.map { st ->
+                                val resolvedName = resolvedNameMap[st.id]
+                                if (resolvedName != null && resolvedName != st.name) {
+                                    st.copy(name = resolvedName)
+                                } else {
+                                    st
+                                }
+                            }
+                            state.copy(top10DisplayStations = updatedStations)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppDebugLogger.log(
+                            tag = DebugLogTag.FOCUS_MODE,
+                            level = DebugLogLevel.WARN,
+                            message = "Asynchronous name enrichment error: ${e.message}"
                         )
                     }
-                    val routedTop10 = resolvedStations.map { station ->
-                        val m = metrics[station.id]
-                        if (m != null) station.copy(drivingMetrics = m) else station
-                    }
-                    val sorted = withContext(defaultDispatcher) {
-                        NearbyStationFilter.sortByDrivingDistance(routedTop10)
-                    }
-                    _uiState.update {
-                        it.copy(
-                            top10DisplayStations = sorted,
-                            routingMetrics = metrics,
-                            isRoutingLoading = false
-                        )
-                    }
                 }
 
-                if (routingDebounceMs <= 0L) {
-                    calculateAndApplyRoutes()
-                } else {
-                    routingDebounceJob = viewModelScope.launch(dispatcher) {
-                        delay(routingDebounceMs)
+                val currentDisplayStations = _uiState.value.top10DisplayStations
+                if (currentDisplayStations.isNotEmpty()) {
+                    routingDebounceJob?.cancel()
+
+                    val destinations = currentDisplayStations.take(10).map { station ->
+                        RoutingDestination(
+                            id = station.id,
+                            latitude = station.latitude,
+                            longitude = station.longitude
+                        )
+                    }
+
+                    suspend fun calculateAndApplyRoutes() {
+                        try {
+                            val metrics = withContext(ioDispatcher) {
+                                routingCoordinator.calculateRoutes(
+                                    originLat = lat,
+                                    originLng = lon,
+                                    destinations = destinations,
+                                    settings = prefsManager.settings.value,
+                                    forceRefresh = isUserRefresh
+                                )
+                            }
+                            val routedTop10 = _uiState.value.top10DisplayStations.map { station ->
+                                val m = metrics[station.id]
+                                if (m != null) station.copy(drivingMetrics = m) else station
+                            }
+                            val sorted = withContext(defaultDispatcher) {
+                                NearbyStationFilter.sortByDrivingDistance(routedTop10)
+                            }
+                            _uiState.update {
+                                it.copy(
+                                    top10DisplayStations = sorted,
+                                    routingMetrics = metrics,
+                                    isRoutingLoading = false
+                                )
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            AppDebugLogger.log(
+                                tag = DebugLogTag.ROUTING,
+                                level = DebugLogLevel.WARN,
+                                message = "Routing calculation error in AC flow: ${e.message}"
+                            )
+                        }
+                    }
+
+                    if (routingDebounceMs <= 0L) {
                         calculateAndApplyRoutes()
+                    } else {
+                        routingDebounceJob = viewModelScope.launch(dispatcher) {
+                            delay(routingDebounceMs)
+                            calculateAndApplyRoutes()
+                        }
                     }
                 }
             }
         } catch (e: CancellationException) {
+            acEnrichmentJob?.cancel()
+            routingDebounceJob?.cancel()
             throw e
         } catch (e: Exception) {
             _uiState.update {
                 it.copy(
                     isLoading = false,
+                    isSearching = false,
+                    isLocating = false,
                     errorMessage = e.message ?: "Lỗi tải trạm sạc AC"
                 )
             }
@@ -1138,6 +1208,7 @@ class NearbyViewModel(
         routingJob?.cancel()
         routingDebounceJob?.cancel()
         acDiscoveryJob?.cancel()
+        acEnrichmentJob?.cancel()
         toggleJobs.clear()
         stationDetailCoordinator.dismissStationDetail()
     }

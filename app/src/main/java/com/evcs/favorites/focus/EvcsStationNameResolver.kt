@@ -8,7 +8,9 @@ import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.util.StationNameSanitizer
 import com.evcs.favorites.util.StationUrlBuilder
 import com.evcs.favorites.util.VinFastCdnUrlDecoder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -18,6 +20,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /**
  * Resolver utility resolving and caching authentic, standard charging station names from evcs.vn.
@@ -48,15 +51,24 @@ open class EvcsStationNameResolver(
         val stationId: String? = null
     )
 
+    data class CachedHtmlTitle(
+        val title: String,
+        val timestampMs: Long
+    )
+
     private val idToNameCache = ConcurrentHashMap<String, String>()
     private val coordCache = CopyOnWriteArrayList<CachedStationCoord>()
 
     private val photoIdCache = ConcurrentHashMap<String, List<String>>()
     private val photoCoordCache = CopyOnWriteArrayList<CachedStationPhotosCoord>()
 
+    private val htmlTitleCache = ConcurrentHashMap<String, CachedHtmlTitle>()
+
     companion object {
         const val DEFAULT_HTML_BASE_URL = "https://evcs.vn"
         const val MAX_COORDINATE_MATCH_METERS = 100.0
+        const val HTML_CACHE_TTL_MS = 60 * 60 * 1000L // 60 minutes
+        const val HTML_RESOLVE_TIMEOUT_MS = 1800L
 
         private val GENERIC_NAMES = setOf(
             "trạm sạc vinfast",
@@ -408,15 +420,17 @@ open class EvcsStationNameResolver(
      * `https://evcs.vn/tram-sac-vinfast-${locationId.lowercase()}.html`.
      *
      * Uses [EvcsApiClient.USER_AGENT_BROWSER] mobile headers.
-     * Extracts title text from `<title>` or `<meta name="title">`, stripping prefix
-     * "Trạm sạc VinFast - " and suffix " - Trạm Sạc EV".
-     * If request fails, times out (5s), or HTML lacks title, falls back to "VinFast - ${fallbackAddress}".
-     *
-     * Note: Per user specification, results are resolved live and NOT retained in persistent or in-memory cache.
+     * Checks in-memory HTML station name TTL cache first (returns immediately on cache hit unless [bypassCache] is true).
+     * Streams HTTP response body line-by-line using a BufferedReader, terminating early upon encountering
+     * `<title>` tag or `</head>` / `<body>` boundary without buffering full HTML body content.
+     * Extracts and sanitizes canonical title, stripping prefix "Trạm sạc VinFast - " and suffix " - Trạm Sạc EV".
+     * Stores resolved title into in-memory TTL cache with a 60-minute lifespan.
+     * If request fails, times out (1.8s), or HTML lacks title, falls back cleanly to "VinFast - ${fallbackAddress}".
      */
     suspend fun resolveStationNameFromHtml(
         locationId: String,
-        fallbackAddress: String = ""
+        fallbackAddress: String = "",
+        bypassCache: Boolean = false
     ): String = withContext(Dispatchers.IO) {
         val cleanLocationId = locationId.trim().lowercase()
             .removePrefix("tram-sac-vinfast-")
@@ -424,6 +438,18 @@ open class EvcsStationNameResolver(
 
         if (cleanLocationId.isBlank()) {
             return@withContext formatFallbackAddress(fallbackAddress)
+        }
+
+        if (!bypassCache) {
+            val cached = htmlTitleCache[cleanLocationId]
+            if (cached != null) {
+                val now = System.currentTimeMillis()
+                if (now - cached.timestampMs < HTML_CACHE_TTL_MS) {
+                    return@withContext cached.title
+                } else {
+                    htmlTitleCache.remove(cleanLocationId)
+                }
+            }
         }
 
         val cleanBase = htmlBaseUrl.trimEnd('/')
@@ -436,25 +462,76 @@ open class EvcsStationNameResolver(
             .get()
             .build()
 
-        val htmlBody = withTimeoutOrNull(5000L) {
+        val rawTitle = withTimeoutOrNull(HTML_RESOLVE_TIMEOUT_MS) {
+            val client = if (httpClient.callTimeoutMillis == 0 || httpClient.callTimeoutMillis > HTML_RESOLVE_TIMEOUT_MS) {
+                httpClient.newBuilder()
+                    .callTimeout(HTML_RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    .readTimeout(HTML_RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    .build()
+            } else {
+                httpClient
+            }
+            val call = client.newCall(request)
+            val job = coroutineContext[Job]
+            val cancelHandle = job?.invokeOnCompletion { cause ->
+                if (cause != null) {
+                    call.cancel()
+                }
+            }
             try {
-                httpClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        response.body?.string()
-                    } else {
-                        null
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@use null
                     }
+                    val body = response.body ?: return@use null
+                    val reader = body.byteStream().bufferedReader(Charsets.UTF_8)
+                    var titleFound: String? = null
+                    var inTitleTag = false
+                    val multiLineTitle = StringBuilder()
+
+                    reader.use { bufferedReader ->
+                        while (true) {
+                            val line = bufferedReader.readLine() ?: break
+
+                            if (inTitleTag) {
+                                multiLineTitle.append(" ").append(line)
+                                if (line.contains("</title>", ignoreCase = true)) {
+                                    titleFound = extractTitleFromHtml(multiLineTitle.toString())
+                                    break
+                                }
+                                if (line.contains("</head>", ignoreCase = true) || line.contains("<body", ignoreCase = true)) {
+                                    break
+                                }
+                                continue
+                            }
+
+                            val candidate = extractTitleFromHtml(line)
+                            if (!candidate.isNullOrBlank()) {
+                                titleFound = candidate
+                                break
+                            }
+
+                            if (line.contains("<title", ignoreCase = true) && !line.contains("</title>", ignoreCase = true)) {
+                                inTitleTag = true
+                                multiLineTitle.append(line)
+                                continue
+                            }
+
+                            if (line.contains("</head>", ignoreCase = true) || line.contains("<body", ignoreCase = true)) {
+                                break
+                            }
+                        }
+                    }
+                    titleFound
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 null
+            } finally {
+                cancelHandle?.dispose()
             }
         }
 
-        if (htmlBody.isNullOrBlank()) {
-            return@withContext formatFallbackAddress(fallbackAddress)
-        }
-
-        val rawTitle = extractTitleFromHtml(htmlBody)
         if (rawTitle.isNullOrBlank()) {
             return@withContext formatFallbackAddress(fallbackAddress)
         }
@@ -463,6 +540,11 @@ open class EvcsStationNameResolver(
         if (cleanedName.isBlank()) {
             return@withContext formatFallbackAddress(fallbackAddress)
         }
+
+        htmlTitleCache[cleanLocationId] = CachedHtmlTitle(
+            title = cleanedName,
+            timestampMs = System.currentTimeMillis()
+        )
 
         cleanedName
     }
@@ -636,12 +718,46 @@ open class EvcsStationNameResolver(
     }
 
     /**
-     * Clears all in-memory station name and photo caches.
+     * Clears all in-memory station name, photo, and HTML title caches.
      */
     fun clearCache() {
         idToNameCache.clear()
         coordCache.clear()
         photoIdCache.clear()
         photoCoordCache.clear()
+        htmlTitleCache.clear()
+    }
+
+    /**
+     * Clears in-memory HTML title TTL cache.
+     */
+    fun clearHtmlCache() {
+        htmlTitleCache.clear()
+    }
+
+    /**
+     * Returns cached canonical HTML title for locationId if present and not expired.
+     */
+    fun getCachedHtmlTitle(locationId: String): String? {
+        val cleanLocationId = locationId.trim().lowercase()
+            .removePrefix("tram-sac-vinfast-")
+            .removeSuffix(".html")
+        val cached = htmlTitleCache[cleanLocationId] ?: return null
+        return if (System.currentTimeMillis() - cached.timestampMs < HTML_CACHE_TTL_MS) {
+            cached.title
+        } else {
+            htmlTitleCache.remove(cleanLocationId)
+            null
+        }
+    }
+
+    /**
+     * Sets cached canonical HTML title for locationId with explicit timestamp.
+     */
+    fun putCachedHtmlTitle(locationId: String, title: String, timestampMs: Long = System.currentTimeMillis()) {
+        val cleanLocationId = locationId.trim().lowercase()
+            .removePrefix("tram-sac-vinfast-")
+            .removeSuffix(".html")
+        htmlTitleCache[cleanLocationId] = CachedHtmlTitle(title, timestampMs)
     }
 }

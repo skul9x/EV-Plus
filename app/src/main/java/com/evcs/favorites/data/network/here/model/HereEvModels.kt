@@ -64,20 +64,32 @@ data class HereEvStation(
      * Checks whether this station possesses at least one car AC charging connector (11kW or 22kW)
      * with verified live available plugs (numberOfAvailable > 0 and status is AVAILABLE).
      * Stations where all AC ports are occupied, out-of-service, or non-car tiers (e.g. 3.5kW, 7kW) return false.
+     * Directly inspects connectors across root containers and EVSE collections without invoking
+     * allConnectors() or .filter { ... }.
      */
     fun hasAvailableAcConnector(): Boolean {
-        val acConnectors = allConnectors().filter { it.isCarAcCharging }
-        if (acConnectors.isEmpty()) return false
-
-        return acConnectors.any { conn ->
-            val avail = conn.availableCount
-            val statuses = conn.allStatuses()
-            if (statuses.isNotEmpty()) {
-                avail > 0 && statuses.any { it.isAvailable }
-            } else {
-                avail > 0
+        connectors?.connector?.let { list ->
+            for (i in list.indices) {
+                val conn = list[i]
+                if (conn.isCarAcCharging && conn.hasAvailableStatus()) return true
             }
         }
+        rawConnectors?.let { list ->
+            for (i in list.indices) {
+                val conn = list[i]
+                if (conn.isCarAcCharging && conn.hasAvailableStatus()) return true
+            }
+        }
+        evse?.let { evseList ->
+            for (i in evseList.indices) {
+                val conns = evseList[i].connectors
+                for (j in conns.indices) {
+                    val conn = conns[j]
+                    if (conn.isCarAcCharging && conn.hasAvailableStatus()) return true
+                }
+            }
+        }
+        return false
     }
 }
 
@@ -193,6 +205,25 @@ data class HereConnector(
                 0
             }
         }
+
+    /**
+     * Helper function to check connector availability (availableCount > 0 and status AVAILABLE)
+     * without allocating temporary status lists.
+     */
+    fun hasAvailableStatus(): Boolean {
+        val explicitAvail = numberOfAvailable ?: connectorStatuses?.numberOfAvailable
+        val statuses = connectorStatuses?.connectorStatus ?: rawStatuses
+        return if (!statuses.isNullOrEmpty()) {
+            val hasAvailable = statuses.any { it.isAvailable }
+            if (explicitAvail != null) {
+                explicitAvail > 0 && hasAvailable
+            } else {
+                hasAvailable
+            }
+        } else {
+            (explicitAvail ?: 0) > 0
+        }
+    }
 }
 
 /**

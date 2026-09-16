@@ -189,20 +189,24 @@ open class HereEvApiClient(
         val hereResponse = rawResult.getOrThrow()
         val qualifyingHereStations = hereResponse.allStations.filter { it.hasAvailableAcConnector() }
 
-        val mappedStations = qualifyingHereStations.map { hereStation ->
-            val domainStation = HereModelMapper.mapStationToDomain(hereStation, dcOnly = false)
+        val qualifyingWithDistance = qualifyingHereStations.map { hereStation ->
+            val stLat = hereStation.position?.latitude ?: 0.0
+            val stLon = hereStation.position?.longitude ?: 0.0
             val distanceKm = DistanceCalculator.calculateDistanceKm(
                 lat1 = latitude,
                 lon1 = longitude,
-                lat2 = domainStation.latitude,
-                lon2 = domainStation.longitude
+                lat2 = stLat,
+                lon2 = stLon
             )
-            domainStation.copy(distanceKm = distanceKm)
+            hereStation to distanceKm
         }
 
-        val topStations = mappedStations
-            .sortedBy { it.distanceKm ?: Double.MAX_VALUE }
+        val topStations = qualifyingWithDistance
+            .sortedBy { it.second }
             .take(maxLimit)
+            .map { (hereStation, distanceKm) ->
+                HereModelMapper.mapStationToDomain(hereStation, dcOnly = false).copy(distanceKm = distanceKm)
+            }
 
         val finalStations = if (nameResolver != null && topStations.isNotEmpty()) {
             nameResolver.resolveStationNamesBatch(topStations)
