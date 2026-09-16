@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-16] - AC Charging Flow Performance Optimization (Phases 01 - 03)
+
+### Added & Optimized
+- **Phase 01: Low-Allocation Pre-Filter & Mapping Optimization**:
+  - Filtered raw `HereEvStation` DTOs directly before constructing domain models or parsing port lists, eliminating garbage collection churn during AC candidate station discovery.
+  - Optimized power level quantization and connector aggregation in `HereModelMapper`.
+  - Verification: `AcStationPreFilterAndMappingOptimizationTest.kt` (100% PASS).
+- **Phase 02: Streaming HTML Resolution & In-Memory TTL Caching**:
+  - Implemented streaming regex parsing on raw HTTP byte streams in `EvcsStationNameResolver` to avoid buffering large HTML responses in memory.
+  - Added 60-minute in-memory TTL caching (`CachedHtmlTitle`) to prevent duplicate HTTP scraping requests for canonical station names.
+  - Verification: `AcStationStreamingNameResolutionAndCacheTest.kt` (100% PASS).
+- **Phase 03: Progressive Staged UI Rendering & Coroutine Lifecycle Management**:
+  - Restructured `NearbyViewModel.executeAcHybridPipeline` into a 2-stage progressive rendering pipeline:
+    - Stage 1 (Instant Discovery Emit): Emits candidate stations with fallback address names and available ports in ~300ms, immediately turning off `isLoading` and dispatching `ScrollToTop` on refresh.
+    - Stage 2 (Asynchronous Enrichment): Concurrently resolves canonical station names in background via `acEnrichmentJob` and initiates debounced route calculations without re-triggering loading spinners.
+  - Clean coroutine cancellation: Dispatched `acDiscoveryJob` and `acEnrichmentJob` cleanup on filter switches, GPS scans, and ViewModel teardown, preventing stale AC state leakage.
+  - Verification: `NearbyAcProgressiveRenderingAndOptimizationTest.kt` (100% PASS).
+
 ## [2026-09-07] - Focus Mode evcs.vn Station Name Resolution & 1-Tap Direct Turn-by-Turn Navigation
 
 ### Added
