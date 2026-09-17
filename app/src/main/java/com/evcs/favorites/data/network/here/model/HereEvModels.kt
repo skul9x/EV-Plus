@@ -389,6 +389,22 @@ object HereModelMapper {
         val domainId = hereStation.cpoId?.takeIf { it.isNotBlank() }
             ?: hereStation.id.ifBlank { "here_${hereStation.name.hashCode()}" }
 
+        val resolvedEvse = when {
+            !hereStation.cpoId.isNullOrBlank() -> {
+                val cleanCpo = hereStation.cpoId.trim()
+                if (cleanCpo.contains("vinfast", ignoreCase = true)) {
+                    "VinFast"
+                } else if (cleanCpo.startsWith("c.", ignoreCase = true)) {
+                    if (hereStation.name.contains("vinfast", ignoreCase = true)) "VinFast" else "Partner"
+                } else {
+                    cleanCpo
+                }
+            }
+            hereStation.name.contains("vinfast", ignoreCase = true) -> "VinFast"
+            powerPorts.isNotEmpty() && powerPorts.all { it.typeWatts <= 22000L } -> "AC"
+            else -> "Partner"
+        }
+
         return Station(
             id = domainId,
             name = hereStation.name,
@@ -409,7 +425,7 @@ object HereModelMapper {
             workingTimeDescription = "24/7",
             distanceKm = null,
             drivingMetrics = null,
-            evse = "VinFast"
+            evse = resolvedEvse
         )
     }
 }

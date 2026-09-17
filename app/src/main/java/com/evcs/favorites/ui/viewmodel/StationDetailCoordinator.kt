@@ -4,6 +4,7 @@ import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.repository.EvcsTelemetryRepository
 import com.evcs.favorites.domain.StationPortStatus
 import com.evcs.favorites.domain.StationTelemetryParser
+import com.evcs.favorites.domain.filter.hasDcPorts
 import com.evcs.favorites.focus.EvcsStationNameResolver
 import com.evcs.favorites.ui.state.StationDetailUiState
 import kotlinx.coroutines.CancellationException
@@ -140,6 +141,28 @@ class StationDetailCoordinator(
         _stationDetailState.value = StationDetailUiState()
     }
 
+    /**
+     * Updates the currently displayed station in the detail state while preserving
+     * active telemetry, port statuses, and rating.
+     */
+    fun updateStation(updatedStation: Station) {
+        _stationDetailState.update { current ->
+            val cur = current.station ?: return@update current
+            if (cur.id.equals(updatedStation.id, ignoreCase = true)) {
+                current.copy(
+                    station = updatedStation,
+                    portStatuses = if (current.portStatuses.isNotEmpty()) {
+                        current.portStatuses
+                    } else {
+                        deriveInitialPortStatuses(updatedStation)
+                    }
+                )
+            } else {
+                current
+            }
+        }
+    }
+
     private fun launchPhotoResolution(station: Station) {
         if (station.images.isEmpty()) {
             photoJob = coroutineScope.launch(ioDispatcher) {
@@ -174,6 +197,19 @@ class StationDetailCoordinator(
             launchPhotoResolution(station)
         }
 
+        // AC / Partner Station Safety: bypass token fetching for third-party or pure AC stations
+        if (isNonVinFastOrAc(station)) {
+            _stationDetailState.update {
+                it.copy(
+                    isLoadingTelemetry = false,
+                    isLoadingStats = false,
+                    isRefreshing = false,
+                    error = null
+                )
+            }
+            return
+        }
+
         try {
             // Stage 1a: Ephemeral tokens and rating handshake
             val tokensResult = withContext(ioDispatcher) {
@@ -182,12 +218,14 @@ class StationDetailCoordinator(
             if (tokensResult.isFailure) {
                 val ex = tokensResult.exceptionOrNull()
                 if (ex is CancellationException) throw ex
+                val msg = ex?.message.orEmpty()
+                val is404OrMissing = msg.contains("404") || msg.contains("Not Found", ignoreCase = true)
                 _stationDetailState.update {
                     it.copy(
                         isLoadingTelemetry = false,
                         isLoadingStats = false,
                         isRefreshing = false,
-                        error = ex?.message ?: "Failed to load station telemetry"
+                        error = if (is404OrMissing) null else (ex?.message ?: "Failed to load station telemetry")
                     )
                 }
                 return
@@ -292,6 +330,19 @@ class StationDetailCoordinator(
             _stationDetailState.update {
                 it.copy(isRefreshing = false)
             }
+        }
+    }
+
+    companion object {
+        /**
+         * Detects when a station is a non-VinFast or pure AC station without standard EVCS web scraping endpoints.
+         */
+        fun isNonVinFastOrAc(station: Station): Boolean {
+            val isPureAc = station.powers.isNotEmpty() && station.powers.all { it.typeWatts <= 22000L }
+            val isHereStation = station.id.startsWith("here_", ignoreCase = true)
+            val isNotVinFast = !station.evse.equals("VinFast", ignoreCase = true)
+            val hasNoDc = !station.hasDcPorts()
+            return isPureAc || isHereStation || isNotVinFast || hasNoDc
         }
     }
 }

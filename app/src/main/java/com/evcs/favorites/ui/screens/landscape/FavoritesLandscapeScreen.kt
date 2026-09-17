@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.domain.filter.hasDcPorts
 import com.evcs.favorites.domain.model.AuthUser
 import com.evcs.favorites.ui.components.FavoritesProfileHeader
 import com.evcs.favorites.ui.components.NativeStationDetailContent
@@ -195,7 +196,8 @@ fun FavoritesLandscapeScreen(
                                             onStationClick = onStationClick,
                                             isSelected = station.id == activeStationForDetail?.id,
                                             isCarMode = true,
-                                            isCompact = true
+                                            isCompact = true,
+                                            isAcFilterActive = !station.hasDcPorts()
                                         )
                                     }
                                 }
@@ -241,7 +243,7 @@ fun FavoritesLandscapeScreen(
                         uiState = effectiveDetailState,
                         isFavorite = true,
                         isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
-                        isAcFilterActive = false,
+                        isAcFilterActive = !effectiveStation.hasDcPorts(),
                         onRefresh = onRefreshDetail,
                         onDismiss = onDismissDetail,
                         onNavigate = onNavigateClick,

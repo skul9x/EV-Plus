@@ -225,10 +225,15 @@ class FavoritesViewModel(
                     )
                 }
 
-                if (_selectedStationForDetail.value != null &&
-                    stationsToEnrich?.none { it.id == _selectedStationForDetail.value?.id } == true
-                ) {
-                    _selectedStationForDetail.value = null
+                val currentDetail = _selectedStationForDetail.value
+                if (currentDetail != null) {
+                    val updatedDetailStation = stationsToEnrich?.find { it.id == currentDetail.id }
+                    if (updatedDetailStation != null) {
+                        _selectedStationForDetail.value = updatedDetailStation
+                        stationDetailCoordinator.updateStation(updatedDetailStation)
+                    } else if (stationsToEnrich != null && stationsToEnrich?.none { it.id == currentDetail.id } == true) {
+                        _selectedStationForDetail.value = null
+                    }
                 }
 
                 if (hasNewStations && stationsToEnrich != null) {
@@ -404,7 +409,7 @@ class FavoritesViewModel(
                     currentCoordinates = coords
                 }
 
-                val result = repository.getFavorites(userLat, userLon)
+                val result = repository.refreshFavorites(userLat, userLon)
                 if (result.isSuccess) {
                     val stations = result.getOrThrow()
                     val step1Stations = if (userLat != null && userLon != null) {
@@ -499,6 +504,14 @@ class FavoritesViewModel(
                 }
             }
 
+            // Two-Way Station Synchronization: propagate routing metrics to active detail sheet if open
+            val currentDetailStation = stationDetailCoordinator.stationDetailState.value.station
+            if (currentDetailStation != null) {
+                enrichedStations.find { it.id.equals(currentDetailStation.id, ignoreCase = true) }?.let { enriched ->
+                    stationDetailCoordinator.updateStation(enriched)
+                }
+            }
+
             val sortedStations = withContext(defaultDispatcher) {
                 sortStations(enrichedStations)
             }
@@ -519,6 +532,16 @@ class FavoritesViewModel(
         routingJob = job
         return job
     }
+
+    /**
+     * Executes routing pipeline, synchronizing driving metrics with stationDetailCoordinator.
+     */
+    fun calculateDrivingRoutes(
+        stations: List<Station>,
+        userLat: Double,
+        userLon: Double,
+        forceRefresh: Boolean = false
+    ): Job = executeRoutingPipeline(stations, userLat, userLon, forceRefresh)
 
     /**
      * Refreshes routing calculations for current stations using active coordinates.
@@ -851,6 +874,14 @@ class FavoritesViewModel(
                 stations = updatedStations,
                 selectedStationForDetail = updatedSelected
             )
+        }
+
+        val newlyUpdatedStation = (_uiState.value as? FavoritesUiState.Success)?.stations?.find { it.id == stationId }
+            ?: _selectedStationForDetail.value?.takeIf { it.id == stationId }
+            ?: stationDetailCoordinator.stationDetailState.value.station?.takeIf { it.id == stationId }
+
+        if (newlyUpdatedStation != null) {
+            stationDetailCoordinator.updateStation(newlyUpdatedStation)
         }
 
         _selectedStationForDetail.update { currentSelected ->

@@ -23,12 +23,37 @@ object StationTelemetryParser {
     private val WHITESPACE_REGEX = Regex("""\s+""")
     private val TICKER_DIV_REGEX = Regex("""<div[^>]*class=["']([^"']+)["'][^>]*>""")
 
-    private val KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
-    private val MULTIPLIER_BEFORE_REGEX = Regex("""(\d+)\s*(?:x|\*)\s*(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
-    private val MULTIPLIER_AFTER_REGEX = Regex("""kW\s*(?:x|\*)\s*(\d+)""", RegexOption.IGNORE_CASE)
-    private val PAREN_COUNT_REGEX = Regex("""\(\s*(\d+)\s*\)""")
-    private val COLON_COUNT_REGEX = Regex(""":\s*(\d+)\s*(?:cổng|trụ|port)?""")
-    private val SLASH_TOTAL_REGEX = Regex("""/\s*(\d+)\s*(?:cổng|trụ|port)?""")
+    val KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
+    val MULTIPLIER_BEFORE_REGEX = Regex("""(\d+)\s*(?:x|\*)\s*(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
+    val MULTIPLIER_AFTER_REGEX = Regex("""kW\s*(?:x|\*)\s*(\d+)""", RegexOption.IGNORE_CASE)
+    val PAREN_COUNT_REGEX = Regex("""\(\s*(\d+)\s*\)""")
+    val COLON_COUNT_REGEX = Regex(""":\s*(\d+)\s*(?:cổng|trụ|port)?""")
+    val SLASH_TOTAL_REGEX = Regex("""/\s*(\d+)\s*(?:cổng|trụ|port)?""")
+
+    /**
+     * Extracts multiplier port count from a single connector part string (e.g. "60kW x 4" -> 4).
+     * Returns null if no multiplier is present.
+     */
+    fun extractMultiplierCount(part: String): Int? {
+        return when {
+            MULTIPLIER_BEFORE_REGEX.find(part) != null -> {
+                MULTIPLIER_BEFORE_REGEX.find(part)!!.groupValues[1].toIntOrNull()
+            }
+            MULTIPLIER_AFTER_REGEX.find(part) != null -> {
+                MULTIPLIER_AFTER_REGEX.find(part)!!.groupValues[1].toIntOrNull()
+            }
+            PAREN_COUNT_REGEX.find(part) != null -> {
+                PAREN_COUNT_REGEX.find(part)!!.groupValues[1].toIntOrNull()
+            }
+            SLASH_TOTAL_REGEX.find(part) != null -> {
+                SLASH_TOTAL_REGEX.find(part)!!.groupValues[1].toIntOrNull()
+            }
+            COLON_COUNT_REGEX.find(part) != null -> {
+                COLON_COUNT_REGEX.find(part)!!.groupValues[1].toIntOrNull()
+            }
+            else -> null
+        }
+    }
 
     @Serializable
     private data class AccessTokensResponseRaw(
@@ -172,14 +197,27 @@ object StationTelemetryParser {
 
     /**
      * Overload accepting parsed [PowerPort] list from station model.
+     * When [PowerPort.totalPlugs] <= 0, inspects connector definitions before clamping to maxOf(busyByKw, 1).
      */
-    fun derivePortStatuses(powers: List<PowerPort>, busyByKw: Map<Int, Int>): List<StationPortStatus> {
+    fun derivePortStatuses(
+        powers: List<PowerPort>,
+        busyByKw: Map<Int, Int>,
+        connectors: String? = null
+    ): List<StationPortStatus> {
         val portMap = powers.filter { it.typeWatts > 0 }.associateBy { (it.typeWatts / 1000).toInt() }
         val allKws = (portMap.keys + busyByKw.keys).filter { it > 0 }.distinct().sortedDescending()
+        val connectorCounts = parseConnectorDefinitions(connectors)
 
         return allKws.map { kw ->
             val power = portMap[kw]
-            val totalPorts = power?.totalPlugs?.takeIf { it > 0 } ?: maxOf(busyByKw[kw] ?: 0, 1)
+            val totalFromPower = power?.totalPlugs?.takeIf { it > 0 }
+            val totalFromConnector = connectorCounts[kw]?.takeIf { it > 0 }
+                ?: power?.label?.let { extractMultiplierCount(it)?.takeIf { c -> c > 0 } }
+                ?: power?.displayString?.let { extractMultiplierCount(it)?.takeIf { c -> c > 0 } }
+            val totalPorts = totalFromPower
+                ?: totalFromConnector
+                ?: maxOf(busyByKw[kw] ?: 0, 1)
+
             val busyCount = busyByKw[kw] ?: 0
             val available = maxOf(0, totalPorts - busyCount)
             StationPortStatus(
@@ -203,24 +241,7 @@ object StationTelemetryParser {
             val kwMatch = KW_REGEX.find(part) ?: continue
             val kw = kwMatch.groupValues[1].toDoubleOrNull()?.toInt() ?: continue
 
-            val count = when {
-                MULTIPLIER_BEFORE_REGEX.find(part) != null -> {
-                    MULTIPLIER_BEFORE_REGEX.find(part)!!.groupValues[1].toIntOrNull() ?: 1
-                }
-                MULTIPLIER_AFTER_REGEX.find(part) != null -> {
-                    MULTIPLIER_AFTER_REGEX.find(part)!!.groupValues[1].toIntOrNull() ?: 1
-                }
-                PAREN_COUNT_REGEX.find(part) != null -> {
-                    PAREN_COUNT_REGEX.find(part)!!.groupValues[1].toIntOrNull() ?: 1
-                }
-                SLASH_TOTAL_REGEX.find(part) != null -> {
-                    SLASH_TOTAL_REGEX.find(part)!!.groupValues[1].toIntOrNull() ?: 1
-                }
-                COLON_COUNT_REGEX.find(part) != null -> {
-                    COLON_COUNT_REGEX.find(part)!!.groupValues[1].toIntOrNull() ?: 1
-                }
-                else -> 1
-            }
+            val count = extractMultiplierCount(part) ?: 1
             counts[kw] = (counts[kw] ?: 0) + count
         }
         return counts

@@ -1,5 +1,6 @@
 package com.evcs.favorites.data.repository
 
+import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
@@ -220,7 +221,22 @@ fun Station.toFirestoreMap(fallbackTimestamp: Long = System.currentTimeMillis() 
         "lon" to longitude,
         "summary" to summary,
         "connectors" to connectors,
-        "images" to images
+        "images" to images,
+        "total_plugs" to totalPlugs,
+        "total_available_plugs" to totalAvailablePlugs,
+        "depot_status" to depotStatus,
+        "is_free_parking" to isFreeParking,
+        "working_time" to workingTimeDescription,
+        "evse" to evse,
+        "powers" to powers.map { power ->
+            mapOf(
+                "type_watts" to power.typeWatts,
+                "label" to power.label,
+                "available_plugs" to power.availablePlugs,
+                "total_plugs" to power.totalPlugs,
+                "display_string" to power.displayString
+            )
+        }
     )
 }
 
@@ -252,6 +268,33 @@ fun parseFirestoreFavoritesDocument(
                 val connectors = value["connectors"] as? String ?: ""
                 val images = (value["images"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
 
+                val depotStatus = value["depot_status"] as? String ?: "Normal"
+                val isFreeParking = value["is_free_parking"] as? Boolean ?: true
+                val workingTime = value["working_time"] as? String ?: if (summary.isNotBlank()) summary else "24/7"
+                val evse = value["evse"] as? String ?: "VinFast"
+
+                val rawPowers = value["powers"] as? List<*>
+                val powers = if (rawPowers != null) {
+                    rawPowers.mapNotNull { p ->
+                        if (p is Map<*, *>) {
+                            PowerPort(
+                                typeWatts = (p["type_watts"] as? Number)?.toLong() ?: 0L,
+                                label = p["label"] as? String ?: "",
+                                availablePlugs = (p["available_plugs"] as? Number)?.toInt() ?: 0,
+                                totalPlugs = (p["total_plugs"] as? Number)?.toInt() ?: 0,
+                                displayString = p["display_string"] as? String ?: ""
+                            )
+                        } else null
+                    }
+                } else {
+                    EvcsRepository.parseConnectorsToPowers(connectors)
+                }
+
+                val totalPlugs = (value["total_plugs"] as? Number)?.toInt()
+                    ?: powers.sumOf { it.totalPlugs }
+                val totalAvailablePlugs = (value["total_available_plugs"] as? Number)?.toInt()
+                    ?: powers.sumOf { it.availablePlugs }
+
                 Station(
                     id = stationId,
                     name = name,
@@ -260,11 +303,16 @@ fun parseFirestoreFavoritesDocument(
                     longitude = lon,
                     summary = summary,
                     connectors = connectors,
-                    depotStatus = "Normal",
-                    powers = EvcsRepository.parseConnectorsToPowers(connectors),
+                    depotStatus = depotStatus,
+                    powers = powers,
+                    totalAvailablePlugs = totalAvailablePlugs,
+                    totalPlugs = totalPlugs,
                     images = images,
                     image = images.firstOrNull(),
-                    addedAt = addedAt
+                    addedAt = addedAt,
+                    isFreeParking = isFreeParking,
+                    workingTimeDescription = workingTime,
+                    evse = evse
                 )
             }
             is Number -> {

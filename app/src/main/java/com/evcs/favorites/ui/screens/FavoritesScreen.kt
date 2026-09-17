@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.routing.RoutingSettings
+import com.evcs.favorites.domain.filter.hasDcPorts
 import com.evcs.favorites.ui.components.FocusModePermissionDialog
 import com.evcs.favorites.ui.components.NativeStationDetailContent
 import com.evcs.favorites.ui.components.NativeStationDetailSheet
@@ -327,13 +328,14 @@ fun FavoritesScreen(
                 } else {
                     stationDetailState.copy(station = activeStationForDetail)
                 }
+                val stationForDetail = effectiveDetailState.station ?: activeStationForDetail
                 NativeStationDetailSheet(
                     uiState = effectiveDetailState,
                     onDismiss = onDismissDetail,
                     onRefresh = onRefreshDetail,
                     isFavorite = true,
                     isToggleInProgress = activeStationForDetail.id.let { togglingStationIds.contains(it) },
-                    isAcFilterActive = false,
+                    isAcFilterActive = !stationForDetail.hasDcPorts(),
                     onNavigate = onNavigateClick,
                     onToggleFavorite = onToggleFavoriteDetail ?: onRemoveFavoriteClick,
                     onShare = onShareDetail
@@ -491,7 +493,8 @@ private fun FavoritesListContent(
                         onStationClick = onStationClick,
                         isSelected = isLandscape && station.id == selectedStationId,
                         isCarMode = isLandscape,
-                        isCompact = isLandscape
+                        isCompact = isLandscape,
+                        isAcFilterActive = !station.hasDcPorts()
                     )
                 }
             }

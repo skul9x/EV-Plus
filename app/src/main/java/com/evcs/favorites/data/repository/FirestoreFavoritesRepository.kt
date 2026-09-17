@@ -348,4 +348,51 @@ class FirestoreFavoritesRepository(
             Result.success(Unit)
         }
     }
+
+    /**
+     * Updates enriched favorite stations in-memory, local cache, and syncs to Firestore if authenticated.
+     */
+    suspend fun updateEnrichedStations(
+        stations: List<Station>,
+        userId: String? = currentUserId
+    ): Result<Unit> = withContext(ioDispatcher) {
+        stateMutex.withLock {
+            val now = System.currentTimeMillis() / 1000L
+            val current = _favoritesState.value.ifEmpty { getCachedFavorites() }.toMutableList()
+            var modified = false
+            for (st in stations) {
+                val index = current.indexOfFirst { it.id.equals(st.id, ignoreCase = true) }
+                if (index >= 0) {
+                    val existing = current[index]
+                    val updated = st.copy(addedAt = if (st.addedAt > 0L) st.addedAt else existing.addedAt)
+                    current[index] = updated
+                    modified = true
+                }
+            }
+            if (modified) {
+                _favoritesState.value = current
+                _favoriteIdsState.value = current.map { it.id }.toSet()
+                saveCachedFavorites(current)
+
+                val targetUserId = userId ?: currentUserId
+                if (targetUserId != null) {
+                    try {
+                        for (st in current) {
+                            if (stations.any { it.id.equals(st.id, ignoreCase = true) }) {
+                                remoteDataSource.updateFavorite(
+                                    userId = targetUserId,
+                                    stationId = st.id,
+                                    stationData = st.toFirestoreMap(now),
+                                    updatedAt = now
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // In local-first architecture, retain local state offline
+                    }
+                }
+            }
+            Result.success(Unit)
+        }
+    }
 }

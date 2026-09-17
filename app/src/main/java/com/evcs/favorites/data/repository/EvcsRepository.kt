@@ -7,6 +7,7 @@ import com.evcs.favorites.data.model.FavoriteStationRaw
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.SearchStationRaw
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.domain.StationTelemetryParser
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.util.SingleFlight
 import com.evcs.favorites.util.StationNameSanitizer
@@ -16,6 +17,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
@@ -63,8 +65,13 @@ open class EvcsRepository(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
     private val eagerLoadCache: Boolean = false,
-    val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null
+    val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null,
+    coroutineScope: CoroutineScope? = null
 ) {
+
+    val repositoryScope: CoroutineScope = coroutineScope ?: CoroutineScope(SupervisorJob() + ioDispatcher)
+    var clusterEnrichmentJob: Job? = null
+        internal set
 
     val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
     companion object {
@@ -105,11 +112,13 @@ open class EvcsRepository(
                             (it.groupValues[1].toDoubleOrNull() ?: 0.0) * 1000.0
                         }?.toLong() ?: 0L
 
+                        val count = StationTelemetryParser.extractMultiplierCount(part) ?: 0
+
                         PowerPort(
                             typeWatts = watts,
                             label = part,
-                            availablePlugs = 0,
-                            totalPlugs = 0,
+                            availablePlugs = count,
+                            totalPlugs = count,
                             displayString = part
                         )
                     }
@@ -241,6 +250,9 @@ open class EvcsRepository(
      * Saves a JSON snapshot of the favorites list to offline storage.
      */
     fun saveCachedFavorites(stations: List<Station>) {
+        if (firestoreFavoritesRepository != null) {
+            firestoreFavoritesRepository.saveCachedFavorites(stations)
+        }
         try {
             val json = EvcsApiClient.json.encodeToString(stations)
             cacheStorage?.putString(KEY_OFFLINE_FAVORITES, json)
@@ -272,17 +284,36 @@ open class EvcsRepository(
         userLat: Double? = null,
         userLon: Double? = null,
         autoResolveUnknownCoordinates: Boolean = autoResolveCoordinates
+    ): Result<List<Station>> = getFavorites(userLat, userLon, autoResolveUnknownCoordinates, false)
+
+    /**
+     * Extended overload supporting explicit forceRefresh for cluster re-enrichment.
+     */
+    open suspend fun getFavorites(
+        userLat: Double?,
+        userLon: Double?,
+        autoResolveUnknownCoordinates: Boolean,
+        forceRefresh: Boolean
     ): Result<List<Station>> {
         if (firestoreFavoritesRepository != null) {
             val cached = firestoreFavoritesRepository.favoritesState.value.ifEmpty {
                 firestoreFavoritesRepository.getCachedFavorites()
             }
-            val enriched = if (userLat != null && userLon != null) {
+            val withDistances = if (userLat != null && userLon != null) {
                 DistanceCalculator.attachDistances(cached, userLat, userLon)
             } else {
                 cached
             }
-            return Result.success(enriched)
+
+            val needsEnrichment = forceRefresh || cached.any { st ->
+                st.powers.isEmpty() || st.totalPlugs <= 0 || (st.latitude == 0.0 && st.longitude == 0.0)
+            }
+
+            if (needsEnrichment && cached.isNotEmpty()) {
+                triggerBackgroundClusterEnrichment(cached, userLat, userLon)
+            }
+
+            return Result.success(withDistances)
         }
         val latStr = "%.4f".format(Locale.US, userLat ?: 0.0)
         val lonStr = "%.4f".format(Locale.US, userLon ?: 0.0)
@@ -290,6 +321,125 @@ open class EvcsRepository(
         return singleFlight.execute(flightKey) {
             getFavoritesInternal(userLat, userLon, autoResolveUnknownCoordinates)
         }
+    }
+
+    /**
+     * Explicit refresh triggering full cluster re-enrichment.
+     */
+    open suspend fun refreshFavorites(
+        userLat: Double? = null,
+        userLon: Double? = null,
+        autoResolveUnknownCoordinates: Boolean = autoResolveCoordinates
+    ): Result<List<Station>> = getFavorites(userLat, userLon, autoResolveUnknownCoordinates, forceRefresh = true)
+
+    /**
+     * Executes non-blocking background cluster search queries to enrich favorites with live telemetry.
+     */
+    open fun triggerBackgroundClusterEnrichment(
+        stations: List<Station>,
+        userLat: Double? = null,
+        userLon: Double? = null
+    ): Job {
+        clusterEnrichmentJob?.cancel()
+        val job = repositoryScope.launch(ioDispatcher) {
+            try {
+                enrichFavoritesFromClusterSearch(stations, userLat, userLon)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // Non-blocking graceful degrade
+            }
+        }
+        clusterEnrichmentJob = job
+        return job
+    }
+
+    /**
+     * Groups station coordinates into clusters, concurrently fetches live search stations,
+     * and merges telemetry and metadata into domain stations.
+     */
+    open suspend fun enrichFavoritesFromClusterSearch(
+        stations: List<Station>,
+        userLat: Double? = null,
+        userLon: Double? = null
+    ): List<Station> = withContext(ioDispatcher) {
+        if (stations.isEmpty()) return@withContext emptyList()
+
+        // 1. Collect coordinates
+        val coordsList = mutableListOf<Pair<Double, Double>>()
+        for (st in stations) {
+            val favKey = st.id.trim().lowercase()
+            val coords = if (st.latitude != 0.0 || st.longitude != 0.0) {
+                Pair(st.latitude, st.longitude)
+            } else {
+                coordinateCache[favKey] ?: coordinateResolver?.invoke(st.id)
+            }
+            if (coords != null && (coords.first != 0.0 || coords.second != 0.0)) {
+                coordsList.add(coords)
+            }
+        }
+
+        // 2. Determine geographic clusters for search queries
+        val pointsToCluster = if (coordsList.isEmpty() && userLat != null && userLon != null && (userLat != 0.0 || userLon != 0.0)) {
+            listOf(Pair(userLat, userLon))
+        } else {
+            coordsList
+        }
+
+        val searchCenters = if (pointsToCluster.isNotEmpty()) {
+            DistanceCalculator.clusterCoordinates(pointsToCluster, maxDistanceKm = CLUSTER_SEARCH_RADIUS_KM)
+        } else {
+            listOf(Pair(DEFAULT_LAT, DEFAULT_LON))
+        }
+
+        // 3. Concurrently fetch search results per cluster
+        val searchStations = coroutineScope {
+            searchCenters.map { (lat, lon) ->
+                async {
+                    try {
+                        apiClient.searchStations(lat, lon).getOrDefault(emptyList())
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        emptyList()
+                    }
+                }
+            }.awaitAll().flatten()
+        }
+
+        // Cache coordinates from search stations
+        for (st in searchStations) {
+            val key = st.effectiveLocationId.trim().lowercase()
+            if (key.isNotEmpty() && (st.latitude != 0.0 || st.longitude != 0.0)) {
+                coordinateCache[key] = Pair(st.latitude, st.longitude)
+            }
+        }
+        saveCachedCoordinates()
+
+        // 4. Merge matched search results into domain Station models
+        val searchMap = searchStations.associateBy { it.effectiveLocationId.trim().lowercase() }
+        val enrichedStations = stations.map { existing ->
+            val favKey = existing.id.trim().lowercase()
+            val matchedSearch = searchMap[favKey]
+            val merged = mergeSearchIntoStation(existing, matchedSearch)
+            if (userLat != null && userLon != null && (merged.latitude != 0.0 || merged.longitude != 0.0)) {
+                DistanceCalculator.attachDistance(merged, userLat, userLon)
+            } else {
+                merged
+            }
+        }
+
+        // 5. Update state and persistence
+        if (firestoreFavoritesRepository != null) {
+            firestoreFavoritesRepository.updateEnrichedStations(enrichedStations)
+            _favoritesState.value = enrichedStations
+            _favoriteIdsState.value = enrichedStations.map { it.id }.toSet()
+            saveCachedFavorites(enrichedStations)
+        } else {
+            _favoritesState.value = enrichedStations
+            _favoriteIdsState.value = enrichedStations.map { it.id }.toSet()
+            saveCachedFavorites(enrichedStations)
+        }
+
+        enrichedStations
     }
 
     private suspend fun getFavoritesInternal(
@@ -527,6 +677,81 @@ open class EvcsRepository(
                 totalPlugs = fallbackPowers.sumOf { it.totalPlugs },
                 images = fallbackFavImages,
                 image = fav.image
+            )
+        }
+    }
+
+    /**
+     * Merges a domain [Station] with matched search station details [SearchStationRaw].
+     * Preserves existing domain properties while enriching powers, totalPlugs, totalAvailablePlugs,
+     * depotStatus, isFreeParking, workingTimeDescription, and coordinates.
+     */
+    internal fun mergeSearchIntoStation(
+        existing: Station,
+        search: SearchStationRaw?
+    ): Station {
+        val favKey = existing.id.trim().lowercase()
+
+        // Resolve coordinates
+        val (latitude, longitude) = when {
+            search != null && (search.latitude != 0.0 || search.longitude != 0.0) -> {
+                coordinateCache[favKey] = Pair(search.latitude, search.longitude)
+                Pair(search.latitude, search.longitude)
+            }
+            coordinateCache.containsKey(favKey) -> {
+                coordinateCache[favKey]!!
+            }
+            existing.latitude != 0.0 || existing.longitude != 0.0 -> {
+                Pair(existing.latitude, existing.longitude)
+            }
+            else -> {
+                coordinateResolver?.invoke(existing.id) ?: Pair(0.0, 0.0)
+            }
+        }
+
+        return if (search != null) {
+            val domainPowers = search.evsePowers.map { it.toDomainPowerPort() }
+            val availablePlugs = domainPowers.sumOf { it.availablePlugs }
+            val totalPlugs = domainPowers.sumOf { it.totalPlugs }
+            val decodedImages = VinFastCdnUrlDecoder.decodeList(search.media)
+            val fallbackFavImages = existing.images.ifEmpty { existing.image?.let { listOf(it) } ?: emptyList() }
+            val resolvedImages = if (decodedImages.isNotEmpty()) decodedImages else fallbackFavImages
+            val resolvedImage = decodedImages.firstOrNull() ?: existing.image
+
+            val connectorsStr = if (domainPowers.isNotEmpty()) {
+                domainPowers.joinToString(", ") { it.label }
+            } else existing.connectors
+
+            existing.copy(
+                name = StationNameSanitizer.sanitize(search.stationName?.ifBlank { existing.name } ?: existing.name),
+                address = search.stationAddress?.ifBlank { existing.address } ?: existing.address,
+                latitude = latitude,
+                longitude = longitude,
+                summary = search.workingTimeDescription ?: existing.summary.ifBlank { "24/7" },
+                connectors = connectorsStr,
+                depotStatus = search.depotStatus ?: existing.depotStatus,
+                powers = if (domainPowers.isNotEmpty()) domainPowers else existing.powers,
+                totalAvailablePlugs = if (domainPowers.isNotEmpty()) availablePlugs else existing.totalAvailablePlugs,
+                totalPlugs = if (domainPowers.isNotEmpty()) totalPlugs else existing.totalPlugs,
+                images = resolvedImages,
+                image = resolvedImage,
+                isPublic = search.isPublic ?: existing.isPublic,
+                isFreeParking = search.isFreeParking ?: existing.isFreeParking,
+                workingTimeDescription = search.workingTimeDescription ?: existing.workingTimeDescription,
+                evse = search.evse ?: existing.evse
+            )
+        } else {
+            val fallbackPowers = if (existing.powers.isEmpty() && existing.connectors.isNotBlank()) {
+                parseConnectorsToPowers(existing.connectors)
+            } else {
+                existing.powers
+            }
+            val totalPlugs = if (existing.totalPlugs <= 0) fallbackPowers.sumOf { it.totalPlugs } else existing.totalPlugs
+            existing.copy(
+                latitude = latitude,
+                longitude = longitude,
+                powers = fallbackPowers,
+                totalPlugs = totalPlugs
             )
         }
     }
