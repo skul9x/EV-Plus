@@ -92,7 +92,8 @@
     "Tab UI & LazyColumn Scroll State Preservation across AppTab navigation",
     "OSRM Road Network Driving Distance Matrix Routing Engine (accurate driving km and ETA accounting for bridges, estuaries, and expressway exits)",
     "Station Classification Engine (Differentiating Official VinFast Hubs from Franchised V-GREEN Private Stations)",
-    "AC Charging Flow Performance Optimization (Low-allocation mapping, streaming HTML title resolution, and 2-stage progressive rendering)"
+    "AC Charging Flow Performance Optimization (Low-allocation mapping, streaming HTML title resolution, and 2-stage progressive rendering)",
+    "In-Car Automotive GPS Acquisition Resilience (Priority.PRIORITY_HIGH_ACCURACY, 3-tier fallback to lastLocation and hardware LocationManager, isLocationEnabled check)"
   ],
   "knowledge_items": {
     "patterns": [
@@ -127,7 +128,8 @@
       "Low-Allocation DTO Mapping: Filter raw HereEvStation on JSON/DTO level before instantiating domain models or power ports, drastically reducing object allocations during nearby discovery",
       "Streaming HTML Title Resolution: Stream-based regex matching directly on OkHttp ResponseBody byteStream avoids buffering multi-megabyte HTML strings into memory",
       "Progressive 2-Stage UI Rendering: Immediately emit top 10 candidate stations with fallback address names in ~300ms from HERE API with isLoading=false, followed by background asynchronous canonical name enrichment and debounced routing",
-      "Safe Coroutine Job Tracking & Cancellation: Decouple discovery (acDiscoveryJob) and background enrichment (acEnrichmentJob) so filter switches abort pending enrichment jobs without state leakage or race conditions"
+      "Safe Coroutine Job Tracking & Cancellation: Decouple discovery (acDiscoveryJob) and background enrichment (acEnrichmentJob) so filter switches abort pending enrichment jobs without state leakage or race conditions",
+      "3-Tier Automotive Location Fallback: Query FusedLocationProviderClient.getCurrentLocation(HIGH_ACCURACY) -> fallback to FusedLocationProviderClient.lastLocation -> fallback to Android framework LocationManager enabled providers (GPS_PROVIDER, NETWORK_PROVIDER, PASSIVE_PROVIDER) with atomic single coroutine resumption via AtomicBoolean."
     ],
     "gotchas": [
       "Beware of generic .gitignore patterns like lan*/ which match any subdirectory starting with lan (e.g. ui/screens/landscape/); use root-relative /lan*/ instead.",
@@ -143,7 +145,9 @@
       "EVCS.vn API suffers occasional network latency jitter (spikes up to 5.4s or 10s timeout), whereas HERE Maps EV API maintains strict 260-450ms response bounds.",
       "HERE Maps provides physical EVSE connector-level state (AVAILABLE, OCCUPIED, OUT_OF_SERVICE) and exact serial cpoEvseEMI3Id, whereas EVCS only provides aggregate counts and cannot distinguish unpowered/broken chargers from occupied ones.",
       "Calling delay() inside coroutines throws CancellationException when parent job is cancelled; any try/catch blocks handling CancellationException must rethrow it to allow coroutines to abort properly.",
-      "When decoupling multi-stage pipelines into separate coroutine jobs, ensure child enrichment jobs are cancelled on filter switches to prevent background jobs from leaking stale state into newly selected modes (e.g. leaking AC stations into DC mode)."
+      "When decoupling multi-stage pipelines into separate coroutine jobs, ensure child enrichment jobs are cancelled on filter switches to prevent background jobs from leaking stale state into newly selected modes (e.g. leaking AC stations into DC mode).",
+      "Priority.PRIORITY_BALANCED_POWER_ACCURACY relies on Wi-Fi/Cell towers and does not activate GPS satellites; in vehicles and Android car head units without Wi-Fi triangulation, it causes getCurrentLocation to continually time out or return null. PRIORITY_HIGH_ACCURACY must be used.",
+      "FusedLocationProviderClient.getCurrentLocation can succeed with a null location in its OnSuccessListener when satellite fix is pending; code must check if location is null and fall back to lastLocation / framework LocationManager rather than assuming OnSuccessListener guarantees a non-null Location."
     ]
   }
 }

@@ -27,6 +27,17 @@
   ],
   "recent_changes": [
     {
+      "timestamp": "2026-09-16T20:06:00+07:00",
+      "type": "feature",
+      "description": "Implemented in-car automotive GPS acquisition resilience: PRIORITY_HIGH_ACCURACY, 3-tier fallback (fresh GPS -> cached lastLocation -> hardware LocationManager), isLocationEnabled check, and atomic coroutine resumption.",
+      "files": [
+        "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
+        "app/src/test/java/com/evcs/favorites/hardening/LocationServiceGpsResilienceTest.kt",
+        "app/src/test/java/com/evcs/favorites/hardening/RateLimitAndLifecycleHardeningTest.kt",
+        "CHANGELOG.md"
+      ]
+    },
+    {
       "timestamp": "2026-09-16T19:40:00+07:00",
       "type": "optimization",
       "description": "Implemented AC Charging Flow Performance Optimization: Phase 01 (low-allocation mapping), Phase 02 (streaming HTML name resolution with 60m TTL cache), Phase 03 (progressive staged UI rendering with immediate candidate emit and async background enrichment).",
@@ -53,6 +64,11 @@
     }
   ],
   "errors_encountered": [
+    {
+      "error": "LocationService PRIORITY_BALANCED_POWER_ACCURACY failed to acquire GPS fixes on car head units and Carlinkit TBox without Wi-Fi triangulation, and FusedLocationClient null responses bypassed lastLocation fallback.",
+      "solution": "Upgraded to PRIORITY_HIGH_ACCURACY, added immediate lastLocation fallback on null response, and integrated Android framework LocationManager enabled providers fallback.",
+      "resolved": true
+    },
     {
       "error": "Blocking HTML scraping delayed AC station discovery UI by 2-3 seconds while holding full-screen loading spinners",
       "solution": "Decoupled pipeline into 2 stages: Stage 1 emits candidate stations immediately (~300ms) with fallback names, turning off isLoading, while Stage 2 resolves canonical names asynchronously in the background",
