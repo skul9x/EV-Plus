@@ -1,8 +1,10 @@
 package com.evcs.favorites.domain
 
 import com.evcs.favorites.data.model.PowerPort
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNames
 
 /**
  * Parser and normalizer for EVCS live station telemetry, authentication tokens, and port status.
@@ -74,11 +76,17 @@ object StationTelemetryParser {
         val mine: Int = 0
     )
 
+    @OptIn(ExperimentalSerializationApi::class)
     @Serializable
     private data class ChargingResponseRaw(
         val ticker: String? = null,
-        val busyKw: Map<String, Int> = emptyMap(),
-        val partial: Boolean = false
+        @JsonNames("chargingKw", "busyKw")
+        val busyKw: Map<String, Int>? = emptyMap(),
+        val partial: Boolean = false,
+        val u: String? = null,
+        val totalPorts: Int = 0,
+        val charging: Int = 0,
+        val free: Int = 0
     )
 
     /**
@@ -115,7 +123,7 @@ object StationTelemetryParser {
     fun parseChargingResponse(jsonString: String): Result<StationTelemetry> = runCatching {
         val raw = json.decodeFromString<ChargingResponseRaw>(jsonString)
 
-        val busyByKw = raw.busyKw.mapNotNull { (k, v) ->
+        val busyByKw = (raw.busyKw ?: emptyMap()).mapNotNull { (k, v) ->
             val kw = k.toDoubleOrNull()?.toInt() ?: return@mapNotNull null
             kw to v
         }.toMap()
@@ -127,8 +135,26 @@ object StationTelemetryParser {
             busyByKw = busyByKw,
             rawTicker = raw.ticker,
             cleanForecast = cleanForecast,
-            isLocked = locked
+            isLocked = locked,
+            uToken = raw.u
         )
+    }
+
+    /**
+     * Parses 24-hour historical usage time-series matrix returned by EVCS telemetry backend.
+     * Matrix is an array of [timestamp, count] points: [[1732440000000, 4], [1732441800000, 5]].
+     * Clamps counts to maxOf(0, count) and ensures valid pair coordinates.
+     */
+    fun parse24hHistory(jsonString: String): Result<List<Pair<Long, Int>>> = runCatching {
+        if (jsonString.isBlank()) return@runCatching emptyList()
+        val rawMatrix = json.decodeFromString<List<List<Long>>>(jsonString)
+        rawMatrix.mapNotNull { point ->
+            if (point.size >= 2) {
+                Pair(point[0], maxOf(0, point[1].toInt()))
+            } else {
+                null
+            }
+        }
     }
 
     /**

@@ -90,7 +90,8 @@ class DefaultAppContainer(private val context: Context? = null) : AppContainer {
             cacheStorage = cacheStorage,
             legacyStorage = legacyStorage,
             autoResolveCoordinates = true,
-            firestoreFavoritesRepository = firestoreFavoritesRepository
+            firestoreFavoritesRepository = firestoreFavoritesRepository,
+            hereEvApiClient = hereEvApiClient
         )
     }
 

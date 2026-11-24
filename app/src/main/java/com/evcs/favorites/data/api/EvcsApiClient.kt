@@ -291,7 +291,7 @@ open class EvcsApiClient(
      * @param csrf CSRF token for the session.
      * @return Result containing true if successful.
      */
-    suspend fun saveFavorites(
+    open suspend fun saveFavorites(
         stations: List<FavoriteStationRaw>,
         csrf: String = sessionManager.csrfToken.orEmpty()
     ): Result<Boolean> = withContext(Dispatchers.IO) {

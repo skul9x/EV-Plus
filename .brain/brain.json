@@ -63,6 +63,19 @@
       "method": "GET",
       "endpoint": "https://router.project-osrm.org/table/v1/driving/{coords}?sources=0&annotations=duration,distance",
       "purpose": "Calculates real road driving distance and duration matrix for top 10 stations."
+    },
+    {
+      "name": "EVCS Telemetry Update API",
+      "method": "POST",
+      "endpoint": "https://www2.evcs.vn/update",
+      "auth": "Payload embedded token t and integrity token u",
+      "purpose": "Dispatches real-time station telemetry ping with Content-Type text/plain and power breakdown p."
+    },
+    {
+      "name": "EVCS 24h Occupancy History REST API",
+      "method": "GET",
+      "endpoint": "https://www2.evcs.vn/history?sid={stationId}&t={apiToken}",
+      "purpose": "Retrieves 24-hour historical occupancy time-series 2D matrix [[timestamp, count], ...] without Socket.io overhead."
     }
   ],
   "features": [
@@ -93,10 +106,20 @@
     "OSRM Road Network Driving Distance Matrix Routing Engine (accurate driving km and ETA accounting for bridges, estuaries, and expressway exits)",
     "Station Classification Engine (Differentiating Official VinFast Hubs from Franchised V-GREEN Private Stations)",
     "AC Charging Flow Performance Optimization (Low-allocation mapping, streaming HTML title resolution, and 2-stage progressive rendering)",
-    "In-Car Automotive GPS Acquisition Resilience (Priority.PRIORITY_HIGH_ACCURACY, 3-tier fallback to lastLocation and hardware LocationManager, isLocationEnabled check)"
+    "In-Car Automotive GPS Acquisition Resilience (Priority.PRIORITY_HIGH_ACCURACY, 3-tier fallback to lastLocation and hardware LocationManager, isLocationEnabled check)",
+    "Multi-Tier Repository Fallback & Atomic Circuit Breaker Engine (EvcsRepository) degrading seamlessly to HERE Maps EV API on Cloudflare WAF HTTP 403, 429, or 5xx failures with 10-minute cooldown and Half-Open recovery",
+    "ViewModel Orchestration & Realtime GPS Fallback Resilience (NearbyViewModel transparently handling EVCS 403 WAF fallback discovery, onLocationUpdated realtime GPS routing, DC tier & smart chip filtering, and two-way favorites synchronization with zero error UI flickers)",
+    "Telemetry Parser Resilience, Integrity Token & RFC 6265bis Cookie Session (StationTelemetryParser supports @JsonNames for chargingKw and busyKw, extracts uToken, decodes 24h occupancy 2D matrix, and SessionManager persists __Host-tp cookies)",
+    "Network Data Source & Repository Telemetry Protocol Migration (EvcsTelemetryDataSource & EvcsTelemetryRepository support Content-Type text/plain, embedded t, a, b, p, u tokens, batch telemetry updates, NonCancellable sync protection, and REST GET /history retrieval with RFC 6265bis Host-only cookie isolation)",
+    "Coordinator Pipeline, 24h Stats Calculation & End-to-End Regression Verification (StationDetailCoordinator dispatches modernized telemetry ping with chargingKw and uToken, enriches 24h history stats under bounded 3000ms timeout with graceful degradation, and maintains 100% regression stability across portrait sheet and landscape split-pane views)"
   ],
   "knowledge_items": {
     "patterns": [
+      "Dual JSON Field Deserialization with @JsonNames: Use @OptIn(ExperimentalSerializationApi::class) @JsonNames('chargingKw', 'busyKw') on ChargingResponseRaw to support both modern and legacy backend payloads with zero code branching.",
+      "RFC 6265bis Cookie Security & Quote Normalization: Sanitize extracted cookie values via .trim().removeSurrounding('\"') in SessionManager to ensure compliance with RFC 6265bis without transmitting extraneous quotation delimiters in request Cookie headers.",
+      "OkHttp Text/Plain Payload Transmission & Compact JSON Serialization: Using toRequestBody('text/plain'.toMediaType()) automatically applies Content-Type: text/plain; charset=utf-8 without duplicating headers. Formatting JSON strings without spaces via entries.joinToString(separator = ',', prefix = '{', postfix = '}') ensures 100% conformance to browser curl captures.",
+      "Non-Cancellable Coroutine Context Protection in Repository: Wrapping critical fire-and-forget telemetry synchronization in withContext(ioDispatcher + NonCancellable) ensures that when the user leaves a screen or cancels the calling scope, the in-flight HTTP request safely completes transmission instead of getting abruptly aborted.",
+      "REST Time-Series History over Socket.io: REST HTTP GET https://www2.evcs.vn/history?sid=...&t=... returns full 24h occupancy matrix [[timestamp, count], ...] in sub-200ms without Socket.io connection handshakes, heartbeats, or connection leaks.",
       "Master-Detail automotive 2-column landscape layout (35-40% Master, 60-65% Detail) calculated via AdaptiveLayoutHelper with 58dp navigation rail",
       "Eliminating TopAppBar and filter summary pills in automotive landscape mode reclaims ~95dp of vertical space for 3-4 visible station cards",
       "Clean architectural separation: zero nested if (!isLandscape) checks inside dedicated landscape composables",
@@ -129,11 +152,24 @@
       "Streaming HTML Title Resolution: Stream-based regex matching directly on OkHttp ResponseBody byteStream avoids buffering multi-megabyte HTML strings into memory",
       "Progressive 2-Stage UI Rendering: Immediately emit top 10 candidate stations with fallback address names in ~300ms from HERE API with isLoading=false, followed by background asynchronous canonical name enrichment and debounced routing",
       "Safe Coroutine Job Tracking & Cancellation: Decouple discovery (acDiscoveryJob) and background enrichment (acEnrichmentJob) so filter switches abort pending enrichment jobs without state leakage or race conditions",
-      "3-Tier Automotive Location Fallback: Query FusedLocationProviderClient.getCurrentLocation(HIGH_ACCURACY) -> fallback to FusedLocationProviderClient.lastLocation -> fallback to Android framework LocationManager enabled providers (GPS_PROVIDER, NETWORK_PROVIDER, PASSIVE_PROVIDER) with atomic single coroutine resumption via AtomicBoolean."
+      "3-Tier Automotive Location Fallback: Query FusedLocationProviderClient.getCurrentLocation(HIGH_ACCURACY) -> fallback to FusedLocationProviderClient.lastLocation -> fallback to Android framework LocationManager enabled providers (GPS_PROVIDER, NETWORK_PROVIDER, PASSIVE_PROVIDER) with atomic single coroutine resumption via AtomicBoolean.",
+      "Atomic Circuit Breaker State Machine in Kotlin Coroutines: Use AtomicLong (evcsWafBlockedUntil) to manage Closed, Open (cooldown active), and Half-Open (probe on expiration) state transitions safely across concurrent coroutines without blocking threads.",
+      "Dual-Source Repository Fallback: When primary search API (EVCS) encounters recoverable transport or WAF errors, degrade transparently to secondary Tier 1 telemetry source (HERE API) and enrich results with Haversine distance and dual-key coordinate caching.",
+      "Safe Station Name Enrichment & Blank Address Guard: When mapping generic HERE EV stations, format title via EvcsStationNameResolver.formatFallbackAddress(formattedAddress) only when address is not blank; if blank or null, fall back cleanly to rawName.ifBlank { 'Trạm sạc VinFast' } to prevent dangling dashes ('VinFast - ').",
+      "Symmetric Dual-Key Coordinate Resolution: Cache and resolve station coordinates using both canonical key, un-prefixed key (removePrefix('c.')), and prefixed key ('c.$unPrefixed') in EvcsRepository.getStationCoordinates to ensure seamless offline favorites synchronization and routing.",
+      "Single Source of Truth Repository Fallback Orchestration in MVVM: The ViewModel consumes repository.searchNearbyVinFast directly without duplicating fallback logic or cascading network retries. When the repository degrades to secondary telemetry (HERE API), ViewModel transitions uiState smoothly (isSearching = false, hasSearched = true, errorMessage = null) to prevent UI error flashes or stutter.",
+      "Bounded Coroutine Timeout with Graceful Degradation in Coordinators: Wrap multi-stage secondary enrichment operations (such as 24h history retrieval) in withTimeoutOrNull(statsTimeoutMs) off the main thread (Dispatchers.IO). When a timeout or network failure occurs, cleanly update state with stats24h = null and isLoadingStats = false without clearing primary live port availability or throwing unhandled exceptions.",
+      "MockWebServer Path-Based Dispatcher for Concurrent Coroutines: When multiple coroutines are launched concurrently (such as a fire-and-forget sync ping and a sequential secondary data fetch), use okhttp3.mockwebserver.Dispatcher with path-based routing rather than a sequential enqueue queue to prevent race conditions and mismatched response deserialization."
     ],
     "gotchas": [
+      "StationNameSanitizer strips 'VinFast -' and 'VinFast ' prefixes from station titles; assertions on domain station names must account for this sanitization.",
+      "In Kotlin Coroutines, never catch CancellationException as a generic network failure; always rethrow it immediately to preserve structured concurrency.",
+      "In Vietnam, VinFast charging stations in HERE Maps EV API use cpoId starting with 'c.' (e.g. 'c.bni0311') or have 'vinfast' in name/CPO; HereModelMapper must map these to evse = 'VinFast', otherwise NearbyStationFilter.isVinFastStation drops them.",
+      "EvcsStationNameResolver.formatFallbackAddress(address) returns 'VinFast - ' if address is blank; mappers must explicitly check formattedAddress.isNotBlank() before calling formatFallbackAddress to avoid ugly trailing dashes.",
       "Beware of generic .gitignore patterns like lan*/ which match any subdirectory starting with lan (e.g. ui/screens/landscape/); use root-relative /lan*/ instead.",
       "Do not commit hardcoded org.gradle.java.home in gradle.properties to ensure CI/CD runner compatibility across environments.",
+      "In Kotlin, Iterable.joinToString() defaults to separator = ', ' (with a trailing space). For strict HTTP JSON payloads matching browser curl captures, explicitly declare separator = ',' to prevent unexpected whitespace insertion in JSON maps and arrays.",
+      "RFC 6265bis Host-Only Cookie Isolation: The __Host-tp cookie is scoped strictly to evcs.vn and must NOT be attached to subdomains like www2.evcs.vn; endpoints on www2 (such as /history) authenticate via URL query parameters (?sid=...&t=...) rather than session cookies.",
       "AGP expandArtProfileWildcards task throws StringIndexOutOfBoundsException if baseline-prof.txt contains legacy `->*` wildcards; use `->**(**)**`.",
       "GitHub Actions runner does not support 'secrets' context directly inside step 'if' conditions; use environment variables and evaluate inside the run script.",
       "google-services.json and Keystore files (.jks) must always be kept out of git tracking and added to .gitignore.",
@@ -147,7 +183,11 @@
       "Calling delay() inside coroutines throws CancellationException when parent job is cancelled; any try/catch blocks handling CancellationException must rethrow it to allow coroutines to abort properly.",
       "When decoupling multi-stage pipelines into separate coroutine jobs, ensure child enrichment jobs are cancelled on filter switches to prevent background jobs from leaking stale state into newly selected modes (e.g. leaking AC stations into DC mode).",
       "Priority.PRIORITY_BALANCED_POWER_ACCURACY relies on Wi-Fi/Cell towers and does not activate GPS satellites; in vehicles and Android car head units without Wi-Fi triangulation, it causes getCurrentLocation to continually time out or return null. PRIORITY_HIGH_ACCURACY must be used.",
-      "FusedLocationProviderClient.getCurrentLocation can succeed with a null location in its OnSuccessListener when satellite fix is pending; code must check if location is null and fall back to lastLocation / framework LocationManager rather than assuming OnSuccessListener guarantees a non-null Location."
+      "FusedLocationProviderClient.getCurrentLocation can succeed with a null location in its OnSuccessListener when satellite fix is pending; code must check if location is null and fall back to lastLocation / framework LocationManager rather than assuming OnSuccessListener guarantees a non-null Location.",
+      "In nearby candidate extraction (NearbyStationFilter.extractTopNearest), stations are deduplicated by station.id via a HashSet (seenIds); test fixtures and mock models must assign unique IDs/cpoIds per station, otherwise duplicate IDs will cause all but the first station to be pruned.",
+      "RFC 6265bis states that quotation marks surrounding cookie values are technically part of the cookie-value; however, upstream auth endpoints can fail when double quotes are present in subsequent request headers. SessionManager cleans them via removeSurrounding('\"') upon extraction.",
+      "EVCS Backend Forecast Ticker Key: The real-time charging endpoint (POST /charging) returns the forecast ticker under the JSON key 'ticker', not 'cleanForecast'. StationTelemetryParser sanitizes raw.ticker to produce cleanForecast.",
+      "EVCS 24h Usage Fill Rate Calculation: In Station24hStatsCalculator, fillRate is computed as minOf(100, maxOf(0, (rawAvg / totalPorts.toDouble() * 100.0).roundToInt())), reflecting the average occupancy ratio across the 24-hour period rather than peak usage."
     ]
   }
 }

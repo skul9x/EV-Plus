@@ -39,7 +39,8 @@ data class StationTelemetry(
     val busyByKw: Map<Int, Int> = emptyMap(),
     val rawTicker: String? = null,
     val cleanForecast: String? = null,
-    val isLocked: Boolean = false
+    val isLocked: Boolean = false,
+    val uToken: String? = null
 )
 
 /**

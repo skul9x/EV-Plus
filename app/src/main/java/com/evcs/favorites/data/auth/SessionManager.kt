@@ -206,23 +206,26 @@ class SessionManager(
     companion object {
         const val KEY_AUTH_COOKIE = "evcs"
         const val KEY_PHP_SESSION = "PHPSESSID"
+        const val KEY_HOST_TP = "__Host-tp"
         const val KEY_CSRF_TOKEN = "csrf_token"
         const val KEY_DEVICE_ID = "evcs_did"
         const val KEY_USER_EMAIL = "user_email"
 
         private val EVCS_COOKIE_REGEX = Regex("""(?:^|;\s*)evcs=([^;]+)""")
         private val PHPSESSID_COOKIE_REGEX = Regex("""(?:^|;\s*)PHPSESSID=([^;]+)""")
+        private val HOST_TP_COOKIE_REGEX = Regex("""(?:^|;\s*)__Host-tp=([^;]+)""")
         private val COOKIE_REGEX_CACHE = com.evcs.favorites.util.BoundedLruCache<String, Regex>(256)
 
         fun extractCookieValue(headerOrCookie: String, name: String): String? {
             val regex = when (name) {
                 KEY_AUTH_COOKIE -> EVCS_COOKIE_REGEX
                 KEY_PHP_SESSION -> PHPSESSID_COOKIE_REGEX
+                KEY_HOST_TP -> HOST_TP_COOKIE_REGEX
                 else -> COOKIE_REGEX_CACHE.computeIfAbsent(name) {
                     Regex("""(?:^|;\s*)$it=([^;]+)""")
                 }
             }
-            return regex.find(headerOrCookie)?.groupValues?.get(1)?.trim()
+            return regex.find(headerOrCookie)?.groupValues?.get(1)?.trim()?.removeSurrounding("\"")
         }
 
         fun create(context: Context): SessionManager {
@@ -236,6 +239,13 @@ class SessionManager(
     var authCookie: String?
         get() = storage.getString(KEY_AUTH_COOKIE)
         set(value) = storage.putString(KEY_AUTH_COOKIE, value)
+
+    /**
+     * RFC 6265bis secure session cookie (__Host-tp).
+     */
+    var hostTpCookie: String?
+        get() = storage.getString(KEY_HOST_TP)
+        set(value) = storage.putString(KEY_HOST_TP, value)
 
     /**
      * Session cookie (PHPSESSID).
@@ -305,6 +315,10 @@ class SessionManager(
         if (phpVal != null) {
             phpSessionId = phpVal
         }
+        val hostTpVal = extractCookieValue(setCookieHeader, KEY_HOST_TP)
+        if (hostTpVal != null) {
+            hostTpCookie = hostTpVal
+        }
     }
 
     /**
@@ -329,7 +343,7 @@ class SessionManager(
 
     /**
      * Generates standard Cookie header string for authenticated requests.
-     * Format: `PHPSESSID=...; evcs=...; evcs_did=...`
+     * Format: `PHPSESSID=...; evcs=...; __Host-tp=...; evcs_did=...`
      */
     fun getCookieHeader(): String {
         val pairs = mutableListOf<String>()
@@ -344,6 +358,11 @@ class SessionManager(
             pairs.add("evcs=$evcs")
         }
 
+        val hostTp = hostTpCookie
+        if (!hostTp.isNullOrBlank()) {
+            pairs.add("__Host-tp=$hostTp")
+        }
+
         val did = deviceId
         if (did.isNotBlank()) {
             pairs.add("evcs_did=$did")
@@ -353,11 +372,12 @@ class SessionManager(
     }
 
     /**
-     * Clears user session (auth cookie, php session, csrf, email) while keeping device ID.
+     * Clears user session (auth cookie, php session, host-tp cookie, csrf, email) while keeping device ID.
      */
     fun clearSession() {
         storage.remove(KEY_AUTH_COOKIE)
         storage.remove(KEY_PHP_SESSION)
+        storage.remove(KEY_HOST_TP)
         storage.remove(KEY_CSRF_TOKEN)
         storage.remove(KEY_USER_EMAIL)
     }

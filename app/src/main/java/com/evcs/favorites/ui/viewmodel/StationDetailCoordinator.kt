@@ -36,7 +36,7 @@ class StationDetailCoordinator(
     private val photoResolver: EvcsStationNameResolver? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
-    private val statsTimeoutMs: Long = 4000L
+    private val statsTimeoutMs: Long = 3000L
 ) {
     private val resolver: EvcsStationNameResolver = photoResolver ?: EvcsStationNameResolver()
 
@@ -261,7 +261,13 @@ class StationDetailCoordinator(
                     val totalBusy = livePorts.sumOf { it.busyCount }
                     coroutineScope.launch(ioDispatcher) {
                         try {
-                            telemetryRepository.sendTelemetryUpdate(station.id, tokens.apiToken, totalBusy)
+                            telemetryRepository.sendTelemetryUpdate(
+                                stationId = station.id,
+                                apiToken = tokens.apiToken,
+                                totalBusy = totalBusy,
+                                chargingKw = telemetry.busyByKw,
+                                uToken = telemetry.uToken
+                            )
                         } catch (_: Exception) {
                             // Ignored: fire-and-forget
                         }
@@ -284,10 +290,10 @@ class StationDetailCoordinator(
                                         )
                                     }
                                 } else {
-                                    _stationDetailState.update { it.copy(isLoadingStats = false) }
+                                    _stationDetailState.update { it.copy(isLoadingStats = false, stats24h = null) }
                                 }
                             } else {
-                                _stationDetailState.update { it.copy(isLoadingStats = false) }
+                                _stationDetailState.update { it.copy(isLoadingStats = false, stats24h = null) }
                             }
                         } ?: run {
                             _stationDetailState.update { it.copy(isLoadingStats = false, stats24h = null) }

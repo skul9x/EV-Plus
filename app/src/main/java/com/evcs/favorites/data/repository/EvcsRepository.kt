@@ -7,6 +7,7 @@ import com.evcs.favorites.data.model.FavoriteStationRaw
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.SearchStationRaw
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.data.network.here.HereEvApiClient
 import com.evcs.favorites.domain.StationTelemetryParser
 import com.evcs.favorites.domain.location.DistanceCalculator
 import com.evcs.favorites.util.SingleFlight
@@ -66,7 +67,8 @@ open class EvcsRepository(
     val singleFlight: SingleFlight = SingleFlight(ioDispatcher),
     private val eagerLoadCache: Boolean = false,
     val firestoreFavoritesRepository: FirestoreFavoritesRepository? = null,
-    coroutineScope: CoroutineScope? = null
+    coroutineScope: CoroutineScope? = null,
+    val hereEvApiClient: HereEvApiClient? = null
 ) {
 
     val repositoryScope: CoroutineScope = coroutineScope ?: CoroutineScope(SupervisorJob() + ioDispatcher)
@@ -74,6 +76,34 @@ open class EvcsRepository(
         internal set
 
     val globalRateLimitedUntil: AtomicLong = AtomicLong(0L)
+    val evcsWafBlockedUntil: AtomicLong = AtomicLong(0L)
+
+    fun isCircuitBreakerOpen(): Boolean {
+        val blockedUntil = evcsWafBlockedUntil.get()
+        return blockedUntil > 0L && System.currentTimeMillis() < blockedUntil
+    }
+
+    private fun isRecoverableSearchError(e: Throwable): Boolean {
+        if (e is CancellationException) return false
+        val message = e.message.orEmpty().lowercase()
+        return e is RateLimitException ||
+                e is java.io.IOException ||
+                message.contains("403") ||
+                message.contains("forbidden") ||
+                message.contains("challenge") ||
+                message.contains("timeout") ||
+                message.contains("429") ||
+                message.contains("500") ||
+                message.contains("502") ||
+                message.contains("503") ||
+                message.contains("504")
+    }
+
+    private fun isWafBlockedError(e: Throwable): Boolean {
+        val message = e.message.orEmpty().lowercase()
+        return message.contains("403") || message.contains("forbidden") || message.contains("challenge")
+    }
+
     companion object {
         // Default coordinates: Hanoi Center (Hoan Kiem)
         const val DEFAULT_LAT = 21.0285
@@ -81,6 +111,7 @@ open class EvcsRepository(
         const val KEY_OFFLINE_FAVORITES = "evcs_offline_favorites_snapshot"
         const val KEY_COORDINATE_CACHE = "evcs_station_coordinates_cache"
         const val CLUSTER_SEARCH_RADIUS_KM = 15.0
+        const val WAF_COOLDOWN_MS = 10 * 60 * 1000L // 10 minutes
 
         // Pre-compiled regex for connector power extraction (PERF-UI-02)
         val KW_REGEX = Regex("""(\d+(?:\.\d+)?)\s*kW""", RegexOption.IGNORE_CASE)
@@ -221,6 +252,20 @@ open class EvcsRepository(
      * Returns an immutable copy of current coordinate cache.
      */
     fun getCachedCoordinates(): Map<String, Pair<Double, Double>> = coordinateCache.toMap()
+
+    /**
+     * Retrieves station coordinates from in-memory cache supporting both prefixed (c.xxx)
+     * and un-prefixed keys, falling back to [coordinateResolver] if not found in cache.
+     */
+    fun getStationCoordinates(locationId: String): Pair<Double, Double>? {
+        if (locationId.isBlank()) return null
+        val clean = locationId.trim().lowercase()
+        val unPrefixed = clean.removePrefix("c.")
+        return coordinateCache[clean]
+            ?: coordinateCache[unPrefixed]
+            ?: coordinateCache["c.$unPrefixed"]
+            ?: coordinateResolver?.invoke(locationId)
+    }
 
     /**
      * Retrieves cached favorites list from persistent storage if available.
@@ -851,6 +896,12 @@ open class EvcsRepository(
         lon: Double
     ): Result<List<Station>> {
         if (isGlobalRateLimited()) {
+            if (hereEvApiClient != null) {
+                // Graceful degradation: bypass rate-limited EVCS and route to HERE fallback via singleFlight
+                return singleFlight.execute("search_fallback_${"%.4f".format(Locale.US, lat)}_${"%.4f".format(Locale.US, lon)}") {
+                    executeHereFallback(lat, lon)
+                }
+            }
             val repoBlocked = globalRateLimitedUntil.get()
             val apiBlocked = apiClient.globalRateLimitedUntil.get()
             val blockedUntil = maxOf(repoBlocked, apiBlocked)
@@ -870,24 +921,30 @@ open class EvcsRepository(
     private suspend fun searchNearbyVinFastInternal(
         lat: Double,
         lon: Double
-    ): Result<List<Station>> = withContext(Dispatchers.IO) {
-        if (isGlobalRateLimited()) {
-            val repoBlocked = globalRateLimitedUntil.get()
-            val apiBlocked = apiClient.globalRateLimitedUntil.get()
-            val blockedUntil = maxOf(repoBlocked, apiBlocked)
-            val remainingSeconds = ((blockedUntil - System.currentTimeMillis() + 999L) / 1000L).coerceAtLeast(1L)
-            return@withContext Result.failure(
-                RateLimitException(
-                    retryAfterSeconds = remainingSeconds,
-                    message = "Search nearby VinFast rate limited: Cooldown active for ${remainingSeconds}s"
-                )
-            )
+    ): Result<List<Station>> = withContext(ioDispatcher) {
+        // 1. If circuit breaker is active or rate limited, immediately route to fallback
+        if (hereEvApiClient != null && (isCircuitBreakerOpen() || isGlobalRateLimited())) {
+            return@withContext executeHereFallback(lat, lon)
         }
+
+        // 2. Attempt primary EVCS search
         val searchResult = apiClient.searchStations(latitude = lat, longitude = lon)
         if (searchResult.isFailure) {
-            return@withContext Result.failure(
-                searchResult.exceptionOrNull() ?: IOException("Failed to search nearby VinFast stations")
-            )
+            val error = searchResult.exceptionOrNull() ?: IOException("Failed to search nearby VinFast stations")
+            if (error is CancellationException) throw error
+
+            if (hereEvApiClient != null && isRecoverableSearchError(error)) {
+                if (isWafBlockedError(error)) {
+                    evcsWafBlockedUntil.set(System.currentTimeMillis() + WAF_COOLDOWN_MS)
+                }
+                return@withContext executeHereFallback(lat, lon)
+            }
+            return@withContext Result.failure(error)
+        }
+
+        // 3. On success, reset circuit breaker if it was previously set (Half-Open probe success)
+        if (evcsWafBlockedUntil.get() > 0L) {
+            evcsWafBlockedUntil.set(0L)
         }
 
         val rawStations = searchResult.getOrThrow()
@@ -900,7 +957,14 @@ open class EvcsRepository(
         for (st in vinFastStations) {
             val key = st.effectiveLocationId.trim().lowercase()
             if (key.isNotEmpty() && (st.latitude != 0.0 || st.longitude != 0.0)) {
-                coordinateCache[key] = Pair(st.latitude, st.longitude)
+                val coords = Pair(st.latitude, st.longitude)
+                coordinateCache[key] = coords
+                val unPrefixed = key.removePrefix("c.")
+                if (unPrefixed != key) {
+                    coordinateCache[unPrefixed] = coords
+                } else {
+                    coordinateCache["c.$key"] = coords
+                }
             }
         }
         saveCachedCoordinates()
@@ -910,6 +974,45 @@ open class EvcsRepository(
         }
 
         Result.success(domainStations)
+    }
+
+    private suspend fun executeHereFallback(lat: Double, lon: Double): Result<List<Station>> {
+        val client = hereEvApiClient ?: return Result.failure(IOException("HERE EV API client unavailable"))
+        val fallbackResult = client.fetchNearbyStations(
+            latitude = lat,
+            longitude = lon,
+            radiusMeters = 10_000,
+            dcOnly = false,
+            maxResults = 50
+        )
+        if (fallbackResult.isFailure) {
+            val error = fallbackResult.exceptionOrNull() ?: IOException("HERE EV API fallback failed")
+            if (error is CancellationException) throw error
+            return Result.failure(error)
+        }
+
+        val stations = fallbackResult.getOrThrow()
+        // Attach distance and cache coordinates
+        val enrichedStations = stations.map { st ->
+            val cleanKey = st.id.trim().lowercase()
+            if (cleanKey.isNotEmpty() && (st.latitude != 0.0 || st.longitude != 0.0)) {
+                val coords = Pair(st.latitude, st.longitude)
+                coordinateCache[cleanKey] = coords
+                val unPrefixed = cleanKey.removePrefix("c.")
+                if (unPrefixed != cleanKey) {
+                    coordinateCache[unPrefixed] = coords
+                } else {
+                    coordinateCache["c.$cleanKey"] = coords
+                }
+            }
+            if (st.distanceKm == null && st.latitude != 0.0 && st.longitude != 0.0) {
+                st.copy(distanceKm = DistanceCalculator.calculateDistanceKm(lat, lon, st.latitude, st.longitude))
+            } else {
+                st
+            }
+        }
+        saveCachedCoordinates()
+        return Result.success(enrichedStations)
     }
 
     /**

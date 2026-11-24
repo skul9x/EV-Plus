@@ -644,6 +644,78 @@ class NearbyViewModel(
     }
 
     /**
+     * Handles real-time automotive GPS location updates (e.g. driving movements or hardware GPS callbacks).
+     * Updates user coordinates, triggers fresh discovery via repository (which degrades gracefully to fallback
+     * when EVCS is in cooldown), and updates the station list and driving routes.
+     */
+    fun onLocationUpdated(latitude: Double, longitude: Double): Job {
+        scanJob?.cancel()
+        routingJob?.cancel()
+        routingDebounceJob?.cancel()
+        acDiscoveryJob?.cancel()
+        acEnrichmentJob?.cancel()
+
+        val job = viewModelScope.launch(dispatcher) {
+            if (isAcModeActive()) {
+                _uiState.update {
+                    it.copy(
+                        userLatitude = latitude,
+                        userLongitude = longitude,
+                        isLocating = false,
+                        isSearching = false,
+                        hasSearched = true,
+                        isLoading = true,
+                        errorMessage = null
+                    )
+                }
+                executeAcHybridPipeline(latitude, longitude, triggerType = RefreshTriggerType.PASSIVE_BACKGROUND)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        userLatitude = latitude,
+                        userLongitude = longitude,
+                        isLocating = false,
+                        isSearching = true,
+                        isLoading = false,
+                        errorMessage = null
+                    )
+                }
+
+                val searchResult = repository.searchNearbyVinFast(latitude, longitude)
+                if (searchResult.isFailure) {
+                    _uiState.update {
+                        it.copy(
+                            isSearching = false,
+                            errorMessage = searchResult.exceptionOrNull()?.message ?: "Lỗi tải trạm sạc quanh đây"
+                        )
+                    }
+                    return@launch
+                }
+
+                val raw = searchResult.getOrThrow()
+                _uiState.update {
+                    it.copy(
+                        rawStations = raw,
+                        hasSearched = true,
+                        isSearching = false
+                    )
+                }
+
+                executeFilterAndRoutingPipeline(
+                    rawStations = raw,
+                    userLat = latitude,
+                    userLon = longitude,
+                    selectedWattages = _uiState.value.selectedWattages,
+                    debounce = false,
+                    triggerType = RefreshTriggerType.PASSIVE_BACKGROUND
+                )
+            }
+        }
+        scanJob = job
+        return job
+    }
+
+    /**
      * Refreshes nearby stations.
      * Always re-acquires fresh real-time GPS coordinates via [locationService.getFreshLocation]
      * rather than reusing stale in-memory coordinates. If location cannot be determined,

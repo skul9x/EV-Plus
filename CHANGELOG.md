@@ -2,6 +2,111 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-11-24] - Coordinator Pipeline, 24h Stats Calculation & End-to-End Regression Verification (Phase 03)
+
+### Added & Verified
+- **Station Detail Coordinator Orchestration Modernization (`StationDetailCoordinator.kt`)**:
+  - Updated fire-and-forget telemetry update ping in `loadStationDetails` to dispatch `chargingKw = telemetry.busyByKw` and `uToken = telemetry.uToken` via `telemetryRepository.sendTelemetryUpdate`.
+  - Configured `statsTimeoutMs` default to 3000ms with bounded `withTimeoutOrNull` execution.
+  - Ensured Stage 2 24h history retrieval and stats calculation degrades gracefully to `stats24h = null, isLoadingStats = false` upon network failure, timeout, or empty matrix without impacting Stage 1 live port availability or throwing unhandled exceptions.
+  - Maintained zero background overhead and clean lifecycle cancellation upon detail sheet dismissal.
+- **UI Historical Usage Metrics Verification (`NativeStationDetailSheet.kt`)**:
+  - Verified 4-card stats grid resolution (`CAO ĐIỂM`, `TRUNG BÌNH`, `GIỜ CAO ĐIỂM`, `TỈ LỆ LẤP ĐẦY`) with shimmer loading states and fallback placeholders.
+  - Verified layout invariants and dual-orientation compatibility across portrait bottom sheets and landscape split-pane displays.
+- **Comprehensive Integration Verification (`StationDetailTelemetryAnd24hHistoryIntegrationTest.kt`)**:
+  - Authored comprehensive integration test suite verifying Stage 1 live telemetry binding, modernized `/update` payload format (`t, a, b, p, u`), Stage 2 24h stats calculation, RFC 6265bis Host-only cookie isolation, bounded timeout resilience, error degradation, manual refresh pipeline re-execution, rapid station switching, and dismissal state reset (8/8 tests PASS - 100%).
+
+## [2026-11-24] - Network Data Source & Repository Telemetry Protocol Migration (Phase 02)
+
+### Added & Modernized
+- **Modernized Telemetry Update Protocol (`EvcsTelemetryDataSource.kt`)**:
+  - Reconfigured `sendTelemetryUpdate` to issue `Content-Type: text/plain; charset=utf-8` via `payload.toRequestBody(TEXT_PLAIN_MEDIA_TYPE)` matching browser curl capture without duplicate headers.
+  - Eliminated legacy `x-t` header from request builder on `/update`.
+  - Embedded tokens `{t, a, b, p, u}` directly into JSON text payload without superfluous spaces (`chargingKw.entries.joinToString(separator = ",", prefix = "{", postfix = "}")`).
+  - Retained 3-parameter overload `sendTelemetryUpdate(stationId, apiToken, totalBusy)` delegating to the 5-parameter overload for 100% backward binary/source compatibility.
+  - Added `TelemetryBatchItem(val a: String, val b: Int, val p: Map<String, Int> = emptyMap(), val u: String = "")` and `sendBatchTelemetryUpdate(apiToken: String, items: List<TelemetryBatchItem>): Result<Unit>` for bulk station telemetry sync.
+  - Wrapped fire-and-forget telemetry update operations in `withContext(ioDispatcher + NonCancellable)` to prevent socket cancellation when dismissing station detail views.
+- **REST 24-Hour History Retrieval (`EvcsTelemetryDataSource.kt`)**:
+  - Implemented `fetch24hHistory(stationId: String, apiToken: String): Result<List<Pair<Long, Int>>>` querying `GET {socketBaseUrl}history?sid={stationId}&t={apiToken}`.
+  - Enforced RFC 6265bis Host-only cookie isolation (omitting `__Host-tp` cookie when querying `www2.evcs.vn`, authenticating solely via URL parameters).
+  - Attached standard browser navigation headers (`User-Agent`, `Origin`, `Referer`).
+  - Handled HTTP errors cleanly and decoded body using `StationTelemetryParser.parse24hHistory(body)`.
+- **Repository Modernization & Token Retention (`EvcsTelemetryRepository.kt`)**:
+  - Retained both 3-param and 5-param overloads of `sendTelemetryUpdate` forwarding to `dataSource`.
+  - Added `sendBatchTelemetryUpdate` delegating to `dataSource`.
+  - Removed `@Deprecated` annotation from `fetch24hHistory` and delegated directly to `dataSource.fetch24hHistory(stationId, apiToken)`.
+  - Added `val uToken: String? = telemetry.uToken` to `StationDetailTelemetrySnapshot` to retain station integrity token for future update cycles.
+- **Comprehensive Verification**:
+  - Authored single comprehensive test suite `EvcsTelemetryProtocolDataSourceAndRepositoryTest.kt` covering single updates, 3-param and 5-param overloads, batch sync, NonCancellable execution, GET /history retrieval, Host-only cookie isolation, snapshot token retention, and HTTP error handling (14/14 tests PASS - 100%).
+
+## [2026-11-24] - Telemetry Parser Resilience, Integrity Token & RFC 6265bis Cookie Session (Phase 01)
+
+### Added & Hardened
+- **Telemetry Parser Resilience & Integrity Token Propagation (`StationTelemetryParser.kt` & `StationTelemetryModels.kt`)**:
+  - Annotated `ChargingResponseRaw.busyKw` with `@OptIn(ExperimentalSerializationApi::class) @JsonNames("chargingKw", "busyKw")` and nullable `Map<String, Int>? = emptyMap()`.
+  - Seamlessly decodes both modern EVCS backend JSON payloads (`"chargingKw"`) and legacy payloads (`"busyKw"`), handling explicit `null` maps and omitted keys gracefully without crashes.
+  - Added field `val u: String? = null` in raw charging response and propagated integrity token to `StationTelemetry.uToken` (with clean `null` fallback).
+  - Added optional vehicle metrics `totalPorts`, `charging`, `free` to `ChargingResponseRaw` with default 0 fallback.
+  - Implemented `parse24hHistory(jsonString: String): Result<List<Pair<Long, Int>>>` supporting 2D time-series matrices `[[timestamp, count], ...]`, coordinate point length verification (size >= 2), and negative count clamping (`maxOf(0, count)`).
+- **RFC 6265bis Cookie Session Management (`SessionManager.kt`)**:
+  - Added `KEY_HOST_TP = "__Host-tp"` constant and pre-compiled regex `HOST_TP_COOKIE_REGEX = Regex("""(?:^|;\s*)__Host-tp=([^;]+)""")`.
+  - Added `var hostTpCookie: String?` property backed by `SessionStorage`.
+  - Enhanced `extractCookieValue` with `.removeSurrounding("\"")` to strip RFC 6265bis quote-wrapped cookie values.
+  - Updated `saveFromSetCookieHeader` to automatically detect and persist `__Host-tp` cookies from `Set-Cookie` responses.
+  - Updated `getCookieHeader()` to append `__Host-tp=$hostTp` in compliant order: `PHPSESSID=...; evcs=...; __Host-tp=...; evcs_did=...`.
+  - Updated `clearSession()` to wipe `__Host-tp` while preserving persistent `deviceId` (`evcs_did`).
+- **Comprehensive Verification**:
+  - Authored single comprehensive test suite `StationTelemetryParserAndCookieSessionTest.kt` (9/9 tests PASS - 100%).
+
+
+## [2026-11-24] - ViewModel Orchestration, Realtime GPS Refresh & Regression Verification (Phase 03)
+
+### Added & Verified
+- **Realtime Automotive GPS Updates & Orchestration (`NearbyViewModel`)**:
+  - Implemented `onLocationUpdated(latitude: Double, longitude: Double): Job` in `NearbyViewModel` to support continuous in-car navigation updates without triggering duplicate `getFreshLocation()` queries.
+  - Transparently routes discovery to `EvcsRepository.searchNearbyVinFast`, degrading to HERE Maps EV API fallback when EVCS is in circuit breaker cooldown or encountering 403 WAF / 429 rate limit.
+  - Seamlessly updates `NearbyUiState`: `isSearching` transitions to false, `hasSearched` set to true, `errorMessage` remains null on fallback recovery (zero error toast/message flickers for drivers).
+- **Domain Filter & Driving Routing Integration**:
+  - Validated that `NearbyStationFilter` correctly filters fallback stations by DC wattage tiers (`LE_30KW`, `BETWEEN_30_60KW`, `GE_60KW`, `GE_120KW`), quick chips (`DC_GE_120KW`), and automatically excludes motorbike-only stations via `hasCarCompatiblePorts()`.
+  - Dispatches driving routes strictly for Top 10 fallback stations via `MultiTierRoutingCoordinator`, sorting stations ascending by road driving distance.
+  - Verified two-way favorites toggle and Firestore synchronization on stations discovered via the fallback pipeline with dual-key coordinate resolution.
+- **Architectural Hardening & Extensibility (`EvcsApiClient`)**:
+  - Marked `saveFavorites` as `open` in `EvcsApiClient` to maintain polymorphic symmetry with `fetchFavorites`, `searchStations`, and `fetchStationHtml`, allowing clean testing and subclassing.
+- **Verification**:
+  - Authored comprehensive test suite `NearbyViewModelHereFallbackIntegrationTest.kt` (9/9 tests PASS - 100%).
+  - Successfully concluded all 3 phases of the EVCS 403 WAF Fallback Resilience & Circuit Breaker Engine plan.
+
+## [2026-11-24] - Station Normalization, Coordinate Caching & Name Enrichment (Phase 02)
+
+### Added & Enhanced
+- **Station Name Enrichment & Safe Fallback (`HereModelMapper.mapStationToDomain`)**:
+  - Enriched generic HERE EV station names (`"Trạm sạc VinFast"`, `"VinFast"`, `"Trụ sạc"`, etc.) with structured address descriptors via `EvcsStationNameResolver.formatFallbackAddress(formattedAddress)` when address information is available.
+  - Implemented blank/empty address safety guard: prevents trailing dashes (`"VinFast - "`) when `formattedAddress` is blank or null by cleanly falling back to `rawName.ifBlank { "Trạm sạc VinFast" }`.
+  - Preserved authentic, non-generic station names (e.g., `"VinFast Landmark 81"`) verbatim.
+- **EVSE Operator Attribution & Downstream Filter Pass-Through**:
+  - Automatically attributed `station.evse = "VinFast"` for all VinFast-operated charging locations when `cpoId` starts with `"c."` (the standard Vietnamese VinFast CPO prefix), contains `"vinfast"`, or when raw/resolved name contains `"vinfast"`.
+  - Ensures 100% pass-through compatibility with `NearbyStationFilter.isVinFastStation`.
+  - Correctly categorized non-VinFast stations (`"AC"` for pure AC <= 22kW, `"EVN"` or `"Partner"` for third-party fast chargers).
+- **Symmetric Dual-Key Coordinate Caching & Resolver (`EvcsRepository`)**:
+  - Added public `getStationCoordinates(locationId: String): Pair<Double, Double>?` with dual-key alias resolution (`cleanKey`, `cleanKey.removePrefix("c.")`, and `"c.$cleanKey"`), with graceful fallback to `coordinateResolver`.
+  - Synchronized symmetric dual-key coordinate caching in both `executeHereFallback` and `searchNearbyVinFastInternal`.
+- **Verification**:
+  - Authored comprehensive test suite `HereFallbackStationModelAndNameResolutionTest.kt` (15/15 tests PASS - 100%).
+
+## [2026-11-24] - EVCS 403 WAF Fallback Resilience & Circuit Breaker Engine (Phase 01)
+
+### Added & Hardened
+- **Multi-Tier Repository Fallback & Atomic Circuit Breaker Engine (`EvcsRepository`)**:
+  - Extended `EvcsRepository` primary constructor with optional `hereEvApiClient: HereEvApiClient? = null` as the final parameter, maintaining 100% binary and source compatibility for all 30+ call sites.
+  - Implemented atomic circuit breaker (`evcsWafBlockedUntil: AtomicLong`) with 10-minute cooldown (`WAF_COOLDOWN_MS = 600,000L`) when Cloudflare WAF HTTP 403 Forbidden challenge is detected.
+  - Active cooldown bypasses EVCS entirely and routes queries directly to HERE Maps EV API to eliminate 5-second connection stalls.
+  - Built graceful Half-Open probing: upon cooldown expiration, the next request probes EVCS; if successful, resets `evcsWafBlockedUntil` to 0L. If 403 recurs, re-trips cooldown.
+  - Global rate limit bypass: when `isGlobalRateLimited()` is active, routes directly to HERE fallback via `singleFlight` if `hereEvApiClient != null` instead of failing prematurely with `RateLimitException`.
+  - Added Haversine domain distance parity (`DistanceCalculator.calculateDistanceKm`) and dual-key coordinate caching (`cleanKey` & `c.cleanKey`) for fallback stations.
+  - Enforced structured coroutine concurrency: strictly rethrows `CancellationException`.
+  - Injected `hereEvApiClient` into `EvcsRepository` via `DefaultAppContainer`.
+  - Verification: `EvcsRepositoryFallbackResilienceTest.kt` (100% PASS across 12 tests).
+
 ## [2026-09-16] - In-Car Automotive GPS Acquisition Resilience & Multi-Tier Fallback
 
 ### Enhanced & Fixed

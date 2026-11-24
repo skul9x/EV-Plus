@@ -2,6 +2,7 @@ package com.evcs.favorites.data.repository
 
 import com.evcs.favorites.data.model.Station
 import com.evcs.favorites.data.telemetry.EvcsTelemetryDataSource
+import com.evcs.favorites.data.telemetry.TelemetryBatchItem
 import com.evcs.favorites.domain.Station24hStats
 import com.evcs.favorites.domain.Station24hStatsCalculator
 import com.evcs.favorites.domain.StationAccessTokens
@@ -19,7 +20,8 @@ data class StationDetailTelemetrySnapshot(
     val tokens: StationAccessTokens,
     val telemetry: StationTelemetry,
     val portStatuses: List<StationPortStatus>,
-    val stats24h: Station24hStats?
+    val stats24h: Station24hStats?,
+    val uToken: String? = telemetry.uToken
 )
 
 /**
@@ -50,15 +52,13 @@ open class EvcsTelemetryRepository(
     }
 
     /**
-     * Step 3: Deprecated stub for 24-hour time-series history points.
-     * Retained for test suite compilation safety; always returns success with empty list.
+     * Step 3: Retrieves 24-hour historical usage time-series points via HTTP GET.
      */
-    @Deprecated("Removed Socket.io 24h history in favor of fast HTTP telemetry")
     open suspend fun fetch24hHistory(
         stationId: String,
         apiToken: String
     ): Result<List<Pair<Long, Int>>> {
-        return Result.success(emptyList())
+        return dataSource.fetch24hHistory(stationId, apiToken)
     }
 
     /**
@@ -86,6 +86,7 @@ open class EvcsTelemetryRepository(
 
     /**
      * Step 4: Dispatches fire-and-forget sync ping.
+     * Retained 3-parameter overload delegating to data source for backwards compatibility.
      */
     open suspend fun sendTelemetryUpdate(
         stationId: String,
@@ -93,6 +94,29 @@ open class EvcsTelemetryRepository(
         totalBusy: Int
     ): Result<Unit> {
         return dataSource.sendTelemetryUpdate(stationId, apiToken, totalBusy)
+    }
+
+    /**
+     * Step 4: Dispatches fire-and-forget sync ping with per-tier active power and integrity token.
+     */
+    open suspend fun sendTelemetryUpdate(
+        stationId: String,
+        apiToken: String,
+        totalBusy: Int,
+        chargingKw: Map<Int, Int> = emptyMap(),
+        uToken: String? = null
+    ): Result<Unit> {
+        return dataSource.sendTelemetryUpdate(stationId, apiToken, totalBusy, chargingKw, uToken)
+    }
+
+    /**
+     * Dispatches bulk telemetry sync ping for multiple stations.
+     */
+    open suspend fun sendBatchTelemetryUpdate(
+        apiToken: String,
+        items: List<TelemetryBatchItem>
+    ): Result<Unit> {
+        return dataSource.sendBatchTelemetryUpdate(apiToken, items)
     }
 
     /**
@@ -127,7 +151,8 @@ open class EvcsTelemetryRepository(
                     tokens = tokens,
                     telemetry = telemetry,
                     portStatuses = portStatuses,
-                    stats24h = null
+                    stats24h = null,
+                    uToken = telemetry.uToken
                 )
             )
         } catch (e: Exception) {

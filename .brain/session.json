@@ -1,112 +1,87 @@
 {
-  "updated_at": "2026-09-16T20:05:00+07:00",
+  "updated_at": "2026-11-24T23:33:00+07:00",
   "working_on": {
-    "feature": "In-Car Automotive GPS Acquisition Resilience & Multi-Tier Fallback",
-    "task": "Upgraded LocationService to PRIORITY_HIGH_ACCURACY, implemented 3-tier fallback (fresh GPS -> cached lastLocation -> framework LocationManager), added isLocationEnabled check, and atomic coroutine resumption.",
+    "feature": "EVCS Telemetry Protocol Migration & 24h Occupancy History Restoration",
+    "task": "Phase 03: Coordinator Pipeline, 24h Stats Calculation & End-to-End Regression Verification",
     "status": "completed",
     "files": [
-      "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
-      "app/src/test/java/com/evcs/favorites/hardening/LocationServiceGpsResilienceTest.kt",
-      "app/src/test/java/com/evcs/favorites/hardening/RateLimitAndLifecycleHardeningTest.kt",
+      "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
+      "app/src/test/java/com/evcs/favorites/ui/StationDetailTelemetryAnd24hHistoryIntegrationTest.kt",
+      "plans/261124-2135-evcs-telemetry-protocol-and-24h-history/phase-03-coordinator-pipeline-24h-stats-and-regression-verification.md",
+      "plans/261124-2135-evcs-telemetry-protocol-and-24h-history/plan.md",
       "CHANGELOG.md"
     ],
     "blockers": [],
-    "notes": "100% unit tests passing."
+    "notes": "100% unit tests passing (8/8 in StationDetailTelemetryAnd24hHistoryIntegrationTest). Entire plan (Phases 01, 02, 03) completed successfully."
   },
-  "pending_tasks": [
-    {
-      "task": "Run full unit and instrumentation test suite across all modules",
-      "priority": "low",
-      "notes": "Verify entire regression suite remains green"
-    },
-    {
-      "task": "Test on physical Android head unit / Carlinkit TBox in vehicle",
-      "priority": "medium",
-      "notes": "Observe perceived UI discovery latency in under 500ms on live 4G connection"
-    }
-  ],
+  "pending_tasks": [],
   "recent_changes": [
     {
-      "timestamp": "2026-09-16T20:06:00+07:00",
+      "timestamp": "2026-11-24T23:33:00+07:00",
       "type": "feature",
-      "description": "Implemented in-car automotive GPS acquisition resilience: PRIORITY_HIGH_ACCURACY, 3-tier fallback (fresh GPS -> cached lastLocation -> hardware LocationManager), isLocationEnabled check, and atomic coroutine resumption.",
+      "description": "Implemented Phase 03: Coordinator Pipeline, 24h Stats Calculation & End-to-End Regression Verification. Modernized StationDetailCoordinator to forward chargingKw and uToken to telemetryRepository.sendTelemetryUpdate, set statsTimeoutMs default to 3000ms with bounded withTimeoutOrNull execution, implemented graceful null degradation on network failure, timeout, or empty matrix, verified UI stats grid mapping, and authored comprehensive single integration test file StationDetailTelemetryAnd24hHistoryIntegrationTest covering all 8 regression scenarios.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/domain/location/LocationService.kt",
-        "app/src/test/java/com/evcs/favorites/hardening/LocationServiceGpsResilienceTest.kt",
-        "app/src/test/java/com/evcs/favorites/hardening/RateLimitAndLifecycleHardeningTest.kt",
+        "app/src/main/java/com/evcs/favorites/ui/viewmodel/StationDetailCoordinator.kt",
+        "app/src/test/java/com/evcs/favorites/ui/StationDetailTelemetryAnd24hHistoryIntegrationTest.kt",
+        "plans/261124-2135-evcs-telemetry-protocol-and-24h-history/phase-03-coordinator-pipeline-24h-stats-and-regression-verification.md",
+        "plans/261124-2135-evcs-telemetry-protocol-and-24h-history/plan.md",
         "CHANGELOG.md"
       ]
     },
     {
-      "timestamp": "2026-09-16T19:40:00+07:00",
-      "type": "optimization",
-      "description": "Implemented AC Charging Flow Performance Optimization: Phase 01 (low-allocation mapping), Phase 02 (streaming HTML name resolution with 60m TTL cache), Phase 03 (progressive staged UI rendering with immediate candidate emit and async background enrichment).",
+      "timestamp": "2026-11-24T23:23:00+07:00",
+      "type": "feature",
+      "description": "Implemented Phase 02: Network Data Source & Repository Telemetry Protocol Migration. Configured Content-Type text/plain on POST /update with embedded t, a, b, p, u tokens, implemented sendBatchTelemetryUpdate, added NonCancellable sync protection, implemented REST GET /history 24h time-series point retrieval adhering to RFC 6265bis Host-only cookie isolation, and updated EvcsTelemetryRepository with backward-compatible overloads and snapshot uToken retention.",
       "files": [
-        "app/src/main/java/com/evcs/favorites/data/network/here/HereEvApiClient.kt",
-        "app/src/main/java/com/evcs/favorites/data/network/here/model/HereEvModels.kt",
-        "app/src/main/java/com/evcs/favorites/focus/EvcsStationNameResolver.kt",
-        "app/src/main/java/com/evcs/favorites/ui/viewmodel/NearbyViewModel.kt",
-        "app/src/test/java/com/evcs/favorites/performance/AcStationPreFilterAndMappingOptimizationTest.kt",
-        "app/src/test/java/com/evcs/favorites/focus/AcStationStreamingNameResolutionAndCacheTest.kt",
-        "app/src/test/java/com/evcs/favorites/ui/screens/NearbyAcProgressiveRenderingAndOptimizationTest.kt"
-      ]
-    },
-    {
-      "timestamp": "2026-09-10T10:16:00+07:00",
-      "type": "documentation",
-      "description": "Created telemetry benchmark documentation, station classification rules, updated API endpoints documentation and brain memory.",
-      "files": [
-        "docs/api/endpoints.md",
-        "docs/benchmarks/telemetry_benchmark_here_vs_evcs.md",
-        "docs/business/station_classification_rules.md",
-        ".brain/brain.json"
+        "app/src/main/java/com/evcs/favorites/data/telemetry/EvcsTelemetryDataSource.kt",
+        "app/src/main/java/com/evcs/favorites/data/repository/EvcsTelemetryRepository.kt",
+        "app/src/test/java/com/evcs/favorites/data/telemetry/EvcsTelemetryProtocolDataSourceAndRepositoryTest.kt",
+        "plans/261124-2135-evcs-telemetry-protocol-and-24h-history/phase-02-network-data-source-and-repository-telemetry-protocol-migration.md",
+        "plans/261124-2135-evcs-telemetry-protocol-and-24h-history/plan.md",
+        "CHANGELOG.md"
       ]
     }
   ],
   "errors_encountered": [
     {
-      "error": "LocationService PRIORITY_BALANCED_POWER_ACCURACY failed to acquire GPS fixes on car head units and Carlinkit TBox without Wi-Fi triangulation, and FusedLocationClient null responses bypassed lastLocation fallback.",
-      "solution": "Upgraded to PRIORITY_HIGH_ACCURACY, added immediate lastLocation fallback on null response, and integrated Android framework LocationManager enabled providers fallback.",
+      "error": "ComparisonFailure in JSON formatting due to joinToString default separator ', ' inserting space",
+      "solution": "Explicitly specify separator = ',' in joinToString to produce compact JSON matching browser curl capture",
       "resolved": true
     },
     {
-      "error": "Blocking HTML scraping delayed AC station discovery UI by 2-3 seconds while holding full-screen loading spinners",
-      "solution": "Decoupled pipeline into 2 stages: Stage 1 emits candidate stations immediately (~300ms) with fallback names, turning off isLoading, while Stage 2 resolves canonical names asynchronously in the background",
-      "resolved": true
-    },
-    {
-      "error": "Multi-megabyte HTML response buffering caused allocation spikes and GC pauses during batch name resolution",
-      "solution": "Refactored EvcsStationNameResolver to stream-parse title tags directly from OkHttp ResponseBody byteStream",
+      "error": "MockWebServer queue response ordering conflict between concurrent fire-and-forget ping and sequential 24h history fetch",
+      "solution": "Use path-based okhttp3.mockwebserver.Dispatcher rather than sequential enqueue to eliminate queue race conditions",
       "resolved": true
     }
   ],
   "decisions_made": [
     {
-      "decision": "Adopt 2-Stage Progressive UI Rendering for Nearby AC Flow",
-      "reason": "Eliminates spinner latency by displaying live port availability and fallback address names under 500ms, enriching station names asynchronously without scroll jumping"
+      "decision": "Forward chargingKw and uToken from telemetry to telemetryRepository.sendTelemetryUpdate in StationDetailCoordinator",
+      "reason": "Ensures the backend receives active per-tier charging distribution and hardware station security token on each inspection"
     },
     {
-      "decision": "Decouple acDiscoveryJob and acEnrichmentJob with clean cancellation guards",
-      "reason": "Prevents in-flight AC enrichment jobs from leaking stale state or resolved names into other filter modes (e.g. DC or NONE)"
+      "decision": "Default statsTimeoutMs to 3000ms with bounded withTimeoutOrNull in StationDetailCoordinator",
+      "reason": "Prevents slow or stalling mobile networks from blocking background coroutines while guaranteeing instantaneous Stage 1 port display"
     },
     {
-      "decision": "Stream-based regex title scraping with 60-minute in-memory TTL caching",
-      "reason": "Avoids repeated network scrapes for the same stations and keeps peak memory low"
+      "decision": "Degrade to stats24h = null and isLoadingStats = false on timeout, 500 error, or empty points",
+      "reason": "Allows station detail UI to render fallback '-' placeholders gracefully without crashing or clearing Stage 1 port availability"
+    },
+    {
+      "decision": "Use Content-Type: text/plain for POST /update and embed apiToken 't', stationId 'a', totalBusy 'b', power breakdown 'p', and integrityToken 'u' in request body without x-t header",
+      "reason": "Aligns with EVCS backend real-world HTTP traffic capture and eliminates rejected requests"
+    },
+    {
+      "decision": "Wrap sendTelemetryUpdate and sendBatchTelemetryUpdate in withContext(ioDispatcher + NonCancellable)",
+      "reason": "Guarantees fire-and-forget telemetry synchronization completes reliably without socket abortion when user dismisses the station detail screen"
+    },
+    {
+      "decision": "Do not transmit __Host-tp cookie to www2.evcs.vn/history",
+      "reason": "Complies with RFC 6265bis Host-only cookie isolation for evcs.vn; www2 endpoints authenticate solely via URL query parameters ?sid=...&t=..."
+    },
+    {
+      "decision": "Retain 3-parameter overload sendTelemetryUpdate(stationId, apiToken, totalBusy) delegating to 5-parameter overload",
+      "reason": "Maintains 100% binary and source backward compatibility across existing test fakes (FakeEvcsTelemetryRepository) and legacy callers"
     }
-  ],
-  "last_audit": {
-    "scope": "FULL",
-    "timestamp": "2026-09-09T09:55:00+07:00",
-    "status": "completed",
-    "report_path": "docs/reports/audit_20260909_0948.md",
-    "tests_passed": "724/724",
-    "apk_size_bytes": 3980296,
-    "findings_count": {
-      "critical": 0,
-      "high": 1,
-      "medium": 2,
-      "low": 3,
-      "suggestion": 2
-    }
-  }
+  ]
 }

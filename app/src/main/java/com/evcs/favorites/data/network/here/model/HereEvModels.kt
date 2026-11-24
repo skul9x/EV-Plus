@@ -2,6 +2,7 @@ package com.evcs.favorites.data.network.here.model
 
 import com.evcs.favorites.data.model.PowerPort
 import com.evcs.favorites.data.model.Station
+import com.evcs.favorites.focus.EvcsStationNameResolver
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
@@ -389,26 +390,41 @@ object HereModelMapper {
         val domainId = hereStation.cpoId?.takeIf { it.isNotBlank() }
             ?: hereStation.id.ifBlank { "here_${hereStation.name.hashCode()}" }
 
+        // 1. Resolve authentic or address-enriched station name
+        val rawName = hereStation.name.trim()
+        val formattedAddress = hereStation.address?.toFormattedAddress().orEmpty()
+        val resolvedName = when {
+            rawName.isBlank() || EvcsStationNameResolver.isGenericStationName(rawName) -> {
+                if (formattedAddress.isNotBlank()) {
+                    EvcsStationNameResolver.formatFallbackAddress(formattedAddress)
+                } else {
+                    if (rawName.isNotBlank()) rawName else "Trạm sạc VinFast"
+                }
+            }
+            else -> rawName
+        }
+
+        // 2. Resolve EVSE operator ensuring VinFast filter compatibility
+        val cleanCpo = hereStation.cpoId?.trim().orEmpty()
         val resolvedEvse = when {
-            !hereStation.cpoId.isNullOrBlank() -> {
-                val cleanCpo = hereStation.cpoId.trim()
-                if (cleanCpo.contains("vinfast", ignoreCase = true)) {
+            cleanCpo.isNotEmpty() -> {
+                if (cleanCpo.contains("vinfast", ignoreCase = true) || cleanCpo.startsWith("c.", ignoreCase = true)) {
                     "VinFast"
-                } else if (cleanCpo.startsWith("c.", ignoreCase = true)) {
-                    if (hereStation.name.contains("vinfast", ignoreCase = true)) "VinFast" else "Partner"
+                } else if (resolvedName.contains("vinfast", ignoreCase = true)) {
+                    "VinFast"
                 } else {
                     cleanCpo
                 }
             }
-            hereStation.name.contains("vinfast", ignoreCase = true) -> "VinFast"
+            resolvedName.contains("vinfast", ignoreCase = true) || rawName.contains("vinfast", ignoreCase = true) -> "VinFast"
             powerPorts.isNotEmpty() && powerPorts.all { it.typeWatts <= 22000L } -> "AC"
             else -> "Partner"
         }
 
         return Station(
             id = domainId,
-            name = hereStation.name,
-            address = hereStation.address?.toFormattedAddress().orEmpty(),
+            name = resolvedName,
+            address = formattedAddress,
             latitude = hereStation.position?.latitude ?: 0.0,
             longitude = hereStation.position?.longitude ?: 0.0,
             summary = summary,
